@@ -1,0 +1,181 @@
+<!--
+ === Copyright (c) 1999 The University of Utah and
+ === the Computer Systems Laboratory at the University of Utah (CSL).
+ === All rights reserved.
+ ===
+ === Permission to use, copy, modify and distribute this software is hereby
+ === granted provided that (1) source code retains these copyright, permission,
+ === and disclaimer notices, and (2) redistributions including binaries
+ === reproduce the notices in supporting documentation.
+ ===
+ === THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ === IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ === ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS
+ === SOFTWARE.
+ ===
+ === CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ === improvements that they make and grant CSL redistribution rights.
+ -->
+
+<!-- Template for client stubs -->
+
+<macro name="client_stub">
+<defvar my_sections:string[2]>
+<ignore my_sections[0]="m">
+<ignore my_sections[1]="u">
+<pre>
+{
+  FLICK_BUFFER _stream_storage;
+  FLICK_BUFFER *_stream = &amp;_stream_storage;
+  <ru::start name=plain_name>
+  <rt::decl name=plain_name>
+  <rt::start name=plain_name>
+  TAO_Stub *_istub = this->_stubobj();
+  TAO_ORB_Core *_orb_core = TAO_ORB_Core_instance();
+  <ifdef name="return_def">
+  <(return_def)>
+
+  <(init_expr)>;
+  <else>
+
+  </ifdef>
+  if(_istub)
+  {
+    char _default_buffer[ACE_CDR::DEFAULT_BUFSIZE];
+    TAO_OutputCDR _out_cdr(_default_buffer,
+                           ACE_CDR::DEFAULT_BUFSIZE,
+			   TAO_ENCAP_BYTE_ORDER,
+			   _orb_core->output_cdr_buffer_allocator(),
+			   _orb_core->output_cdr_dblock_allocator());
+    <if !oneway_flag>TAO_InputCDR *_in_cdr;
+    </if>TAO_Connector_Registry *_conn_reg = _orb_core->connector_registry();
+    TAO_Transport *_transport = 0;
+    TAO_Profile *_tp = 0;
+    CORBA::ULong _my_request_id = 0;
+    ACE_Time_Value *_max_wait_time = 0;
+    TAO_Synch_Reply_Dispatcher _rd(_orb_core);
+    <cycle::decl name=plain_name sections=my_sections>
+    <gtod::decl name=plain_name sections=my_sections>
+
+    ACE_Countdown_Time _countdown(_max_wait_time);
+    for (;;) {
+      _tp = _istub->profile_in_use();
+      if (_transport)
+        _transport->idle();
+      _countdown.update();
+      int _result = _conn_reg->connect (_tp, _transport);
+      _countdown.update();
+      if (_result == 0)
+        break;
+      if (errno == ETIME)
+        {
+	  flick_stub_error(FLICK_ERROR_COMMUNICATION, <(early_escape_label)>);
+	}
+      if (_istub->next_profile_retry() == 0)
+        flick_stub_error(FLICK_ERROR_COMMUNICATION, <(early_escape_label)>);
+    }
+    _my_request_id = _transport->request_id();
+    _countdown.update();
+    flick_<(be_name)>_client_start_encode();
+    <(target_block)>
+    <rt::stop name=plain_name>
+    <cycle::start name=plain_name>
+    <gtod::start name=plain_name>
+    <(in_block)>
+    <gtod::stop name=plain_name section="m">
+    <cycle::stop name=plain_name section="m">
+    <rt::start name=plain_name>
+    flick_<(be_name)>_client_end_encode();
+    <(send_state_change)>
+    flick_<(be_name)>_client_set_response_expected(<if oneway_flag>0<else>1</if>);
+    <if oneway_flag>
+    if( _transport->send_request(_orb_core, _out_cdr, 0, _max_wait_time) == -1 ) {
+      _tp->reset_hint();
+      flick_stub_error(FLICK_ERROR_COMMUNICATION, <(escape_label)>);
+    } else {
+      _transport->idle();
+    }
+    <rt::stop name=plain_name>
+    <else>
+    if( _transport->bind_reply_dispatcher (_my_request_id, &amp;_rd) == -1 ) {
+      flick_stub_error(FLICK_ERROR_COMMUNICATION, <(escape_label)>);
+    }
+    _countdown.update();
+    if( _transport->send_request(_orb_core, _out_cdr,
+                                 1, _max_wait_time) == -1 ) {
+      _countdown.update();
+      _transport->close_connection();
+      _transport = 0;
+      _tp->reset_hint();
+      flick_stub_error(FLICK_ERROR_COMMUNICATION, <(escape_label)>);
+    } else {
+      _countdown.update();
+      _istub->set_valid_profile();
+      _stub_state.state = FLICK_STATE_RECEIVE;
+      int _reply_error = _transport->wait_for_reply(_max_wait_time);
+      if (_reply_error == -1)
+        {
+	  if (errno == ETIME)
+	    flick_stub_error(FLICK_ERROR_COMMUNICATION, <(escape_label)>);
+	  flick_stub_error(FLICK_ERROR_COMMUNICATION, <(escape_label)>);
+	}
+      _in_cdr = &amp;_rd.reply_cdr();
+    }
+    flick_<(be_name)>_client_start_decode();
+    <rt::stop name=plain_name>
+    <cycle::start name=plain_name>
+    <gtod::start name=plain_name>
+    if(_in_cdr->do_byte_swap())
+      <(swap_block)>
+    else
+      <(out_block)>
+    <gtod::stop name=plain_name section="u">
+    <cycle::stop name=plain_name section="u">
+    <gtod::print name=plain_name sections=my_sections>
+    <cycle::print name=plain_name sections=my_sections>
+    <rt::print name=plain_name>
+    flick_<(be_name)>_client_end_decode();</if>
+    if (_transport)
+      _transport->idle_after_reply();
+    <ru::stop name=plain_name>
+  } else {
+    flick_stub_error(FLICK_ERROR_INVALID_TARGET, <(early_escape_label)>);
+  }
+  <(emergency_return_string)>;
+  <(abort_block)>
+  <(reaper_label)>
+}
+
+</pre>
+</macro>
+
+<!-- Template for server skeletons -->
+
+<macro name="server_skel">
+<pre>
+{
+  FLICK_BUFFER _stream_storage;
+  FLICK_BUFFER *_stream = &amp;_stream_storage;
+  TAO_InputCDR &amp;_in_cdr = _tao_req.incoming();
+  TAO_OutputCDR &amp;_out_cdr = _tao_req.outgoing();
+  <rt::decl name="">
+  <rt::start name="">
+  <ru::start name="">
+
+  flick_<(be_name)>_server_start_decode();
+  <(prologue_state_change)>
+  <(unmarshal_state_change)>
+  if (_in_cdr.do_byte_swap()) {
+    <(swap_block)>
+  } else {
+    <(out_block)>
+  }
+  <(epilogue_state_change)>
+  return;
+  <(abort_block)>
+  <(reaper_label)>
+}
+</pre>
+</macro>
+
+<!-- End of file. -->

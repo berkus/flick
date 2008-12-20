@@ -1,0 +1,3 @@
+This directory contains header files that are specific to the C and C++
+language-specific phases of Flick (i.e., the presentation generation and back
+end stages).

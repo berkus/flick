@@ -1,0 +1,38 @@
+#
+# Copyright (c) 1996, 1997 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+TESTS += array-1 \
+	 complex-1 \
+	 constant-1 constant-2 constant-3 constant-4 constant-6 constant-7 \
+	 enum-1 enum-2 enum-3 \
+	 optional-1 optional-2 optional-3 optional-4 optional-5 optional-6 \
+	 optional-7 \
+	 program-1 program-2 program-3 program-4 program-5 program-6\
+	 simple-decl-1 \
+	 string-1 string-2 string-3 \
+	 struct-1 struct-2 struct-3 struct-4 \
+	 typedef-1 \
+	 union-1 union-2 union-3 union-4 union-5 \
+	 void-1 \
+	 sunstat parms complex
+
+## End of file.
+

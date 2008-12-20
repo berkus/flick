@@ -1,0 +1,95 @@
+/*
+ * Copyright (c) 1997, 1998 The University of Utah and
+ * the Computer Systems Laboratory at the University of Utah (CSL).
+ *
+ * This file is part of Flick, the Flexible IDL Compiler Kit.
+ *
+ * Flick is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Flick is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Flick; see the file COPYING.  If not, write to
+ * the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+ */
+
+/*
+ * Operations that take fixed-size arrays and use out-of-line data passing.
+ * This is derived from a copy of the fixed-size inline data passing used
+ * for MIG timings in the Flick PLDI '97 paper.
+ */
+
+subsystem oolarrays 234000;
+
+serverprefix s_;
+
+type mach_port_t = MACH_MSG_TYPE_COPY_SEND;
+type unsigned = MACH_MSG_TYPE_INTEGER_32;
+
+type t64B = ^array[16] of unsigned;
+type t128B = ^array[32] of unsigned;
+type t256B = ^array[64] of unsigned;
+type t512B = ^array[128] of unsigned;
+type t1K = ^array[256] of unsigned;
+type t2K = ^array[512] of unsigned;
+type t4K = ^array[1024] of unsigned;
+type t8K = ^array[2048] of unsigned;
+type t16K = ^array[4096] of unsigned;
+type t32K = ^array[8192] of unsigned;
+type t64K = ^array[16384] of unsigned;
+
+skip;
+skip;
+
+routine	rpc_64_in(
+	target : mach_port_t;
+	foo: t64B);
+
+routine	rpc_128_in(
+	target : mach_port_t;
+	foo: t128B);
+
+routine	rpc_256_in(
+	target : mach_port_t;
+	foo: t256B);
+
+routine	rpc_512_in(
+	target : mach_port_t;
+	foo: t512B);
+
+routine	rpc_1K_in(
+	target : mach_port_t;
+	data: t1K);
+
+routine	rpc_2K_in(
+	target : mach_port_t;
+	data: t2K);
+
+routine	rpc_4K_in(
+	target : mach_port_t;
+	data: t4K);
+
+routine	rpc_8K_in(
+	target : mach_port_t;
+	data: t8K);
+
+routine	rpc_16K_in(
+	target : mach_port_t;
+	data: t16K);
+
+routine	rpc_32K_in(
+	target : mach_port_t;
+	data: t32K);
+
+routine	rpc_64K_in(
+	target : mach_port_t;
+	data: t64K);
+
+/* End of file. */
+

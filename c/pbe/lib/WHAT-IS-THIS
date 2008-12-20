@@ -1,0 +1,4 @@
+This directory contains the base implementation of all Flick back ends that
+produce C or C++ code.  The core of the library is an abstract base class;
+certain member functions must be defined in each derived class to create a
+complete back end.

@@ -1,0 +1,289 @@
+#
+# Copyright (c) 1996, 1997, 1998, 1999 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+ifndef _flick_makerules_test_common_
+_flick_makerules_test_common_ = yes
+
+# Any Makefile that includes this file is expected to define the following
+# macros:
+#
+# `TESTS', the set of tests.  These names do *not* have extensions; the rules
+# in this file know how to add extensions in order to find the source IDL
+# files, the generated AOI and PRES_C files, the test driver programs, and so
+# on.
+#
+# `ARCHETYPE_EXTS', the extensions of the files that should be saved for each
+# test.  These extensions are appended to the names of the tests in `TESTS',
+# producing the names of the files that may be saved in the archetype
+# directory.  The target `<test>.archetype' will make `<test>' and then save
+# the indicated files in the archetype directory.  Later, the target
+# `<test>.verify' will re-make <test> and compare the newly generated files
+# with those that were previously saved in the archetype directory.
+
+include $(SRCDIR)/GNUmakerules
+
+# Delete any files that are produced by a program that fails.
+.DELETE_ON_ERROR:
+
+###############################################################################
+###############################################################################
+####
+#### Here are the definitions that specify our programs and program flags.
+####
+###############################################################################
+###############################################################################
+
+# `FLICK_BIN' is the directory that contains all of the Flick executables.
+
+FLICK_BIN		= $(OBJDIR)/bin
+
+# `FLICK_FE_CORBA' is the front end used for `.idl' inputs;
+# `FLICK_FE_SUN' is the front end used for `.x' IDL inputs;
+# (the MIG front end/presentation generator reads `.defs' IDL inputs);
+#
+# `FLICK_C_PFE_CORBA' is the CORBA presentation generator (for C);
+# `FLICK_C_PFE_CORBAXX' is the CORBA presentation generator (for C++);
+# `FLICK_C_PFE_FLUKE' is the Fluke presentation generator (for C);
+# `FLICK_C_PFE_MIG' is the MIG front end/presentation generator (for C);
+# `FLICK_C_PFE_SUN' is the Sun RPC presentation generator (for C);
+#
+# `FLICK_C_PBE_FLUKE' is the Fluke IPC presentation back end (for C);
+# `FLICK_C_PBE_IIOP' is the CORBA IIOP presentation back end (for C);
+# `FLICK_C_PBE_IIOPXX' is the CORBA IIOP presentation back end (for C++);
+# `FLICK_C_PBE_KHAZANA' is the Khazana presentation back end (for C);
+# `FLICK_C_PBE_MACH3MIG' is the Mach3MIG presentation back end (for C);
+# `FLICK_C_PBE_SUN' in the Sun RPC presentation back end (for C); and
+# `FLICK_C_PBE_TRAPEZE' is the Trapeze presentation back end (for C).
+#
+# These programs are used as dependencies, so when a program is rebuilt, the
+# corresponding test outputs are out of date.  Because they are dependencies,
+# however, we must append $(PROGRAM_EXTENSION) to each; `make' doesn't know to
+# add the extension.
+
+# FLICK_FE_CORBA	= $(FLICK_BIN)/flick-fe-corba$(PROGRAM_EXTENSION)
+FLICK_FE_CORBA		= $(FLICK_BIN)/flick-fe-newcorba$(PROGRAM_EXTENSION)
+FLICK_FE_SUN		= $(FLICK_BIN)/flick-fe-sun$(PROGRAM_EXTENSION)
+
+FLICK_C_PFE_CORBA	= $(FLICK_BIN)/flick-c-pfe-corba$(PROGRAM_EXTENSION)
+FLICK_C_PFE_CORBAXX	= $(FLICK_BIN)/flick-c-pfe-corbaxx$(PROGRAM_EXTENSION)
+FLICK_C_PFE_FLUKE	= $(FLICK_BIN)/flick-c-pfe-fluke$(PROGRAM_EXTENSION)
+FLICK_C_PFE_MIG		= $(FLICK_BIN)/flick-c-fe-mig$(PROGRAM_EXTENSION)
+FLICK_C_PFE_SUN		= $(FLICK_BIN)/flick-c-pfe-sun$(PROGRAM_EXTENSION)
+
+FLICK_C_PBE_FLUKE	= $(FLICK_BIN)/flick-c-pbe-fluke$(PROGRAM_EXTENSION)
+FLICK_C_PBE_IIOP	= $(FLICK_BIN)/flick-c-pbe-iiop$(PROGRAM_EXTENSION)
+FLICK_C_PBE_IIOPXX	= $(FLICK_BIN)/flick-c-pbe-iiopxx$(PROGRAM_EXTENSION)
+FLICK_C_PBE_KHAZANA	= $(FLICK_BIN)/flick-c-pbe-khazana$(PROGRAM_EXTENSION)
+FLICK_C_PBE_MACH3MIG	= $(FLICK_BIN)/flick-c-pbe-mach3mig$(PROGRAM_EXTENSION)
+FLICK_C_PBE_SUN		= $(FLICK_BIN)/flick-c-pbe-sun$(PROGRAM_EXTENSION)
+FLICK_C_PBE_TRAPEZE	= $(FLICK_BIN)/flick-c-pbe-trapeze$(PROGRAM_EXTENSION)
+
+# Flags for the Flick programs.
+
+FLICK_FE_FLAGS		= 
+
+FLICK_PFE_FLAGS		= 
+FLICK_PFE_CLIENT_FLAGS	= $(FLICK_PFE_FLAGS) -c
+FLICK_PFE_SERVER_FLAGS	= $(FLICK_PFE_FLAGS) -s
+
+FLICK_PBE_FLAGS		= --no_timestamp \
+			  --nostdinc -I $(SRCDIR)/runtime/headers/flick/pres
+FLICK_PBE_CLIENT_FLAGS	= $(FLICK_PBE_FLAGS)
+FLICK_PBE_SERVER_FLAGS	= $(FLICK_PBE_FLAGS)
+
+# `AOID' is the AOI dump utility, and `PRESD' is the PRES_C dump utility.
+
+AOID			= $(FLICK_BIN)/flick-aoid$(PROGRAM_EXTENSION)
+PRESD			= $(FLICK_BIN)/flick-c-presd$(PROGRAM_EXTENSION)
+
+AOID_FLAGS		= 
+PRESD_FLAGS		= 
+
+# `RPCGEN' is Sun's own RPC generator.
+
+RPCGEN			= rpcgen
+RPCGEN_FLAGS		= -h
+
+# `TEST_MOM_TEST' is the Tcl script used by the automated tester.
+
+TEST_MOM_TEST		= $(SRCDIR)/test/mom_test.tcl
+
+###############################################################################
+###############################################################################
+####
+#### These macros describe where things are within the test directory.
+####
+###############################################################################
+###############################################################################
+
+TEST_DIR			= $(OBJDIR)/test
+
+TEST_FE_DIR			= $(TEST_DIR)/fe
+TEST_FE_CORBA_DIR		= $(TEST_FE_DIR)/corba
+TEST_FE_MIG_DIR			= $(TEST_FE_DIR)/mig
+TEST_FE_SUN_DIR			= $(TEST_FE_DIR)/sun
+
+TEST_PFE_DIR			= $(TEST_DIR)/pfe
+TEST_PFE_CORBA_DIR		= $(TEST_PFE_DIR)/corba
+TEST_PFE_CORBAXX_DIR		= $(TEST_PFE_DIR)/corbaxx
+TEST_PFE_MIG_DIR		= $(TEST_PFE_DIR)/mig
+TEST_PFE_FLUKE_DIR		= $(TEST_PFE_DIR)/fluke
+TEST_PFE_SUN_DIR		= $(TEST_PFE_DIR)/sun
+
+TEST_PBE_DIR			= $(TEST_DIR)/pbe
+TEST_PBE_FLUKE_DIR		= $(TEST_PBE_DIR)/fluke
+TEST_PBE_IIOP_DIR		= $(TEST_PBE_DIR)/iiop
+TEST_PBE_IIOPXX_DIR		= $(TEST_PBE_DIR)/iiopxx
+TEST_PBE_KHAZANA_DIR		= $(TEST_PBE_DIR)/khazana
+TEST_PBE_MACH3MIG_DIR		= $(TEST_PBE_DIR)/mach3mig
+TEST_PBE_SUN_DIR		= $(TEST_PBE_DIR)/sun
+TEST_PBE_TRAPEZE_DIR		= $(TEST_PBE_DIR)/trapeze
+
+TEST_PROGRAMS_DIR		= $(TEST_DIR)/programs
+TEST_PROGRAMS_FLUKE_DIR		= $(TEST_PROGRAMS_DIR)/fluke
+TEST_PROGRAMS_IIOP_DIR		= $(TEST_PROGRAMS_DIR)/iiop
+TEST_PROGRAMS_IIOPXX_DIR	= $(TEST_PROGRAMS_DIR)/iiopxx
+TEST_PROGRAMS_MACH3MIG_DIR	= $(TEST_PROGRAMS_DIR)/mach3mig
+TEST_PROGRAMS_SUN_DIR		= $(TEST_PROGRAMS_DIR)/sun
+TEST_PROGRAMS_TRAPEZE_DIR	= $(TEST_PROGRAMS_DIR)/trapeze
+
+###############################################################################
+###############################################################################
+####
+#### Here are the definitions and rules for comparing generated files with
+#### their archetypes.
+####
+###############################################################################
+###############################################################################
+
+# `ARCHETYPE_DIR' is the directory that contains previously-generated versions
+# of files produced by Flick.  These versions are intended to represent the
+# "correct" outputs.
+#
+# The intent is that `ARCHETYPE_DIR' will be found via `VPATH'.  We can make a
+# local archetype directory or distribute an archetype directory with the Flick
+# source tree.
+
+ARCHETYPE_DIR = Archetypes
+
+# `ARCHETYPE_FILES' is the complete list of files that may be saved in the
+# archetype directory.
+#
+# `ARCHETYPE_FILE_PATTERN_DEPS' is a list of filename patterns produced from
+# `ARCHETYPE_EXTS'.  This list of patterns is used to build the dependencies of
+# certain static pattern rules below.
+
+ARCHETYPE_FILES = \
+	$(foreach test,$(TESTS),$(addprefix $(test),$(ARCHETYPE_EXTS)))
+
+ARCHETYPE_FILE_PATTERN_DEPS = $(foreach ext,$(ARCHETYPE_EXTS),%$(ext))
+
+# `CMP' is the program that compares newly-generated files with their archetype
+# versions.  `CP' is the program that installs files in the archetype
+# directory.
+
+CMP = cmp
+CP = cp
+
+###############################################################################
+
+# Rules to verify files against their archetypes...
+
+.PHONY: verify
+
+verify: $(addsuffix .verify,$(TESTS))
+
+.PHONY: $(addsuffix .verify,$(TESTS))
+
+$(addsuffix .verify,$(TESTS)): %.verify: $(ARCHETYPE_FILE_PATTERN_DEPS) \
+					 $(addsuffix .verify, \
+						$(ARCHETYPE_FILE_PATTERN_DEPS))
+
+.PHONY: $(addsuffix .verify,$(ARCHETYPE_FILES))
+
+$(addsuffix .verify,$(ARCHETYPE_FILES)): %.verify: $(ARCHETYPE_DIR)/% %
+	@echo Verifying \`$(basename $@)\'...
+	-@$(CMP) $^
+
+# There is no rule to make the target `$(ARCHETYPE_DIR)/*', and therefore, the
+# rule above will fail if there is no archetype copy of the file to be
+# verified.  This is intentional.  We don't want to update the saved reference
+# copy of a file as part of its verification process --- duh!
+
+###############################################################################
+
+# Rules to make archetype versions of files...
+#
+# NOTE that these rules operate on a *local* archetype directory --- that is,
+# they save files in the current *object* tree, not the *source* tree.  This is
+# intentional.  When a Flick distribution is made, the archetype copies are
+# copied from the object tree into the distribution source tree (where the
+# `verify' targets will find them).
+
+.PHONY: archetype
+
+archetype: $(addsuffix .archetype,$(TESTS))
+
+.PHONY: $(addsuffix .archetype,$(TESTS))
+
+ifneq ($(strip $(ARCHETYPE_FILE_PATTERN_DEPS)),)
+$(addsuffix .archetype,$(TESTS)): %.archetype: $(ARCHETYPE_DIR) \
+					       $(ARCHETYPE_FILE_PATTERN_DEPS)
+	$(CP) $(filter-out $(ARCHETYPE_DIR),$^) $(ARCHETYPE_DIR)
+
+else
+$(addsuffix .archetype,$(TESTS)): %.archetype:
+
+endif
+
+$(ARCHETYPE_DIR):
+	-mkdir $(ARCHETYPE_DIR)
+
+###############################################################################
+###############################################################################
+####
+#### Here are the housecleaning definitions and rules.
+####
+###############################################################################
+###############################################################################
+
+# `TEST_PROGRAMS_NOENVS_DEF' is the `make' command line option that tells the
+# `programs/*/GNUmakefile's not to require that certain platform-specific
+# environment variables be set.  This allows one to `make clean' in the topmost
+# `test' directory without first setting all the random environment variables
+# that the Makefiles would otherwise ``need.''
+
+TEST_PROGRAMS_NOENVS_DEF = TEST_PROGRAMS_NOENVS=1
+
+###############################################################################
+
+.PHONY: install
+
+install:
+
+.PHONY: clean
+
+.PHONY: $(addsuffix .clean,$(TESTS))
+
+endif
+
+## End of file.
+

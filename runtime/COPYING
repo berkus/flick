@@ -1,0 +1,44 @@
+-*- mode: Text -*-
+
+Flick's runtime header files and runtime library files are contained within the
+`runtime' directory of the Flick source distribution, and are distributed under
+the terms of the following license.
+
+/* 
+ * Copyright (c) The University of Utah and
+ * the Computer Systems Laboratory at the University of Utah (CSL).
+ * All rights reserved.
+ *
+ * Permission to use, copy, modify and distribute this software is hereby
+ * granted provided that (1) source code retains these copyright, permission,
+ * and disclaimer notices, and (2) redistributions including binaries
+ * reproduce the notices in supporting documentation.
+ *
+ * THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ * IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ * ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ *
+ * CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ * improvements that they make and grant CSL redistribution rights.
+ */
+
+All Flick software outside of the `runtime' directory is distributed under the
+terms of the GNU General Public License (GPL).  See the file `COPYING' in the
+root directory of the Flick distribution for details.
+
+In short, the Flick compiler tools are covered by the GPL, but the runtimes are
+not.  This means that you may use Flick-generated code (stubs) and the provided
+Flick runtimes in your own programs without causing your programs to be covered
+by the GPL.  Use, copying, modification, and distribution of the Flick runtimes
+are nevertheless subject to the terms stated in the license above.
+
+Note that the `support' directory of the Flick distribution contains files that
+are not part of Flick, but which may be required in order to use Flick on
+certain platforms.  (Binary distributions of Flick may or may not include a
+`support' directory, depending on whether any extra support files are required
+for a particular platform.)  Files within `support' are distributed under
+various licenses; see the `COPYRIGHT' file in the root directory of the Flick
+distribution for details.
+
+## End of file.
+

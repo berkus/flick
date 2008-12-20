@@ -1,0 +1,341 @@
+#
+# Copyright (c) 1995, 1996, 1997, 1998, 1999 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+THE ONE-LINE STORY
+------------------
+
+Go to the `test' subdirectory of your Flick build tree and type `make'.
+
+
+THE SHORT STORY
+---------------
+
+Tests should be built/run within the `test' directory of your Flick build tree.
+For example, if you built Flick in a directory called `~/obj', you would test
+Flick by navigating into your `~/obj/test' directory.
+
+You will need ~100MB of free disk space in order to run all of the tests, and
+~100MB *additional* if you want to run regression tests.
+
+To run regression tests you must acquire the ``known good'' output files from
+<ftp://flux.cs.utah.edu/flux/flick/2.1/flick-2.1-tests.tar.gz>.  Download that
+file and unpack it on top of your Flick *source* tree.  For example, if the
+root of your Flick source tree is `~/flick-2.1', you would install the
+regression test files by typing:
+
+	cd ~
+	tar xf flick-2.1-tests.tar	# Adds to `~/flick-2.1'
+
+Now that you have found enough disk space and (optionally) installed the files
+for regression testing, go into the `test' directory of your Flick *build* tree
+(`~/obj/test' in our running example) and type one of the following commands:
+
+  + Type `make' if you simply want to run all of the Flick compiler components.
+    The generated stub source code files will be output into the `pbe/*'
+    directories.  If everything runs OK, Flick is most likely working
+    correctly.  (You should ignore warnings from the Trapeze back end about
+    maximum message sizes, array sizes, and unsupported features.)
+
+  + Type `make verify' if you want to run all of the Flick compiler components
+    *and* compare their outputs to ``known good archetype'' copies of the
+    output files (i.e., do regression testing).
+
+This should be enough for you to know if your copy of Flick is working.  Read
+the rest of this file if you want to know more about Flick's test setup.
+
+
+THE LONG STORY
+--------------
+
+The current structure of the Flick `test' directory is this:
+
+	test
+		fe
+			corba		Contains CORBA IDL's, AOI's, AOD's.
+			mig		Contains MIG IDL's.
+			sun		Contains Sun RPC IDL's, AOI's, AOD's.
+		pfe
+			corba		CORBA C client and server PRC's, PRD's.
+			corbaxx		CORBA C++ client & server PRC's, PRD's.
+			fluke		Fluke** client and server PRC's, PRD's.
+			mig		MIG client and server PRC's, PRD's.
+			sun		Sun client and server PRC's, PRD's.
+		pbe
+			fluke		Fluke, MIG, Sun client and server code.
+			iiop		CORBA, MIG, Sun client and server code.
+			iiopxx		CORBA (C++) client and server code.
+			khazana		CORBA, MIG, Sun client and server code.
+			mach3mig	CORBA, MIG, Sun client and server code.
+			sun		CORBA and Sun client and server code.
+			trapeze		CORBA, MIG, Sun client and server code.
+		programs
+			fluke		Driver programs for `fluke' PBE stubs.
+			iiop		Driver programs for `iiop' PBE stubs.
+			iiopxx		Driver programs for `iiopxx' PBE stubs.
+			mach3mig	Driver programs for `mach3mig' stubs.
+			sun		Driver programs for `sun' stubs.
+			trapeze		Driver programs for `trapeze' stubs.
+
+**Footnotes:
+
+  * `Fluke' is the operating system currently under development by the
+    Flux research group at the University of Utah.  For information about
+    Fluke, see <http://www.cs.utah.edu/flux/>.
+
+  * `Khazana' is a service exporting the abstraction of a distributed, secure,
+    persistent, globally shared store that applications can use to store their
+    data.  Khazana is currently under development at the University of Utah;
+    see <http://www.cs.utah.edu/flux/> for more information.
+
+  * `pfe' is short for ``presentation front end,'' the old term for Flick's
+    presentation generators.  Similarly, `pbe' stands for ``presentation back
+    end,'' the old name for Flick's back ends.
+
+  * The MIG front end and presentation generator are conjoined; there are no
+    MIG-derived AOI or AOD files.
+
+  * The `corbaxx' presentation generator implements the CORBA C++ mapping, and
+    the `iiopxx' back end produces C++ code.  All other presentation generators
+    and back ends are for C language stubs.
+
+(There is an `examples' directory as well, but it is not yet integrated into
+the general Flick test scheme.  For the rest of this discussion, pretend that
+the `examples' directory doesn't exist.)
+
+The "data flow" in the Flick test tree looks something like this:
+
+
+  fe/              pfe/         pbe/
+  -----            -------      ----------------------------------------------
+  corba ---+-----> fluke   ---> fluke 
+	    \
+             +---> corba   --->       iiop        khazana mach3mig sun trapeze
+              \
+               +-> corbaxx --->            iiopxx
+
+  mig   ---------> mig     ---> fluke iiop        khazana mach3mig     trapeze
+
+  sun   ---------> sun     ---> fluke iiop        khazana mach3mig sun trapeze
+  -----            -------      ----------------------------------------------
+
+
+In words:
+
+  + The Fluke presentation generator (PG, aka PFE) takes AOI files from the
+    CORBA front end (FE) only.
+
+  + The Fluke back end (BE, aka PBE) processes PRES_C from the Fluke, MIG, and
+    Sun PGs, but does not process files output by the CORBA PGs.  Why?  Because
+    the CORBA and Fluke PGs create PRES_C files with the same names (derived
+    from the same AOI files), and our current `make' schema can't cope with
+    that.  (Moreover, the Fluke BE in designed for C presentations, and
+    therefore can't process PRES_C files from the CORBA C++ PG.)
+
+  + Only the IIOP C++ back end (`iiopxx') processes PRES_C files from the CORBA
+    C++ presentation generator (`corbaxx').  This is because all the other back
+    ends are designed for C presentations, not C++.  Conversely, the IIOP C++
+    back end process PRES_C files only from `corbaxx', because all the other
+    PGs produce C presentations, not C++.
+
+  + The IIOP, Khazana, Mach3MIG, Sun, and Trapeze BEs process PRES_C files from
+    the CORBA (C), MIG, and Sun PGs (with one exception).  They don't process
+    PRES_C files from the Fluke PG, again due to the name clashes with the
+    CORBA PG.  They don't process PRES_C files from the CORBA C++ PG, for
+    reasons described previously.  The Sun BE does not process PRES_C files
+    output by the MIG PG, because the Sun BE has special requirements not met
+    by the MIG PG.
+
+Configuring Flick creates the above hierarchy in the object tree.  Note that
+the IDL test inputs and the driver program source files stay in the Flick
+source tree, and are located from the object tree via VPATH.
+
+Within the `test' object tree, one can build files within the leaf directories
+listed above.  However, the leaf Makefiles don't know how to rebuild missing or
+out-of-date files produced by an earlier stage of the compiler.  For example,
+the `GNUmakefile' in `pfe/corba' doesn't know how to build the AOI's that are
+supposed to be in `fe/corba'.
+
+Alternately, one can build quite a few targets from the `test' directory
+itself:
+
+				    ------
+
+	<test>				Compile the FE-to-BE stages of <test>.
+	<test>.verify			Verify files generated for <test>.
+	<test>.clean			Clean all stages of <test>.
+	<test>.archetype		Make FE-to-BE archetypes for <test>.
+
+				*Note that <test> is the name of one of the IDL
+				inputs *without* any extension.  Look in the
+				`fe/*/TESTLIST' files for the names of the
+				tests written for each IDL.
+
+				*Note that an archetype file is a "known good"
+				copy of a file.  The `verify' targets compare
+				newly-generated files against their archetype
+				versions.  DO NOT make any of the `archetype'
+				targets unless you really want to assert that
+				the files you have generated should be the new
+				"known good" copies!
+
+				*Note that "FE-to-BE" means that the target
+				does not compile the generated stub code or
+				compile any test driver program for <test>.
+				The following targets actually compile stubs
+				and programs:
+
+	<test>.stubs			Compile <test> stubs to `.o' files.
+	<test>.client <test>.clients	Compile, link <test> client programs.
+	<test>.server <test>.servers	Compile, link <test> server programs.
+	<test>.programs			Compile, link <test> clients, servers.
+
+				*Note that the above targets will attempt to
+				build `.o' or program files for *all* the
+				transports that have drivers for <test>.  This
+				can be a problem if your build machine doesn't
+				support all of Flick's transports.  To build a
+				test on a particular transport, `cd' to the
+				appropriate `programs' subdirectory and build
+				<test> there.
+
+				    ------
+
+	all				Compile FE-to-BE stages of all tests.
+	verify				Verify FE-to-BE stages of all tests.
+	clean				Clean all generated files.
+	archetype			Make FE-to-BE archetypes for tests.
+
+	all-stubs			Compile stubs for all tests.
+	all-client all-clients		Compile, link all client programs.
+	all-server all-servers		Compile, link all server programs.
+	all-programs			Compile, link all clients and servers.
+
+				    ------
+
+	corba all-corba			Compile all CORBA IDL-based tests.
+	corba.verify			Verify gen. files for all CORBA tests.
+	corba.clean			Clean all files for all CORBA tests.
+	corba.archetype			Make archetypes for all CORBA tests.
+
+				*Note that the `corba' tests are produced on
+				all 7 transports (Fluke, IIOP, IIOP-for-C++,
+				Khazana, Mach3MIG, Sun, and Trapeze).
+
+	corba.stubs			Compile all CORBA IDL-based stubs.
+	corba.client corba.clients	Compile, link all CORBA client progs.
+	corba.server corba.servers	Compile, link all CORBA server progs.
+	corba.programs			Compile, link all CORBA programs.
+
+				    ------
+
+	mig all-mig			Compile all MIG IDL-based tests.
+	mig.verify			Verify gen. files for all MIG tests.
+	mig.clean			Clean all files for all MIG tests.
+	mig.archetype			Make archetypes for all MIG tests.
+
+				*Note that the `mig' tests are produced on five
+				transports (Fluke, IIOP, Khazana, Mach3MIG, and
+				Trapeze).
+
+	mig.stubs			Compile all MIG IDL-based stubs.
+	mig.client mig.clients		Compile, link all MIG client progs.
+	mig.server mig.servers		Compile, link all MIG server progs.
+	mig.programs			Compile, link all MIG programs.
+
+				    ------
+
+	sun all-sun			Compile all Sun RPC IDL-based tests.
+	sun.verify			Verify gen. files for all Sun tests.
+	sun.clean			Clean all files for all Sun tests.
+	sun.archetype			Make archetypes for all Sun RPC tests.
+
+				*Note that the `sun' tests are generated for
+				six transports (Fluke, IIOP, Khazana, Mach3MIG,
+				Sun, and Trapeze).
+
+	sun.stubs			Compile all Sun RPC IDL-based stubs.
+	sun.client sun.clients		Compile, link all Sun RPC client progs.
+	sun.server sun.servers		Compile, link all Sun RPC server progs.
+	sun.programs			Compile, link all Sun RPC programs.
+
+				*Note that `sun' refers to the Sun RPC IDL,
+				*not* the Sun RPC transport.  In other words,
+				the `sun' tests build files for all of the
+				transports that support the Sun RPC IDL.
+
+				    ------
+
+	<subdir>			Compile normal targets within <subdir>.
+	<subdir>.verify			Verify generated files within <subdir>.
+	<subdir>.clean			Clean generated files within <subdir>.
+	<subdir>.archetype		Make archetype files within <subdir>.
+
+				*Note that <subdir> may be a leaf directory
+				(e.g., `fe/sun') or an intermediate directory
+				(e.g., `fe').
+
+				*Note that the Makefile in `test' knows which
+				directories depend on which other directories.
+
+	<subdir>.stubs			Compile all stubs within <subdir>.
+	<subdir>.client			Compile, link client progs in <subdir>.
+	  <subdir>.clients
+	<subdir>.server			Compile, link server progs in <subdir>.
+	  <subdir>.servers
+	<subdir>.programs		Compile, link all programs in <subdir>.
+
+				*Note that for these targets, <subdir> must be
+				a subdirectory of the `programs' directory
+				(e.g., `programs/mach3mig') or the `programs'
+				directory itself.
+
+				    ------
+
+In total, this amounts to several hundred different targets :-).
+
+In general, the targets in the `test' Makefile know more about the dependencies
+between stages of Flick than the leaf directory Makefiles do.  From a leaf
+directory you can't rebuild missing or out-of-date files from a prior stage.
+
+Currently, one must navigate into one of the leaf directories in order to build
+certain files such as debugging outputs (e.g., `.aod' and `.prd' files).  If
+you want to build just one or two specific files (e.g., `foobar-client.prc'),
+it is often easier to navigate into the appropriate leaf directories and invoke
+`make' from there.  The targets in the root `test' Makefile generally designed
+for all-file or multi-stage builds; the targets in the leaf Makefiles are
+generally designed for building specific files.
+
+(An idea for future improvement: In the root `test' Makefile add targets like
+`<test>.fe', `<test>.pfe', and `<test>.pbe' for building specific stages of a
+test.  Add `corba.fe', `sun.fe', and similar targets as well.  This might lead
+us part way down a slippery slope --- should be add `<test>.fe.clean', too?)
+
+Another item of interest is that the archetype files may be stored either
+within the `test' object tree or the `test' source tree.  The archetype is
+located through VPATH.  This means that we can put archetype copies in the
+Flick distribution source trees, but keep the archetypes in our object trees
+for day-to-day work.
+
+There are currently no targets for actually running the compiled test programs,
+timing them, or collecting timing results.
+
+## End of file.
+

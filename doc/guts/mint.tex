@@ -1,0 +1,1134 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1995, 1996, 1999 The University of Utah and the Computer
+%% Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{Message Interface (MINT) Representation}
+\label{cha:MINT}
+
+The Message Interface (\MINT{}) intermediate language is designed to represent
+a collection of \RPC{}/\RMI{} interfaces in terms of the messages --- requests
+and replies --- that will be exchanged between clients and servers.  Like
+\AOI{}, \MINT{} descriptions are \emph{abstract}: not concerned with particular
+message formats, data encoding schemes, or stub styles.  These concrete notions
+are determined by Flick's presentation generators and back ends, \emph{after}
+the \MINT{} representation of the interfaces has been built.
+
+\MINT{} does not generally stand on its own, because by itself, \MINT{} does
+not carry enough information to completely represent an interface.  Rather,
+\MINT{} is a part of the more expressive and complete \PRESC{} language.
+\MINT{} simply describes collections of abstract messages; other parts of
+\PRESC{} attach meanings to those messages, thus creating a complete
+representation language for interface description.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{MINT Overview}
+\label{sec:MINT:MINT Overview}
+
+\begin{figure}
+  \centering
+  \includegraphics[width=\columnwidth]{mint.eps}
+  \caption{The Message Interface (\MINT{}) Tree.}
+  \label{fig:MINT:The MINT Tree}
+\end{figure}
+
+\MINT{} represents a collection of interfaces as a tree, as illustrated in
+Figure~\ref{fig:MINT:The MINT Tree}.  (In truth, \MINT{} represents graphs, not
+trees, but the ``top level'' of the graph is always a tree.)  At the root of
+the tree is a discriminated union, representing the collection of different
+\IDL{}s.  The separate branches of the union correspond to different \IDL{}s:
+\CORBA{}, \ONCRPC{}, \MIG{}, or other \IDL{}s to be supported.  Although
+\MINT{} was designed to support interfaces from multiple \IDL{}s at the same
+time, but in current practice, only one \IDL{} is represented by any one
+\MINT{} tree.
+
+At the next level of the tree, a node represents a collection of defined
+interfaces or object type.  Here, each branch corresponds to a different
+interface type.  At the third level, a \MINT{} node represents the collection
+of messages, both requests and replies, that are part of the interface.  For
+each request, there is a fourth-level node (a \idl{MINT_STRUCT}) that describes
+the request parameter types.  For each reply, there is a fourth-level node (a
+\idl{MINT_UNION}) that describes the types of the reply data.  A reply is a
+union because it represents both normal and exceptional reply messages.
+
+Beyond the fourth level of the tree, \MINT{} describes the types of individual
+message elements, much as \AOI{} describes the types of \IDL{} operation
+parameters.  Mapping from the \AOI{} representation of an interface and its
+operations to the corresponding \MINT{} representation is straightforward.
+Since both \AOI{} and \MINT{} are abstract description languages, the
+translation can in fact be implemented by a library function shared by all of
+Flick's presentation generators.%
+%
+\footnote{Currently, Flick provides certain hooks so that presentation
+generators can ``tune'' the union discriminator values that appear in the top
+levels of the \MINT{} tree.  This means that the translation from \AOI{} to
+\MINT{} is not entirely independent of the presentation generator being used.
+This should be fixed in the future, perhaps through support for flexible naming
+in \AOI{} and \MINT{} as described in Section~\ref{sec:AOI:Summary and
+Comments}.}
+%
+The translation from \AOI{} to \MINT{} is ``lossy,'' however: some of the
+information in the \AOI{} description of an interface or \IDL{}-defined type is
+lost.  This is because \MINT{} only represents the \emph{structure} or
+\emph{syntax} of messages that will be exchanged between clients and servers.
+\emph{Semantic} notions --- names (type names, structure slot names, \ldots{}),
+inheritance, exceptions, and so on --- that give meanings to messages are
+discarded when \AOI{} is translated into \MINT{}\@.  These semantics are
+``recovered'' when the presentation generator makes a second pass over the
+\AOI{} while building the \PRESC{} representation of the types, stubs, and
+skeletons that will ultimately implement the interface.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{MINT Data Structures}
+\label{sec:MINT:MINT Data Structures}
+
+Like \AOI{}, \MINT{} must be written to and read from files, and it therefore
+defined using the \ONCRPC{} \IDL{}\@.  The data structures are defined in
+\filename{mom/mint.x}.
+
+The top-level \MINT{} data structure is called \idl{mint_1} and contains two
+slots.  The first slot, \idl{defs}, contains a \MINT{} type graph, represented
+as a single array of type definitions, with each definition represented by a
+\idl{mint_def} structure.  \MINT{} definitions will be described shortly, in
+Section~\ref{subsec:MINT:Type Definitions}.  Unlike \AOI{}, there is no
+semantic significance to the order of the definitions in the array.
+
+The second slot in a \idl{mint_1} is called \idl{standard_refs} and contains a
+references to certain ``well known'' and common \MINT{} type definitions.  It
+is convenient to keep these references around because certain basic types are
+used again and again.  A reference to a \MINT{} type definition is a
+\idl{mint_ref}, which is implemented as an index into the \idl{mint_1} array of
+\idl{mint_def}s.  A null reference is represented by the special
+\idl{mint_ref_null} value.
+
+\begin{verbatim}
+typedef int mint_ref;
+const mint_ref_null = -1;
+
+struct mint_1
+{
+        mint_def                defs<>;
+
+        /* `standard_refs' are initialized by `mint_add_standard_defs'. */
+        mint_standard_refs      standard_refs;
+};
+
+/*
+ * A `mint_standard_refs' contains `mint_ref's for commonly-used MINT types.
+ * It is useful to have immediate access to these basic building blocks.
+ */
+struct mint_standard_refs
+{
+        mint_ref void_ref;
+
+        mint_ref bool_ref;
+        mint_ref signed8_ref;
+        mint_ref signed16_ref;
+        mint_ref signed32_ref;
+        mint_ref signed64_ref;
+        mint_ref unsigned8_ref;
+        mint_ref unsigned16_ref;
+        mint_ref unsigned32_ref;
+        mint_ref unsigned64_ref;
+
+        mint_ref char8_ref;
+        mint_ref float32_ref;
+        mint_ref float64_ref;
+
+        mint_ref interface_name_ref;
+        mint_ref interface_invoke_ref;
+        mint_ref interface_invoke_once_ref;
+        mint_ref interface_service_ref;
+        mint_ref system_exception_ref;
+};
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Type Definitions}
+\label{subsec:MINT:Type Definitions}
+
+\begin{table}
+  \centering
+  \begin{tabular}{|l|l|}
+    %%
+    %% If you change the order of items in this table, you must also change the
+    %% text below that says that the types are discussed in the order in which
+    %% they are presented in this table.
+    %%
+    \hline
+    \AOI{} Type Kind     & Description \\
+    \hline
+    \idl{MINT_INTEGER}          & an integer with a specified minimum value and
+                                  range \\
+    \idl{MINT_SCALAR}           & an integer with range determined by \# of
+                                  bits \\
+    \idl{MINT_FLOAT}            & a floating-point type with a specified \# of
+                                  bits \\
+    \idl{MINT_CHAR}             & a character with flags and a specified \# of
+                                  bits \\
+    \idl{MINT_BOOLEAN}          & true or false \\
+    \idl{MINT_VOID}             & void \\
+     & \\
+
+    \idl{MINT_ARRAY}            & an array, fixed- or variable-length \\
+    \idl{MINT_STRUCT}           & a collection of unnamed, unordered fields \\
+    \idl{MINT_UNION}            & a discriminated union \\
+    \idl{MINT_ANY}              & ``any'' value, \emph{without} a type tag \\
+    \idl{MINT_TYPE_TAG}         & an opaque type identifier \\
+    \idl{MINT_TYPED}            & a pair: a type identifier and a value of that
+                                  type \\
+     & \\
+
+    \idl{MINT_INTERFACE}        & a reference to an object instance \\
+    \idl{MINT_SYSTEM_EXCEPTION} & an opaque, system-generated exception \\
+    \hline
+  \end{tabular}
+  \caption{Summary of the Available \MINT{} Type Kinds.}
+  \label{table:MINT:MINT Kinds}
+\end{table}
+
+A \MINT{} type definition is implemented by a discriminated union of the
+possible type kinds, which are summarized in Table~\ref{table:MINT:MINT Kinds}.
+The details of individual \MINT{} types are specified by further \MINT{}
+structures as shown in the code below.
+
+It is important to note the differences between an \idl{aoi_def} (described in
+Section~\ref{subsec:AOI:Definitions}) and a \idl{mint_def}.  Unlike an
+\idl{aoi_def}, a \idl{mint_def} does not include a name, a scope, or any other
+``semantic'' information beyond the essential structure of the type.
+
+\begin{verbatim}
+union mint_def
+switch (mint_def_kind kind)
+{
+        case MINT_VOID:                 void;
+        case MINT_BOOLEAN:              void;
+        case MINT_INTEGER:              mint_integer_def        integer_def;
+        case MINT_SCALAR:               mint_scalar_def         scalar_def;
+        case MINT_FLOAT:                mint_float_def          float_def;
+        case MINT_CHAR:                 mint_char_def           char_def;
+        case MINT_ARRAY:                mint_array_def          array_def;
+        case MINT_STRUCT:               mint_struct_def         struct_def;
+        case MINT_UNION:                mint_union_def          union_def;
+
+        case MINT_INTERFACE:            mint_interface_def      interface_def;
+        case MINT_SYSTEM_EXCEPTION:     void;
+
+        case MINT_ANY:                  void;
+
+        case MINT_TYPE_TAG:             void;
+        case MINT_TYPED:                mint_typed_def          typed_def;
+};
+\end{verbatim}
+
+The current \MINT{} type kinds are described below, in the order in which they
+appear in Table~\ref{table:MINT:MINT Kinds}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Integers}
+
+A \idl{MINT_INTEGER} represents an integer type with a specified (constant)
+minimum value and range.  This type is used to represent all integer types
+whose values can be represented with not more that 32~bits.  This includes
+unsigned and signed \mbox{32-,} \mbox{16-,} and 8-bit types, as well as
+booleans and certain integer ``constants.''  (If the specified \idl{range} is
+zero, then the \idl{MINT_INTEGER} describes a type with only one possible
+value.  This is useful for describing other types such as fixed-length arrays.)
+
+Obviously, \idl{MINT_INTEGER} has a direct correspondence with
+\idl{AOI_INTEGER}.
+
+\begin{verbatim}
+struct mint_integer_def
+{
+        /* Lowest possible value this integer can take.
+           If >= 0, it's an unsigned integer.  */
+        int min;
+
+        /* Number of possible values this integer can take in addition to
+           `min'.  The maximum legal value is `min + range'.
+           If range is 0, the integer can take only one value -
+           i.e. it carries no information; useful for representing fixed-length
+           arrays.
+           If range is 1, it's a boolean.  */
+        unsigned range;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Scalars}
+
+A \idl{MINT_SCALAR} describes an integer type by specifying the number of bits
+in its range.  The minimum value is determined by flags that indicate whether
+the type is signed or unsigned.  Scalars are only used to describe integer
+types that a \idl{MINT_INTEGER} cannot represent (e.g., 64-bit and 128-bit
+integers).
+
+Obviously, \idl{MINT_SCALAR} is the \MINT{} equivalent of \AOI{}'s
+\idl{AOI_SCALAR} type.
+
+\begin{verbatim}
+typedef u_int mint_scalar_flags;
+const MINT_SCALAR_FLAG_NONE     = 0;
+const MINT_SCALAR_FLAG_SIGNED   = 1;
+const MINT_SCALAR_FLAG_UNSIGNED = 2;
+
+struct mint_scalar_def
+{
+        int                     bits;
+        mint_scalar_flags       flags;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Floats}
+
+A \idl{MINT_FLOAT} describes a floating point type in terms of the number of
+bits in the encoding of the type.  Again, there is an obvious and direct
+correspondence with the equivalent \AOI{} type.
+
+\begin{verbatim}
+struct mint_float_def
+{
+        /* Currently may be 32 or 64.  */
+        int     bits;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Characters}
+
+A \idl{MINT_CHAR} describes a character type.  Again, the range of the type is
+described by the number of bits required to encode values of the type
+(generally 8).  In addition, a set of flags describe additional properties,
+such as whether the characters are ``signed'' or ``unsigned.''  As with most
+primitive types, the representations of \MINT{} and \AOI{} characters are
+identical.
+
+\begin{verbatim}
+/* These are flags to modify mint_char's: signed, unsigned, or default. */
+typedef u_int mint_char_flags;
+const MINT_CHAR_FLAG_NONE     = 0;
+const MINT_CHAR_FLAG_SIGNED   = 1;
+const MINT_CHAR_FLAG_UNSIGNED = 2;
+
+struct mint_char_def
+{
+        /* Currently, `bits' may be 8 (char) or 16 (wchar).  */
+        int     bits;
+        mint_char_flags flags;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Booleans}
+
+A \idl{MINT_BOOLEAN} represents the standard boolean type: true or false.
+Currently, this type is unused: the boolean type is instead represented as a
+kind of \idl{MINT_INTEGER}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Voids}
+
+A \idl{MINT_VOID} represents a void type: a type with no values.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Arrays}
+
+A \idl{MINT_ARRAY} describes an array type: a numbered and ordered collection
+of values of a single (element) type.  The set of possible array lengths is
+described by a \idl{MINT_INTEGER}, referenced by the \idl{length_type} slot of
+the \idl{mint_array_def}.  The array may be variable-length (if the
+\idl{MINT_INTEGER} has a non-zero range) or fixed-length (if the
+\idl{MINT_INTEGER} has a zero range).  Obviously, the \idl{MINT_ARRAY}
+description also contains a reference to the type of the array elements, as
+shown below.
+
+Note that unlike an \idl{AOI_ARRAY}, a \idl{MINT_ARRAY} definition does not
+have a set of flags describing semantic properties of the array (e.g.,
+NUL-termination).
+
+\begin{verbatim}
+struct mint_array_def
+{
+        /* Type of each of the elements in this array.  */
+        mint_ref element_type;
+
+        /* Type representing the possible lengths of this array.
+           Must be an integer type of some kind.
+           If the integer's `range' is zero, it's a fixed-length array.  */
+        mint_ref length_type;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Structures}
+
+A \idl{MINT_STRUCT} describes a collection of \emph{unordered}, \emph{unnamed}
+values of heterogeneous types.  This is different that the usual notion of a
+``structure'' type in most programming languages.  Here, a structure is simply
+a set of (zero or more) independent data elements.  Each element has a specific
+type, but there is no significance to the order of the elements, nor are there
+any semantic connections between elements.  For example, no element describes
+the ``length'' or the ``type'' of another.
+
+In truth, the elements of a \idl{MINT_STRUCT} are ordered in the sense that
+order is preserved when translating from an \idl{AOI_STRUCT}, and the order of
+elements in an \idl{AOI_STRUCT} is the order in which the slots were named in
+the original \IDL{} input.  Order is also important when Flick must create
+constant values that are of specific structure types.  But this ordering of
+slots is only ``coincidental'' to the meaning of a \idl{MINT_STRUCT}.  The
+ordering of the slots in a \idl{MINT_STRUCT} does not, for example, specify or
+constrain the order in which the structure elements might eventually be written
+into memory or into a request or reply message.  Flick presentation generators
+and back ends can choose to process the \idl{MINT_STRUCT} elements in any order
+they see fit.
+
+\begin{verbatim}
+struct mint_struct_def
+{
+        mint_ref slots<>;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Unions}
+
+A \idl{MINT_UNION} represents a \emph{discriminated} union: a compound data
+type containing a discriminator that selects from a set of possible ``arms'' or
+cases.  The value of the discriminator determines which one of the possible
+union cases is valid (i.e., part of the complete value of the union).
+
+Note that the discriminator does not have to be a simple integer type: it can
+be a complex type such as an array of characters or a structure.  This allows
+\MINT{} to describe unions in which the discriminator values are strings (e.g.,
+interface or operation names) or other complex values (e.g., \ONCTCP{}
+\idl{program}/\idl{version} pairs, or \DCE{} \idl{uuid}s).
+
+Each arm is represented by a \idl{mint_union_case} containing a discriminator
+value --- the value that selects the arm --- and type for the
+arm.  The \MINT{} representation of constant values is described in
+Section~\ref{subsec:MINT:Constants}.  The union cases come in no particular
+order (although order is preserved when translating from an \idl{AOI_UNION}).
+
+The union as a whole is essentially represented as a kind of structure with a
+distinguished discriminator member, an array of \idl{mint_union_case}s
+representing the arms of the union, and an optional ``default'' arm that is
+selected when none of the ordinary union cases are selected.  If there is no
+default branch, then the \idl{dfault} slot of the \idl{mint_union_def} will be
+set to \idl{mint_ref_null}.  In this case, a discriminator value that does not
+match any of the cases is considered illegal (i.e., decoding will fail on an
+incoming message containing a union with a bad discriminator).  If there is a
+default case and that default case is void, then \idl{dfault} must refer to a
+valid \idl{MINT_VOID} type node.
+
+\begin{verbatim}
+struct mint_union_case
+{
+        mint_const      val;
+        mint_ref        var;
+};
+
+struct mint_union_def
+{
+        /* Union discriminator variable.
+           Type must be based on an int or enum prim_type.  */
+        mint_ref discrim;
+
+        /* Variable for each non-default case.
+           Any case can be void, meaning no additional data. */
+        mint_union_case cases<>;
+
+        /* Variable for the default case, `mint_ref_null' if no default.
+           (If there's a default case but it's void, then `dfault' should
+           point to a MINT_VOID.) */
+        mint_ref dfault;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Anys}
+
+A \idl{MINT_ANY} represents ``any type,'' the type of all possible values.
+Because \idl{MINT_ANY} is all-encompassing, there is no additional data
+associated with a \idl{MINT_ANY}\@.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Type Tags}
+
+A \idl{MINT_TYPE_TAG} represents an opaque indicator of a type.  In other
+words, the value of a type tag is a description of type.  Like
+\idl{AOI_TYPE_TAG}s, \idl{MINT_TYPE_TAG}s are opaque in the sense that the
+compiler portions of Flick do not provide, understand, or enforce any semantics
+for type tags.  Other than marshaling and unmarshaling tag instances, Flick
+does nothing with tags.  Semantics must be provided by runtime libraries.
+
+Since type tags are opaque, a \idl{MINT_TYPE_TAG} has no attributes.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Typed Values}
+
+A \idl{MINT_TYPED} describes pairs containing a type description and a value of
+the described type.  In other words, a \idl{MINT_TYPED} represents type-tagged
+values.  The \idl{tag} and \idl{ref} fields of a \idl{mint_typed_def} structure
+may conceptually refer to any \MINT{} type, but in practice, the former is
+always a \idl{MINT_TYPE_TAG} and the latter is always a \idl{MINT_ANY}\@.
+
+There is an obvious and direct correspondence between the \MINT{} and \AOI{}
+representations of type-tagged ``any'' values.
+
+\begin{verbatim}
+/* used for type-tagged data, e.g. MIG's polymorphic type */
+struct mint_typed_def
+{
+        mint_ref        tag;
+        mint_ref        ref;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Interfaces}
+
+A \idl{MINT_INTERFACE} represents a reference to an instance of an
+\IDL{}-defined object type.  Note that this is quite different than the notion
+described by an \idl{AOI_INTERFACE}.  An \idl{AOI_INTERFACE} describes the type
+of object instances; a \idl{MINT_INTERFACE} describes the type of object
+\emph{references}.  In common \IDL{}s, one passes object references in
+messages, not the objects themselves.\footnote{\CORBA{}~2.3 introduced a notion
+of ``objects by value,'' which Flick does not yet support.  It is likely that
+the \MINT{} representation of a by-value object type would simply be a
+\idl{MINT_STRUCT}.}
+
+A \idl{MINT_INTERFACE} has a single datum describing the high-level \RPC{}
+characteristics of the reference: e.g., whether the reference is for sending or
+receiving requests.  (The current set of characteristics are derived from those
+implemented in the Mach operating system.)  More specific properties, such as
+the on-the-wire encoding of object references, are not represented by \MINT{}:
+by being abstract, \MINT{} allows different back ends to choose different
+encodings.
+
+\begin{verbatim}
+enum mint_interface_right
+{
+        MINT_INTERFACE_NAME             = 0,    /* just names a interface   */
+        MINT_INTERFACE_INVOKE           = 1,    /* can invoke an interface  */
+        MINT_INTERFACE_INVOKE_ONCE      = 2,    /* can invoke only once     */
+        MINT_INTERFACE_SERVICE          = 3     /* can service an interface */
+};
+
+struct mint_interface_def
+{
+        mint_interface_right    right;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{System Exceptions}
+
+Finally, a \idl{MINT_SYSTEM_EXCEPTION} describes the type of exceptions
+generated by the \RPC{}/\RMI{} runtime layers.  These are \emph{implicit}
+exceptions, not generally defined by in \IDL{}\@.  \emph{Explicit} exceptions,
+on the other hand, are defined in \IDL{} to be a part of an interface.
+Explicit exceptions are represented as ordinary \MINT{} types (e.g., as
+\idl{MINT_STRUCT}); only implicit, ``system-generated'' exceptions are
+represented by \idl{MINT_SYSTEM_EXCEPTION}.
+
+System exceptions are handled specially because different \RPC{} standards
+define different properties for system exceptions.  For example, \CORBA{}
+defines a standard set of exceptions that may be raised by the underlying
+\ORB{}, and also defines the data to be communicated within these system
+exceptions.  \ONCRPC{}, on the other hand, defines a completely different
+method for communicating \RPC{} errors to client programs.
+
+Thus, in order to be general, \MINT{} must support system exceptions in an
+abstract way: \MINT{} defines when they may occur, but does not define the
+actual content or structure of system-generated exceptions.  (These things are
+determined by Flick's individual back ends, long after the translation from
+\AOI{} to \MINT{} takes place.)  In a sense, a \idl{MINT_SYSTEM_EXCEPTION} is a
+kind of placeholder that a back end must fill in as part of implementing a
+complete message protocol.
+
+Because system exceptions are opaque to \MINT{}, a \idl{MINT_SYSTEM_EXCEPTION}
+has no attributes.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Constants}
+\label{subsec:MINT:Constants}
+
+In general, \MINT{} is only concerned with the structure of data, not with
+particular data values.  Some data types, however, incorporate constants as
+part of their descriptions.  Discriminated unions are a prime example.  (In
+fact, discriminated unions are the only \MINT{} type that currently makes use
+of constants.)  To support union discriminators and possibly other future
+\MINT{} type kinds, \MINT{} provides a way to express constant values.
+
+A constant is represented as a \idl{mint_const}, which is a pointer to a
+\idl{mint_const_u}.  A \idl{mint_const_u} is a discriminated union of the
+possible constant kinds, as shown in the code below.  There are three primitive
+constant types (integers, characters, and floats) and two constructed types
+(structures and arrays).
+
+A primitive constant can be described as a literal value (a
+\idl{MINT_CONST_LITERAL}) or as a symbolic value (a
+\idl{MINT_CONST_SYMBOLIC})\@.  Symbolic values are used when the specific value
+of a constant is unimportant in terms of abstract message format; in general,
+\IDL{}-specified constants are represented as literals and \IDL{}-unspecified
+constants (e.g., the discriminator values that select between normal and
+exceptional reply messages) are symbolic.  In \MINT{}, it is not necessary to
+define the value of a symbolic constant: \MINT{} really only concerns itself
+with types, not specific values.  Of course, a symbolic constant must
+\emph{eventually} be assigned a value if the constant is to be used in
+generated stub code.  This value is generally assigned by a Flick back end or
+by one of Flick's runtime library header files.  In any case, it happens
+outside the scope of \MINT{}\@.
+
+A compound (array or structure) constant is simply represented as an array of
+other \MINT{} constants.  In a \idl{MINT_CONST_ARRAY}, the number of sub-nodes
+is the array length, and the nodes themselves are the array elements, in order.
+In a \idl{MINT_CONST_STRUCT}, the number of sub-nodes is the number of slots in
+the structure type.  When matching a constant structure against a particular
+\idl{MINT_STRUCT} type description (e.g., when interpreting a union
+discriminator value in terms of the defined union discriminator type), the
+slots of the constant and type descriptions are paired in order.  The number of
+elements in each must be the same.
+
+Other kinds of complex constants (e.g., unions) are not currently supported,
+but may be supported in the future if need arises.
+
+\begin{verbatim}
+typedef struct mint_const_u *mint_const;
+
+enum mint_const_kind
+{
+        MINT_CONST_INT          = 1,
+        MINT_CONST_CHAR         = 2,
+        MINT_CONST_FLOAT        = 3,
+        MINT_CONST_STRUCT       = 4,
+        MINT_CONST_ARRAY        = 5
+};
+
+enum mint_const_category
+{
+        MINT_CONST_LITERAL      = 1,
+        MINT_CONST_SYMBOLIC     = 2
+};
+
+union mint_const_int_u
+switch (mint_const_category kind)
+{
+        case MINT_CONST_LITERAL:        long            value;
+        case MINT_CONST_SYMBOLIC:       string          name<>;
+};
+
+union mint_const_char_u
+switch (mint_const_category kind)
+{
+        case MINT_CONST_LITERAL:        char            value;
+        case MINT_CONST_SYMBOLIC:       string          name<>;
+};
+
+union mint_const_float_u
+switch (mint_const_category kind)
+{
+        case MINT_CONST_LITERAL:        double          value;
+        case MINT_CONST_SYMBOLIC:       string          name<>;
+};
+
+typedef mint_const mint_const_struct<>;
+typedef mint_const mint_const_array<>;
+
+union mint_const_u
+switch (mint_const_kind kind)
+{
+        case MINT_CONST_INT:    mint_const_int_u        const_int;
+        case MINT_CONST_CHAR:   mint_const_char_u       const_char;
+        case MINT_CONST_FLOAT:  mint_const_float_u      const_float;
+        case MINT_CONST_STRUCT: mint_const_struct       const_struct;
+        case MINT_CONST_ARRAY:  mint_const_array        const_array;
+};
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Differences Between AOI and MINT Types}
+\label{subsec:MINT:Differences Between AOI and MINT Types}
+
+Comparing \AOI{} and \MINT{}, one notices that certain \AOI{} types are missing
+from \MINT{}:
+
+%% XXX --- \begin{idlidentifierlist} ?
+\begin{cidentifierlist}
+  \item[AOI_ENUM]
+  %
+  \AOI{} enumeration types describe associations between names and values.  In
+  \MINT{}, names are unimportant.  Therefore, \AOI{} enumeration types can
+  simply be ``reduced'' to \idl{MINT_INTEGER} types, and references to specific
+  enumeration values can be reduced to (literal) \idl{MINT_CONST_INTEGER}s.
+
+  \item[AOI_CONST]
+  %
+  \AOI{} constants definitions are similarly ``compiled away.''  When needed,
+  an \AOI{} constant can be translated into a literal \MINT{} constant.
+
+  \item[AOI_EXCEPTION]
+  %
+  An \idl{AOI_EXCEPTION} represents an \IDL{}-described exception, i.e., what
+  \CORBA{} calls a ``user exception.''  Except for the semantic that these
+  types are associated with runtime errors, an \idl{AOI_EXCEPTION} simply
+  describes a structure, and so they are translated into \idl{MINT_STRUCT}
+  types.
+
+  \item[AOI_OPTIONAL]
+  %
+  An optional type is represented as a \idl{MINT_ARRAY} containing zero or one
+  elements.
+
+  \item[AOI_NAMESPACE]
+  %
+  Namespaces are lexical notions, which have no importance to \MINT{}\@.
+  Namespace definitions are simply discarded in the translation from \AOI{} to
+  \MINT{}\@.
+
+  \item[AOI_FWD_INTRFC]
+  %
+  Similarly, forward interface declarations are lexical notions and are
+  unimportant to \MINT{}\@.
+
+  \item[AOI_INDIRECT]
+  %
+  An \idl{AOI_INDIRECT} is a reference to a named type.  Because names are
+  unimportant to \MINT{}, indirect references can simply be compiled away by
+  ``dereferencing'' the \idl{AOI_INDIRECT} type.
+
+  \item[AOI_ERROR]
+  %
+  An \idl{AOI_ERROR} represents an \IDL{} parse error --- obviously, not
+  something \MINT{} needs to describe!
+\end{cidentifierlist}
+
+In addition, \idl{AOI_INTERFACE} and \idl{MINT_INTERFACE} represent different
+notions as described previously in Section~\ref{subsec:MINT:Type Definitions}.
+The different parts of an \AOI{} interface type declaration become different
+\MINT{} constructs:
+
+\begin{itemize}
+  \item An interface or object type declaration is ``translated'' as a
+  \idl{MINT_UNION} representing the set of messages that may be sent to and
+  from instances of the interface.  These are the third-tier nodes in the
+  \MINT{} tree shown in Figure~\ref{fig:MINT:The MINT Tree}.
+
+  \item The \idl{code} slot of an \idl{aoi_interface} structure becomes the
+  \MINT{} constant that selects the represented interface from the second-tier
+  \idl{MINT_UNION} representing the collection of all defined interface types
+  for a single \IDL{}\@.
+
+  \item The operations and attributes within an \AOI{} interface become
+  branches from the (third-tier) \idl{MINT_UNION} that represents the
+  interface.  The request and reply codes become the union discriminator
+  values.  An \AOI{}-defined operation therefore becomes two branches from the
+  union (request and reply),\footnote{At present, \MINT{} is produced even for
+  the nonexistent ``replies'' of \idl{oneway} functions.} and an attribute
+  becomes two or four (depending on whether or not the attribute is read-only).
+
+  \item The data types for a request message (i.e., the \idl{in} and
+  \idl{inout} parameters) are gathered together into a fourth-tier
+  \idl{MINT_STRUCT}.
+
+  \item The data types for a reply message (i.e., the \idl{inout}, \idl{out},
+  and \idl{return} values) are gathered under the ``normal'' reply branch of
+  the (fourth-tier) \idl{MINT_UNION} that represents the structure of a reply
+  message.  The \idl{MINT_UNION} itself has branches for normal replies,
+  \IDL{}-defined (``user'') exceptional replies, and system exceptions.
+
+  \item An object reference --- i.e., an operation parameter that is a
+  reference to an object instance --- becomes a \idl{MINT_INTERFACE} within the
+  description of the request or reply message that contains the reference.
+\end{itemize}
+
+To summarize, the primary distinction between \AOI{} and \MINT{} is that \AOI{}
+describes interfaces in \IDL{}-like terms, and \MINT{} describes interfaces in
+terms of the messages that will implement an interface.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{The MINT Library}
+\label{sec:MINT:The MINT Library}
+
+The \filename{libmint} library is provided to help deal with constructing and
+manipulating the various \MINT{} data structures.  Its header file is
+\filename{mom/libmint.h} and has the following functions:
+
+\begin{cprototypelist}
+  \item[void mint_add_standard_defs(mint_1 *mint)]
+  %
+  Create the standard set of \MINT{} type definitions as described by the
+  \idl{mint_standard_refs} structure type, described in
+  Section~\ref{sec:MINT:MINT Data Structures}.  The \MINT{} type definitions
+  are added to the array of \idl{mint_def}s in \cidentifier{mint}, and the
+  \idl{mint_ref}s within \cidentifier{mint->standard_refs} are set to point to
+  the proper definitions.
+
+  \item[mint_ref mint_add_def(mint_1 *mint)]
+  %
+  Return a \ctype{mint_ref} that refers to a newly allocated \MINT{} type
+  definition (\ctype{mint_def}).  The \ctype{mint_def} is completely
+  uninitialized and must be filled in by the caller.  For this reason, it is
+  often more convenient to call one of the following, more specific constant
+  constructors:
+  %
+  \begin{cprototypelist}
+    \item[mint_ref mint_add_union_def(mint_1 *mint, mint_ref discrim_type,
+                                      int len)]
+    %
+    Return a \ctype{mint_ref} to a newly allocated \idl{MINT_UNION} with the
+    given discriminator type and number of cases.  The cases are uninitialized;
+    the default case is set to \idl{mint_ref_null}.
+
+    \item[mint_ref mint_add_integer_def(mint_1 *mint, int min, unsigned range)]
+    %
+    Return a \ctype{mint_ref} to a newly allocated \idl{MINT_INTEGER} with the
+    given minimum value and range.
+
+    \item[mint_ref mint_add_array_def(mint_1 *mint, mint_ref element_type,
+                                      unsigned min_len, unsigned max_len)]
+    %
+    Return a \ctype{mint_ref} to a \idl{MINT_ARRAY} with the given element
+    type, minimum length, and maximum length.  If a \MINT{} array definition
+    with the given attributes already exists in \cidentifier{mint}, return a
+    reference to it.  Otherwise, allocate and initialize a new \idl{MINT_ARRAY}
+    definition.
+
+    \item[mint_ref mint_add_def_tags(mint_def_kind kind, mint_1 *mint, int tag,
+                                     ...)]
+    %
+    Return a \ctype{mint_ref} to a \MINT{} definition of the given
+    \cidentifier{kind}, with the definition slots initialized according to the
+    list of tags.  The tags and associated tag values are listed below.
+    \emph{Note that most tags are appropriate for only certain \MINT{} type
+    kinds.}  \cfunction{mint_def_add_tags} will call \cfunction{panic} if given
+    a tag that is inappropriate for the specified \MINT{} type
+    \cidentifier{kind}.
+    %
+    \begin{cidentifierlist}
+      \item[MINT_TAG_DONE]
+      %
+      \tagtypenull{} Marks the end of the tag list.
+
+      \item[MDA_Min]
+      %
+      \tagtype{\ctype{int}} The minimum value of a \idl{MINT_INTEGER} type.
+
+      \item[MDA_Range]
+      %
+      \tagtype{\ctype{int}} The range of a \idl{MINT_INTEGER} type.
+
+      \item[MDA_Bits]
+      %
+      \tagtype{\ctype{int}} The number of bits for a \idl{MINT_SCALAR},
+      \idl{MINT_FLOAT}, or \idl{MINT_CHAR}\@.
+
+      \item[MDA_Flags]
+      %
+      \tagtype{\ctype{mint_scalar_flags} or \ctype{mint_char_flags}} The flags
+      for a scalar or character type.
+
+      \item[MDA_ElementType]
+      %
+      \tagtype{\ctype{mint_ref}} The element type for a \idl{MINT_ARRAY}\@.
+
+      \item[MDA_LengthType]
+      %
+      \tagtype{\ctype{mint_ref}} The length type for a \idl{MINT_ARRAY}\@.
+
+      \item[MDA_Slot]
+      %
+      \tagtype{\ctype{mint_ref}} A slot within a \idl{MINT_STRUCT}\@.  This
+      tag may be repeated in order to specify multiple structure slots.  The
+      slots are added to the structure in the order in which they are specified
+      in the tag list.
+
+      \item[MDA_Discrim]
+      %
+      \tagtype{\ctype{mint_ref}} The discriminator type for a
+      \idl{MINT_UNION}\@.
+
+      \item[MDA_Case]
+      %
+      \tagtype{\ctype{mint_const} and \ctype{mint_ref}} A case within a
+      \idl{MINT_UNION} type.  This tag may be repeated in order to specify
+      multiple union cases.
+
+      \item[MDA_Default]
+      %
+      \tagtype{\ctype{mint_ref}} The default case in a \idl{MINT_UNION}\@.
+
+      \item[MDA_Tag]
+      %
+      \tagtype{\ctype{mint_ref}} The type tag for a \idl{MINT_TYPED}\@.
+
+      \item[MDA_Ref]
+      %
+      \tagtype{\ctype{mint_ref}} The typed reference (i.e., \idl{ref} slot)
+      within a \idl{MINT_TYPED}\@.
+
+      \item[MDA_Right]
+      %
+      \tagtype{\ctype{mint_interface_right}} The \cidentifier{right} within a
+      \idl{MINT_INTERFACE} type.
+    \end{cidentifierlist}
+
+    In addition, \filename{libmint.h} provides a set of simple
+    \cidentifier{MINT_*_REF} macros to be used in combination with the above
+    tags to aid in the construction of \MINT{} type definitions.  See the
+    header file for details.
+    %
+    \emph{Flick implementors must use these macros with caution, however, so as
+    not to introduce portability problems.  With these macros, it is easy to
+    create an argument list that contains multiple calls to
+    \cfunction{mint_add_def_tags}. Each call is a separate parameter, and each
+    call has side effects, so the order in which the calls take place is
+    significant.  However, C doesn't guarantee an order of evaluation for
+    function parameters.  This means that the calls might be evaluated in
+    different orders, depending on the compiler, thus producing different
+    (although logically equivalent) \ctype{mint_def} arrays.  This in turn
+    would cause Flick to produce different \PRESC{} files on different
+    platforms, thus making testing much more difficult!}
+  \end{cprototypelist}
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  \item[void mint_get_int_size(mint_1 *mint, mint_ref itype, int *out_bits,
+                               int *out_signed)]
+  %
+  Determine the number of bits (8, 16, or 32) required to represent the \MINT{}
+  type referenced by \ctype{itype}.  In essence, this function converts a
+  description of an integer range into a bits/signedness representation.  The
+  required number of bits is stored in \cidentifier{*out_bits} and the
+  signedness indicator (zero or one) is stored in \cidentifier{*out_signed}.
+
+  \item[void mint_get_array_len(mint_1 *mint, mint_ref itype, unsigned *min,
+  unsigned *max)]
+  %
+  Determine the minimum and maximum lengths of the \MINT{} array referenced by
+  \cidentifier{itype}.  The minimum length is stored in \cidentifier{*min} and
+  the maximum is stored in \cidentifier{*max}.  (If the lengths are equal, then
+  the array is fixed-length.)
+
+  \item[int mint_add_struct_slot(mint_1 *mint, mint_ref struct_itype)]
+  %
+  Add a new slot to the \idl{MINT_STRUCT} referenced by
+  \cidentifier{struct_itype}, and return the index of the new slot.  The slot
+  contents are uninitialized.
+
+  \item[int mint_add_union_case(mint_1 *mint, mint_ref union_itype)]
+  %
+  Add a new case to the \idl{MINT_UNION} referenced by
+  \cidentifier{union_itype}, and return the index of the new case.  The case
+  contents are uninitialized.
+
+  \item[mint_ref mint_find_union_case(mint_1 *mint, mint_ref union_r,
+                                      mint_const const_r)]
+  %
+  Return a reference to the \MINT{} type node that is selected by
+  \cidentifier{const_r} in the \idl{MINT_UNION} referenced by
+  \cidentifier{union_r}.  (\cidentifier{union_r} must point to a union type.)
+  If the constant does not correspond to any explicit case of the union, then
+  this function returns the \idl{dfault} branch of the union, which may be
+  \idl{mint_ref_null}.
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  \item[mint_const mint_new_const(mint_const_kind kind)]
+  %
+  Return a \ctype{mint_const} that refers to a newly allocated
+  \ctype{mint_const_u} initialized with the given \MINT{} constant
+  \cidentifier{kind}.  Other fields of the returned constant description are
+  uninitialized and must be filled in by the caller.  Therefore, it is often
+  more convenient to call one of the following, more specific constant
+  constructors:
+  %
+  \begin{cprototypelist}
+    \item[mint_const mint_new_const_int(int val)]
+    %
+    Return a \ctype{mint_const} that points to a newly allocated
+    \ctype{mint_const_u} describing the constant integer \cidentifier{val}.
+
+    \item[mint_const mint_new_const_string(const char *val)]
+    %
+    Return a \ctype{mint_const} that points to a newly allocated
+    \ctype{mint_const_u} describing the constant string \cidentifier{val}.  The
+    string is represented as an array of characters, \emph{including} a
+    terminating NUL\@.  (Note that this is different than the behavior of the
+    \cfunction{aoi_new_const_string} function described in
+    Section~\ref{sec:AOI:The AOI Library}.)
+
+    \item[mint_const mint_new_const_from_aoi_const(aoi_const aoiconst)]
+    %
+    Return a \ctype{mint_const} that points to a newly allocated
+    \ctype{mint_const_u} that is the \MINT{} equivalent of the given \AOI{}
+    constant.
+
+    \item[mint_const mint_new_symbolic_const(mint_const_kind kind,
+                                             const char *name)]
+    %
+    Return a \ctype{mint_const} that points to a newly allocated
+    \ctype{mint_const_u} describing a symbolic constant with the given
+    \cidentifier{type} and \cidentifier{name}.
+  \end{cprototypelist}
+
+  \item[int mint_const_cmp(mint_const c1, mint_const c2)]
+  %
+  Compare two \MINT{} constants.  Return \cliteral{1} if the constants are
+  unequal and \cliteral{0} otherwise.  Two constants of different types are
+  never equal.  Two primitive literal constants are equal only if they contain
+  the same literal values; two primitive symbolic constants are equal only if
+  they have the same name (and are of the same type, as just mentioned).  Two
+  compound constants are equal if they are structurally identical and have
+  equal corresponding elements.
+
+  Note that a literal constant and a symbolic constant are never equal.
+
+  \item[void mint_const_check(mint_const mc)]
+  %
+  Check the validity of the given \ctype{mint_const}.
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  \item[void mint_1_check(mint_1 *mint)]
+  %
+  Check the validity of the given \ctype{mint_1} structure.  If an error is
+  found, this function calls \cfunction{panic}, which causes the process to
+  print an error message and exit.
+
+  \item[void mint_1_readfh(mint_1 *dest, FILE *fh)]
+  %
+  Read a \ctype{mint_1} structure from \cidentifier{fh} into
+  \cidentifier{dest}.  The disk data is stored in \XDR{} format, and the actual
+  I/O is performed by functions that are generated by \rpcgen{} from the
+  \filename{mom/mint.x} file.  If input fails for some reason, this function
+  invokes \cfunction{panic}.
+
+  \item[void mint_1_writefh(mint_1 *src, FILE *fh)]
+  %
+  Write the given \ctype{mint_1} structure to \cidentifier{fh}.  (As before,
+  the data in the file is stored in \XDR{} format, and the actual I/O is
+  performed by \rpcgen{}-generated functions.)  This function invokes
+  \cfunction{mint_1_check} to verify the validity of the \MINT{} data before
+  writing the data to disk.  If output fails for some reason, this function
+  calls \cfunction{panic}.
+\end{cprototypelist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Summary and Comments}
+\label{sec:MINT:Summary and Comments}
+
+\MINT{} allows Flick to represent messages in an abstract manner, without
+describing the exact message formats or data encodings that will eventually be
+used.  There are ways, however, in which the current implementation of \MINT{}
+is problematic: either too abstract, or not abstract enough.
+
+\begin{description}
+  \item[Primitive \MINT{} Types.]
+  %
+  Some of the basic \MINT{} types, such as floats and characters, are perhaps
+  too abstract.
+  %
+  For instance, it is necessary to know more about the range of a
+  floating-point type that just the total number of bits.  Different \IDL{}s
+  may have different implicit semantics for floats, e.g., different
+  expectations about the sizes of the exponent and mantissa.  These
+  expectations should be represented in \MINT{} (and properly in \AOI{} as
+  well).  In a similar way, character types should describe additional
+  properties such as the character set from which the character is chosen.
+  Representing \emph{all} of the encoding details of floats and characters is
+  likely not to be worthwhile.  A compromise would be to refer to some encoding
+  details by the names of standards, e.g., \cliteral{"ASCII"},
+  \cliteral{"Unicode UTF-16"}, or \cliteral{"IEEE ..."}\@.
+
+  \item[Interface and Operation Names.]
+  %
+  The identifiers for interface, operations, and other ``unpresented'' parts of
+  a \MINT{} tree are not sufficiently abstract.
+
+  The union discriminators used in the upper levels of the \MINT{} tree are
+  chosen by the presentation generator from the names and codes described in
+  \AOI{}\@.  In practice, these \MINT{} union discriminators then become
+  \emph{the} identifiers used by back ends when implementing their message
+  formats.  This is a problem: the presentation generators should not be
+  choosing the identifiers that should be used in ``unpresented'' parts of a
+  message.  To fix this problem, \MINT{} must be extended to represent abstract
+  interface and operation identifiers.  These abstract identifiers should allow
+  for multiple names, carried forward from \AOI{}\@.  (See the discussion in
+  Section~\ref{sec:AOI:Summary and Comments}.)  It would be the job of a back
+  end to translate a \MINT{} abstract identifier into a concrete value, much in
+  the way that back ends already handle \MINT{} symbolic constants.
+\end{description}
+
+%% XXX --- Old comments, circa 1995-1996, that probably are no longer relevant.
+%%
+%% This section lists some known (potential) problems with \MINT{} as it's
+%% defined now.  Some of these problems may turn out to be serious at some
+%% point; others are just minor itches.
+%%
+%% Are separate character and float types appropriate at this level?  For that
+%% matter, the signedness of integers?  Only the number of bits is needed to
+%% correctly parse a stream.  Since there are well-known standards for the
+%% format of these types (e.g., two's-complement, ISO/Unicode characters, IEEE
+%% floats), those could be considered ``the'' canonical format, and any local
+%% deviations could be fixed with presentations.  However, this may be
+%% difficult or impossible to resolve with NDR\@.
+%%
+%% The constant representation for primitive types limits the size of primitive
+%% types that can be represented as constants without changing the \MINT{}
+%% definition.  Alternatives: an \texttt{any} type of some kind, a pure bit
+%% stream, \ldots{}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

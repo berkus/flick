@@ -1,0 +1,127 @@
+#
+# Copyright (c) 1996, 1997, 1999 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+ifndef _flick_makerules_test_pfe_
+_flick_makerules_test_pfe_ = yes
+
+# Any Makefile that includes this file is expected to define the following
+# macros:
+#
+# `TESTS', the set of tests.  These names do *not* have extensions; the rules
+# in this file know how to add extensions as needed to construct input and
+# output file names.
+#
+# `TEST_AOI_DIR_LIST', the set of directories that will be searched for input
+# AOI files.
+#
+# `FLICK_PFE', the name of the current Flick presentation generator.  This
+# should be set to one of macros defined in `test/GNUmakerules.common' (e.g.,
+# $(FLICK_C_PFE_CORBA)).
+#
+# Optionally, a Makefile that includes this file may define the following
+# macros:
+#
+# `AOI_EXT', the extension for the presentation generator's input files.  The
+# default value for this macro is `aoi', but at least one presentation
+# generator (the MIG FE/PG) changes this default.
+
+###############################################################################
+
+ifndef AOI_EXT
+  AOI_EXT = aoi
+endif
+
+# `ARCHETYPE_EXTS' describes which files may be saved for later reference (see
+# the file `test/GNUmakerules.common' for more information).  For presentation
+# generators, we want to save the PRES_C files for the clients and servers.
+
+ARCHETYPE_EXTS = -client.prc -server.prc
+
+include $(SRCDIR)/test/GNUmakerules.common
+
+vpath %.$(AOI_EXT) $(TEST_AOI_DIR_LIST)
+
+###############################################################################
+###############################################################################
+####
+#### Here are the rules for creating PRES_C files (and `.prd' files).
+####
+###############################################################################
+###############################################################################
+
+.PHONY: all \
+	all-prc all-client-prc all-server-prc \
+	all-prd all-client-prd all-server-prd
+
+all: all-prc
+
+all-prc: $(foreach test,$(TESTS),$(addprefix $(test),-client.prc -server.prc))
+
+all-client-prc: $(addsuffix -client.prc,$(TESTS))
+
+all-server-prc: $(addsuffix -server.prc,$(TESTS))
+
+all-prd: $(foreach test,$(TESTS),$(addprefix $(test),-client.prd -server.prd))
+
+all-client-prd: $(addsuffix -client.prd,$(TESTS))
+
+all-server-prd: $(addsuffix -server.prd,$(TESTS))
+
+.PHONY: $(TESTS)
+
+$(TESTS): %: %-client.prc %-server.prc
+
+###
+
+$(addsuffix -client.prc,$(TESTS)): %-client.prc: %.$(AOI_EXT) $(FLICK_PFE)
+	$(FLICK_PFE) $(FLICK_PFE_CLIENT_FLAGS) -o $@ $<
+
+$(addsuffix -server.prc,$(TESTS)): %-server.prc: %.$(AOI_EXT) $(FLICK_PFE)
+	$(FLICK_PFE) $(FLICK_PFE_SERVER_FLAGS) -o $@ $<
+
+$(addsuffix -client.prd,$(TESTS)): %-client.prd: %-client.prc $(PRESD)
+	$(PRESD) $(PRESD_FLAGS) $<
+
+$(addsuffix -server.prd,$(TESTS)): %-server.prd: %-server.prc $(PRESD)
+	$(PRESD) $(PRESD_FLAGS) $<
+
+###############################################################################
+###############################################################################
+####
+#### Here are the housecleaning rules.
+####
+###############################################################################
+###############################################################################
+
+CLEAN_FILES += $(addsuffix -client.prc,$(TESTS)) \
+	       $(addsuffix -server.prc,$(TESTS)) \
+	       $(addsuffix -client.prd,$(TESTS)) \
+	       $(addsuffix -server.prd,$(TESTS))
+
+# NOTE that `GNUmakerules.common' declares the `<test>.clean' targets as phony.
+
+$(addsuffix .clean,$(TESTS)): %.clean:
+	$(RM) $*-client.prc $*-server.prc $*-client.prd $*-server.prd
+
+endif
+
+## End of file.
+

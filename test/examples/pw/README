@@ -1,0 +1,61 @@
+#
+# Copyright (c) 1996 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+ This is a simple example for the Flick Sun RPC -> Mach3 back end.
+
+FILES:
+=====
+
+pw.x:     the declaration file that you will use as the input for "rpcgen".
+
+pwcln.c:  the "glue" code for client.
+
+pwsrv.c:  the "glue" code for server.
+
+
+HOW TO RUN IT:
+=============
+
+To create the stubs, type 
+
+	make stubs
+
+be sure the flick executables are in your path, as in
+	make stubs PATH=.....:$PATH
+
+The compile the programs, type
+
+	make progs
+
+Requires VPATH.
+After compilation, a server program "pwsrv" and a client program
+"pwcln" are generated.
+
+Now you can run "pwsrv" in background and type "pwcln userid", the
+real name of that user will be printed out.
+
+To get the original Sun version, type make -f Makefile.sun, the binaries
+will be named pwsrv-sun pwcln-sun.
+
+The -DRPCGEN flag was used for the specifics.
+
+Files from ../support were used as well.
+

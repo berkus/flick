@@ -1,0 +1,359 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1999 The University of Utah and the Computer Systems
+%% Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{Libcompiler}
+\label{cha:libcompiler}
+
+The libcompiler library contains a number of general utility functions that may
+be used by Flick in any compiler stage.  Some of the functionality is only
+relevant to Flick's front ends (e.g., calls to the C preprocessor), mainly
+because there is no front end library in which it can be contained.  It would
+be reasonable (and probably trivial) to combine these front end specific
+routines into a front end library, leaving libcompiler a pure library of
+general utility functions.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Errors and Warnings}
+\label{sec:libcompiler:Errors and Warnings}
+
+Some basic functions for reportings errors and warnings:
+
+\begin{cprototypelist}
+  \item[void panic(const char *format, ...)] Reports an internal
+  error and then \cfunction{exit}s.
+
+  \item[void warn(const char *format, ...)] Prints out a warning
+  message to the user and returns.
+\end{cprototypelist}
+
+Both \cfunction{panic} and \cfunction{warn} use \cfunction{printf}-style
+arguments.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Memory and Strings}
+\label{sec:libcompiler:Memory and Strings}
+
+Memory allocation in Flick is just assumed to work, so the \cidentifier{must*}
+allocators either return allocated memory or \cfunction{panic} if it fails.
+Some simple string functions are also provided:
+
+\begin{cprototypelist}
+  \item[void *mustmalloc(long size)]
+  \item[void *mustcalloc(long size)]
+  \item[void *mustrealloc(void *orig_buf, long new_size)]
+  Memory allocators that always return allocated memory.  If no memory is
+  available, it is considered a fatal error, and they internally
+  \cfunction{panic} to prevent returning a NULL pointer.
+
+  \item[char *muststrdup(const char *str)] Duplicates a string into a freshly
+  allocated buffer, or \cfunction{panic}s if it cannot allocate the necessary
+  memory.
+
+  \item[char *flick_asprintf(const char *fmt, ...)] Like \cfunction{sprintf},
+  however this automatically allocates a sufficient buffer for the resulting
+  string.  Like the functions above, this \cfunction{panic}s if allocation
+  fails.
+
+  \item[int flick_strcasecmp(const char *s1, const char *s2)] Case
+  insensitive string comparison; return value is similar to \cfunction{strcmp}.
+
+  \item[ir_strlit(str)] Convert a string literal for use in an
+  intermediate representation structure.  This is just a \cidentifier{#define}
+  that type casts the argument, helpful for removing warnings/errors about
+  violating constness.
+\end{cprototypelist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Files}
+\label{sec:libcompiler:Files}
+
+A number of functions are provided for managing and generating files.  All file
+output is generally done through a set of functions that refer to a globally
+set file.  It is a little restrictive, but at least the file pointer doesn't
+have to be passed around everywhere\ldots{}
+
+\begin{cprototypelist}
+  \item[FILE *call_c_preprocessor(const char *filename, const char *flags)]
+  \item[FILE *call_cxx_preprocessor(const char *filename, const char *flags)]
+  Calls the C or C++ preprocessor, respectively, on \cidentifier{filename}
+  using the given set of preprocessor flags.
+
+  \item[FILE *fopen_search(const char *path, const char * const *dir_list,
+        const char *mode, char **out_path)]
+  Opens a file from a list of
+  source directories.  The \cidentifier{dir_list} argument is a null terminated
+  array of strings representing paths to search for the file indicated by the
+  \cidentifier{path} argument.  If the file is found then it will open it and
+  return the \ctype{FILE} object and set the \cidentifier{out_path} argument to
+  the directory where the file was found.
+
+  \item[void w_set_fh(FILE *out_fh)] Sets the file handle for
+  writing.  Each of the following \cfunction{w_*} commands output to the file
+  specified by the most recent \cfunction{w_set_fh}.
+
+  \item[void w_putc(char c)] Writes out the given character.
+
+  \item[void w_vprintf(const char *format, va_list vl)]
+  \ctype{va_list} version of \cfunction{w_printf}.
+
+  \item[void w_printf(const char *format, ...)] Writes out the
+  formatted string.
+
+  \item[void w_indent(int indent)] Writes out an indentation of
+  the given size.
+
+  \item[void w_i_vprintf(int indent, const char *format, va_list
+  vl)] Indented form of \cfunction{w_vprintf}.
+
+  \item[void w_i_printf(int indent, const char *format, ...)]
+  Indented form of \cfunction{w_printf}.
+\end{cprototypelist}
+
+There are also several functions for manipulating file names, thus allowing for
+some indirection for different OS file name formats.
+
+\begin{cprototypelist}
+  \item[char *resuffix(const char *orig, const char *newsuffix)]
+  Returns a new string (filename) with the extension portion of
+  \cidentifier{orig} changed to \cidentifier{newsuffix}.
+
+  \item[const char *file_part(const char *filename)] Returns a
+  pointer into \cidentifier{filename} that refers to the file only.
+
+  \item[const char *dir_part(const char *filename)] Returns a new
+  string that contains the directory part of \cidentifier{filename}.
+
+  \item[const char *add_file_part(const char *pathname, const char *filename)]
+  Append \cidentifier{filename} onto \cidentifier{pathname} intelligently
+  (i.e., adds the `/' if needed).
+
+  \item[int absolute_path(const char *filename)] Returns true if
+  \cidentifier{filename} is an absolute path.
+
+  \item[int current_dir(const char *filename)] Returns true if
+  \cidentifier{filename} refers to the current directory.  (Note: This just
+  recognizes `.' at the moment.)
+
+  \item[void filename_to_c_id(char *filename)] Convert, in place,
+  a filename to a legal C identifier.  This is useful for producing the symbol
+  for an \cidentifier{#ifdef} in a header file, or for use in distinguishing a
+  function name.
+\end{cprototypelist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Command Line Arguments}
+\label{sec:libcompiler:Command Line Arguments}
+
+The command line arguments for a module all follow similar forms so
+\filename{libcompiler} provides a flexible infrastructure for dealing with
+them.  It is really quite capable and able to handle flags, strings, numbers,
+and arrays of these types.
+
+\begin{ctypelist}
+  \item[flag_value] A union for holding the value of a flag, either a
+  boolean, integer, or string.
+
+  \item[flag_value_seq] Holds a sequence of \ctype{flag_value}s so that
+  we can store all instances of a flag on the command line.  If a flag can only
+  occur once, or if only the last one is used, then this sequence will be of
+  size one.
+
+  \item[flags_in] A structure that describes a single flag.  An array of
+  these is constructed and then used to figure out how to parse a command line.
+
+  \item[flags_out] Holds the results of a command line parse.  The flag
+  values are stored in an array of \ctype{flag_value_seq}s that has the same
+  ordering as the \ctype{flags_in} array.  Extra arguments are stored as an
+  array of strings and any errors are indicated by the \cidentifier{error}
+  slot.
+
+  \item[fe_flags] This holds the front end flags after they have been
+  pulled out of the \ctype{flags_out}.
+\end{ctypelist}
+
+There are also a number of functions for manipulating these structures and the
+actual arguments.
+
+\begin{cprototypelist}
+% XXX --- The []'s after `argv' make TeX4ht *really* sick.  So, we rewrite:
+%
+% \item[{flags_out parse_args(int argc, char *argv[], int flag_count,
+%       flags_in *flags)}]
+  \item[{flags_out parse_args(int argc, char **argv, int flag_count,
+        flags_in *flags)}]
+  Parse the given arguments, based on the input
+  flags, into a flags_out and return.
+
+  \item[void print_args_usage(const char *progname, int flag_count,
+  flags_in *flgs, const char *cl_extra, const char *extra)] Print the usage
+  statement for a collection of flags.
+
+  \item[void print_args_flags(flags_out res, int flag_count,
+  flags_in *flags)] Debugging function that prints out the parsed flags.
+
+  \item[void set_def_flags(flags_in *flgs)] Add the standard flags
+  set to the passed in array.
+
+  \item[void std_handler(flags_out out, int flag_count, flags_in
+  *flgs, const char *cl_info, const char *info)] This will handle version,
+  usage, and errors.
+
+  \item[fe_flags front_end_args(int argc, char **argv, const char
+  *info)] Handle the front end args here since we have no front end library.
+\end{cprototypelist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Stacks}
+\label{sec:libcompiler:Stacks}
+
+A simple pointer stack is provided to store pointers when dealing with nested
+objects and such.
+
+\begin{verbatim}
+struct ptr_stack {
+        void **ptrs;
+        int top;
+        int size;
+};
+\end{verbatim}
+
+\begin{cprototypelist}
+  \item[struct ptr_stack *create_ptr_stack()] Allocates and
+  initializes a \ctype{struct ptr_stack}.
+
+  \item[void delete_ptr_stack(struct ptr_stack *stack)] Frees a
+  \ctype{struct ptr_stack}.
+
+  \item[void push_ptr(struct ptr_stack *stack, void *ptr)] Pushes
+  a pointer onto the stack.
+
+  \item[void pop_ptr(struct ptr_stack *stack)] Pops the top
+  pointer off the stack.
+
+  \item[void *top_ptr(struct ptr_stack *stack)] Returns the top
+  pointer on the stack.
+\end{cprototypelist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Hash Tables}
+\label{sec:libcompiler:Hash Tables}
+
+A simple hash table that hashes on a string.
+
+\begin{verbatim}
+struct h_entry {
+        struct h_entry *next;
+        const char *name;
+};
+
+struct h_table {
+        int table_size;
+        struct h_entry **entries;
+};
+\end{verbatim}
+
+\begin{cprototypelist}
+  \item[struct h_table *create_hash_table(int size)] Allocate and
+  return a hash table of with the given table size.
+
+  \item[void delete_hash_table(struct h_table *ht)] Deallocate a
+  hash table.
+
+  \item[void add_entry(struct h_table *ht, struct h_entry *he)]
+  Add an entry to the table.
+
+  \item[void rem_entry(struct h_table *ht, const char *name)]
+  Remove an entry from the table.
+
+  \item[struct h_entry *find_entry(struct h_table *ht, const char
+  *name)]  Find and return an entry in the table, if it couldn't be found it
+  returns \cidentifier{NULL}.
+\end{cprototypelist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Linked Lists}
+\label{sec:libcompiler:Linked Lists}
+
+A simple doubly linked list implementation is provided for use by other data
+structures.  Simply place the \ctype{list_node} structure at the beginning of
+another structure definition and then you can add that larger structure to any
+\ctype{dl_list}.
+
+\begin{verbatim}
+struct list_node {
+        struct list_node *succ;
+        struct list_node *pred;
+};
+
+struct dl_list {
+        struct list_node *head; /* points to the head node */
+        struct list_node *tail; /* always == 0 */
+        struct list_node *tail_pred; /* points to the tail node */
+};
+\end{verbatim}
+
+\begin{cprototypelist}
+  \item[void remove_node(struct list_node *ln)] Removes a node
+  from a list.
+
+  \item[void new_list(struct dl_list *list)] Initializes a list
+  structure.
+
+  \item[void add_head(struct dl_list *list, struct list_node *ln)]
+  Add a list node to the head of a list.
+
+  \item[void add_tail(struct dl_list *list, struct list_node *ln)]
+  Add a list node to the tail of a list.
+
+  \item[struct list_node *rem_head(struct dl_list *list)] Remove
+  and return the list node at the head of the list.
+
+  \item[struct list_node *rem_tail(struct dl_list *list)] Remove
+  and return the list node at the tail of the list.
+
+  \item[int empty_list(struct dl_list *list)] Returns true if the
+  list is empty.
+
+  \item[void insert_node(struct list_node *pred, struct list_node
+  *ln)] Insert a node after \cidentifier{pred}.
+\end{cprototypelist}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

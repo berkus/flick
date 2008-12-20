@@ -1,0 +1,307 @@
+#
+# Copyright (c) 1996, 1997, 1998, 1999 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+ifndef _flick_makerules_test_programs_
+_flick_makerules_test_programs_ = yes
+
+# Any Makefile that includes this file is expected to define the following
+# macros:
+#
+# `TESTS', the set of tests.  These names do *not* have extensions; the rules
+# in this file know how to add extensions as needed to construct input and
+# output file names.
+#
+# `TEST_STUB_DIR_LIST', the set of directories that will be searched for client
+# and server stub source files.
+#
+# `TEST_CLIENT_OBJECTS', the list of object files that will be linked with
+# every test client driver program.
+#
+# `TEST_SERVER_OBJECTS', the list of object files that will be linked with
+# every test server driver program.
+#
+# `TEST_SCHIZOID_OBJECTS', the list of object files that will be linked with
+# every test ``schizoid'' client-and-server driver program.
+#
+# `TEST_RUNTIME_LIBS', the list of Flick runtime libraries that will be linked
+# with every test driver program (client, server, or ``schizoid'').  These
+# libraries are listed as dependencies for the driver programs and therefore
+# must be described by pathnames (to `.a' files within the Flick build tree).
+# Because the set of libraries is generally determined by the current transport
+# and not the role of the test driver program, there are not separate library
+# lists for the different types of driver programs.
+#
+# `TEST_OTHER_LIBS', the set of other libraries that will be linked with every
+# test driver program (client, server, or ``schizoid'').  Again, because the
+# set of libraries is generally determined by the current transport, not the
+# role of the test driver program, there are not separate library lists for the
+# different types of driver programs.
+#
+
+# XXX: The rules in this Makefile only build the various test driver programs.
+# I should add targets for actaully running the test programs, timing the
+# programs, and collecting the results.
+
+###############################################################################
+
+# `ARCHETYPE_EXTS' describes which files may be saved for later reference (see
+# the file `test/GNUmakerules.common' for more information).  For presentation
+# generators, we want to save the PRES_C files for the clients and servers.
+
+ARCHETYPE_EXTS = 
+
+# Test programs must obviously be compiled for the target platform.
+
+COMPILE_FOR = TARGET
+
+include $(SRCDIR)/test/GNUmakerules.common
+
+# We currently have three kinds of test driver programs: clients, servers, and
+# ``schizoid'' programs that are both clients and servers.  Not every test has
+# all three kinds of drivers --- in fact, very few tests have all three, and
+# many tests have no driver programs.  We would like to set things up so that
+# making a test simply means making whatever programs are available for that
+# test --- without any complaints about missing sources.
+#
+# Therefore, we scan through the list of sources in order to determine which
+# test program sources are available and which are not.  Later on, we define
+# the unimplemented programs as phony targets.
+
+# Determine which client test drivers are implemented.  The following variables
+# are each set to a list of program names (all ending in `-use').
+
+TEST_CLIENTS_IMPLEMENTED     = $(basename \
+				$(notdir \
+				$(filter $(patsubst %,\%%-use.c,$(TESTS)) \
+					 $(patsubst %,\%%-use.cc,$(TESTS)), \
+					 $(FILES))))
+
+TEST_CLIENTS_UNIMPLEMENTED   = $(filter-out $(TEST_CLIENTS_IMPLEMENTED), \
+					    $(addsuffix -use,$(TESTS)))
+
+# Determine which server test drivers are implemented.  The following variables
+# are each set to a list of program names (all ending in `-work').
+
+TEST_SERVERS_IMPLEMENTED     = $(basename \
+				$(notdir \
+				$(filter $(patsubst %,\%%-work.c,$(TESTS)) \
+					 $(patsubst %,\%%-work.cc,$(TESTS)), \
+					 $(FILES))))
+
+TEST_SERVERS_UNIMPLEMENTED   = $(filter-out $(TEST_SERVERS_IMPLEMENTED), \
+					    $(addsuffix -work,$(TESTS)))
+
+# Determine which ``schizoid'' test drivers are implemented.  The following
+# variables are each set to a list of program names (all ending in `-test').
+
+TEST_SCHIZOIDS_IMPLEMENTED   = $(basename \
+				$(notdir \
+				$(filter $(patsubst %,\%%-test.c,$(TESTS)) \
+					 $(patsubst %,\%%-test.cc,$(TESTS)), \
+					 $(FILES))))
+
+TEST_SCHIZOIDS_UNIMPLEMENTED = $(filter-out $(TEST_SCHIZOIDS_IMPLEMENTED), \
+					    $(addsuffix -test,$(TESTS)))
+
+#
+
+vpath %.c  $(TEST_STUB_DIR_LIST)
+vpath %.cc $(TEST_STUB_DIR_LIST)
+vpath %.h  $(TEST_STUB_DIR_LIST)
+
+###############################################################################
+###############################################################################
+####
+#### Here are the rules for compiling the test driver programs.
+####
+###############################################################################
+###############################################################################
+
+.PHONY: all \
+	all-programs all-client all-clients all-server all-servers all-stubs
+
+all: $(addsuffix $(PROGRAM_EXTENSION),$(TEST_CLIENTS_IMPLEMENTED)) \
+     $(addsuffix $(PROGRAM_EXTENSION),$(TEST_SERVERS_IMPLEMENTED)) \
+     $(addsuffix $(PROGRAM_EXTENSION),$(TEST_SCHIZOIDS_IMPLEMENTED))
+
+all-programs: all
+
+all-client all-clients: $(addsuffix $(PROGRAM_EXTENSION), \
+				    $(TEST_CLIENTS_IMPLEMENTED)) \
+			$(addsuffix $(PROGRAM_EXTENSION), \
+				    $(TEST_SCHIZOIDS_IMPLEMENTED))
+
+all-server all-servers: $(addsuffix $(PROGRAM_EXTENSION), \
+				    $(TEST_SERVERS_IMPLEMENTED)) \
+			$(addsuffix $(PROGRAM_EXTENSION), \
+				    $(TEST_SCHIZOIDS_IMPLEMENTED))
+
+all-stubs: $(addsuffix .stubs,$(TESTS))
+
+#
+
+.PHONY: $(TESTS)
+
+$(TESTS): %:	%-use$(PROGRAM_EXTENSION) %-work$(PROGRAM_EXTENSION) \
+		%-test$(PROGRAM_EXTENSION)
+
+# The `*.programs' targets are principally for the benefit of the `GNUmakefile'
+# in the root of the `test' directory.  In the Makefile you are now reading,
+# `*.programs' is equivalent to just `*'.  But in the root `test' Makefile, the
+# actual test programs are never built by the simple test-name targets.
+
+.PHONY: $(addsuffix .programs,$(TESTS)) \
+	$(addsuffix .client,$(TESTS)) \
+	$(addsuffix .clients,$(TESTS)) \
+	$(addsuffix .server,$(TESTS)) \
+	$(addsuffix .servers,$(TESTS))
+
+$(addsuffix .programs,$(TESTS)): %.programs:	%-use$(PROGRAM_EXTENSION) \
+					 	%-work$(PROGRAM_EXTENSION) \
+						 %-test$(PROGRAM_EXTENSION)
+
+$(addsuffix .client,$(TESTS)):  %.client:	%-use$(PROGRAM_EXTENSION) \
+						%-test$(PROGRAM_EXTENSION)
+$(addsuffix .clients,$(TESTS)): %.clients:	%-use$(PROGRAM_EXTENSION) \
+						%-test$(PROGRAM_EXTENSION)
+
+$(addsuffix .server,$(TESTS)):  %.server:	%-work$(PROGRAM_EXTENSION) \
+						%-test$(PROGRAM_EXTENSION)
+$(addsuffix .servers,$(TESTS)): %.servers:	%-work$(PROGRAM_EXTENSION) \
+						%-test$(PROGRAM_EXTENSION)
+
+#
+
+.PHONY: $(addsuffix .stubs,$(TESTS))
+
+$(addsuffix .stubs,$(TESTS)): %.stubs: %-client.o %-server.o
+
+$(addsuffix -client.o,$(TESTS)): %-client.o: %-client.h
+# `%-client.c' or `%-client.cc' is an implicit dependency.  By not listing
+# either as an explicit dependency, we let `make' figure out which one exists.
+
+$(addsuffix -server.o,$(TESTS)): %-server.o: %-server.h
+# `%-server.c' or `%-server.cc' is an implicit dependency.
+
+###############################################################################
+
+.PHONY: $(addsuffix .use,$(TESTS))
+
+$(addsuffix .use,$(TESTS)): %.use: %-use$(PROGRAM_EXTENSION)
+
+# Implemented clients.
+
+$(addsuffix $(PROGRAM_EXTENSION),$(TEST_CLIENTS_IMPLEMENTED)): \
+	%-use$(PROGRAM_EXTENSION): %-use.o %-client.o \
+				   $(TEST_CLIENT_OBJECTS) \
+				   $(TEST_RUNTIME_LIBS)
+	$($(COMPILE_FOR)_CC) -o $@ $(LDFLAGS) $($(COMPILE_FOR)_LDFLAGS) $^ -L$(OBJDIR)/lib $(TEST_OTHER_LIBS)
+
+$(addsuffix .o,$(TEST_CLIENTS_IMPLEMENTED)): %-use.o: %-client.h
+# `%-use.c' or `%-use.cc' is an implicit dependency.
+
+# Unimplemented clients.
+
+.PHONY: $(addsuffix $(PROGRAM_EXTENSION),$(TEST_CLIENTS_UNIMPLEMENTED))
+
+$(addsuffix $(PROGRAM_EXTENSION),$(TEST_CLIENTS_UNIMPLEMENTED)): \
+	%-use$(PROGRAM_EXTENSION):
+
+###############################################################################
+
+.PHONY: $(addsuffix .work,$(TESTS))
+
+$(addsuffix .work,$(TESTS)): %.work: %-work$(PROGRAM_EXTENSION)
+
+# Implemented servers.
+
+$(addsuffix $(PROGRAM_EXTENSION),$(TEST_SERVERS_IMPLEMENTED)): \
+	%-work$(PROGRAM_EXTENSION): %-work.o %-server.o \
+				    $(TEST_SERVER_OBJECTS) \
+				    $(TEST_RUNTIME_LIBS)
+	$($(COMPILE_FOR)_CC) -o $@ $(LDFLAGS) $($(COMPILE_FOR)_LDFLAGS) $^ -L$(OBJDIR)/lib $(TEST_OTHER_LIBS)
+
+$(addsuffix .o,$(TEST_SERVERS_IMPLEMENTED)): %-work.o: %-server.h
+# `%-work.c' or `%-work.cc' is an implicit dependency.
+
+# Unimplemented servers.
+
+.PHONY: $(addsuffix $(PROGRAM_EXTENSION),$(TEST_SERVERS_UNIMPLEMENTED))
+
+$(addsuffix $(PROGRAM_EXTENSION),$(TEST_SERVERS_UNIMPLEMENTED)): \
+	%-work$(PROGRAM_EXTENSION):
+
+###############################################################################
+
+.PHONY: $(addsuffix .test,$(TESTS))
+
+$(addsuffix .test,$(TESTS)): %.test: %-test$(PROGRAM_EXTENSION)
+
+# Implemented ``schizoid'' client-and-server tests.
+
+$(addsuffix $(PROGRAM_EXTENSION),$(TEST_SCHIZOIDS_IMPLEMENTED)): \
+	%-test$(PROGRAM_EXTENSION): %-test.o %-client.o %-server.o \
+				    $(TEST_SCHIZOID_OBJECTS) \
+				    $(TEST_RUNTIME_LIBS)
+	$($(COMPILE_FOR)_CC) -o $@ $(LDFLAGS) $($(COMPILE_FOR)_LDFLAGS) $^ -L$(OBJDIR)/lib $(TEST_OTHER_LIBS)
+
+$(addsuffix .o,$(TEST_SCHIZOIDS_IMPLEMENTED)): %-test.o: %-client.h %-server.h
+# `%-test.c' or `%-test.cc' is an implicit dependency.
+
+# Unimplemented ``schizoid'' client-and-server tests.
+
+.PHONY: $(addsuffix $(PROGRAM_EXTENSION),$(TEST_SCHIZOIDS_UNIMPLEMENTED))
+
+$(addsuffix $(PROGRAM_EXTENSION),$(TEST_SCHIZOIDS_UNIMPLEMENTED)): \
+	%-test$(PROGRAM_EXTENSION):
+
+###############################################################################
+###############################################################################
+####
+#### Here are the housecleaning rules.
+####
+###############################################################################
+###############################################################################
+
+CLEAN_FILES += $(addsuffix -client.o,$(TESTS)) \
+	       $(addsuffix -server.o,$(TESTS)) \
+	       $(addsuffix .o,$(TEST_CLIENTS_IMPLEMENTED)) \
+	       $(addsuffix $(PROGRAM_EXTENSION),$(TEST_CLIENTS_IMPLEMENTED)) \
+	       $(addsuffix .o,$(TEST_SERVERS_IMPLEMENTED)) \
+	       $(addsuffix $(PROGRAM_EXTENSION),$(TEST_SERVERS_IMPLEMENTED)) \
+	       $(addsuffix .o,$(TEST_SCHIZOIDS_IMPLEMENTED)) \
+	       $(addsuffix $(PROGRAM_EXTENSION),$(TEST_SCHIZOIDS_IMPLEMENTED))\
+	       $(sort $(TEST_CLIENT_OBJECTS) \
+		      $(TEST_SERVER_OBJECTS) \
+		      $(TEST_SCHIZOID_OBJECTS))
+
+# NOTE that `GNUmakerules.common' declares the `<test>.clean' targets as phony.
+
+$(addsuffix .clean,$(TESTS)): %.clean:
+	$(RM) $*-client.o $*-server.o \
+	      $*-use.o $*-use$(PROGRAM_EXTENSION) \
+	      $*-work.o $*-work$(PROGRAM_EXTENSION) \
+	      $*-test.o $*-test$(PROGRAM_EXTENSION)
+
+endif
+
+## End of file.
+

@@ -1,0 +1,65 @@
+/*
+ * Copyright (c) 1997, 1998 The University of Utah and
+ * the Computer Systems Laboratory at the University of Utah (CSL).
+ * All rights reserved.
+ *
+ * Permission to use, copy, modify and distribute this software is hereby
+ * granted provided that (1) source code retains these copyright, permission,
+ * and disclaimer notices, and (2) redistributions including binaries
+ * reproduce the notices in supporting documentation.
+ *
+ * THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ * IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ * ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ *
+ * CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ * improvements that they make and grant CSL redistribution rights.
+ */
+
+#ifndef __flick_encode_endian_h
+#define __flick_encode_endian_h
+
+/*
+ * Different operating systems define `BYTE_ORDER' in different places; to get
+ * `BYTE_ORDER' from the system headers you need to do something like this:
+ *
+ * #ifndef BYTE_ORDER
+ * #  ifdef HAVE_SYS_MACHINE_H
+ * #    include <sys/machine.h>
+ * #  else
+ * #    ifdef HAVE_ENDIAN_H
+ * #      include <endian.h>
+ * #    else
+ * #      ifdef HAVE_SYS_PARAM_H
+ * #        include <sys/types.h>
+ * #        include <sys/param.h>
+ * #      else
+ * #        include <sys/types.h>
+ * #        include <sys/param.h>
+ * #      endif
+ * #    endif
+ * #  endif
+ * #endif
+ *
+ * If we did that here, however, all Flick-generated code would have to define
+ * the right set of `HAVE_*' macros.  So, rather than try to get `BYTE_ORDER'
+ * from the system header files, we define it ourselves.  The host byte order
+ * is determined by Flick's `configure' script.
+ */
+
+#ifndef BIG_ENDIAN
+#  define BIG_ENDIAN		4321	/* MSB first. */
+#endif
+
+#ifndef LITTLE_ENDIAN
+#  define LITTLE_ENDIAN		1234	/* LSB first. */
+#endif
+
+#ifndef BYTE_ORDER
+#  define BYTE_ORDER		@byte_order@	/* Determined by configure. */
+#endif
+
+#endif /* __flick_encode_endian_h */
+
+/* End of file. */
+

@@ -1,0 +1,324 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1997, 1999 The University of Utah and
+%% the Computer Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+In the following sections we will reimplement our phonebook application using
+Flick's ONC~RPC tools rather than Flick's CORBA tools.  The source code for the
+ONC~RPC phonebook is contained in the \filename{test/examples/phone/oncrpc}
+directory of the Flick distribution.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Interface Definition}
+\label{subsec:ONCRPC:Interface Definition}
+
+Again, the ONC~RPC IDL specification of the phonebook interface is
+straightforward:
+
+\begin{verbatim}
+   typedef string name<200>;
+   typedef string phone<20>;
+
+   struct entry { name n; phone p; };
+
+   program netphone {
+       version firstphone {
+           int     add(entry)   = 1;
+           int     remove(name) = 2;
+           phone   find(name)   = 3;
+       } = 1;
+   } = 58239;
+\end{verbatim}
+
+If you compare this interface to the one we previously defined using the CORBA
+IDL (see Section~\ref{subsec:CORBA:Interface Definition}), you will notice some
+minor differences.  Because ONC~RPC does not allow us to define explicit
+exceptions, the return types of the \idl{add} and \idl{remove} operations have
+changed in order to indicate success or failure.  Rather than change the return
+type of the \idl{find} operation, however, our application will simply use an
+empty phone number string to indicate search failures.
+
+Assuming that the above interface is contained in a file \filename{phone.x},
+the following commands will compile the phonebook specification into client
+stubs and a server skeleton:\footnote{The actual commands issued by the
+\filename{Makefile} are somewhat more complicated because they do not assume
+that you have installed Flick on your system.  Read the \filename{Makefile} for
+details.}
+
+\begin{verbatim}
+   flick-fe-sun phone.x
+
+   flick-c-pfe-sun -c -o phone-client.prc phone.aoi
+   flick-c-pbe-sun phone-client.prc
+   # Final outputs: `phone-client.c' and `phone-client.h'.
+
+   flick-c-pfe-sun -s -o phone-server.prc phone.aoi
+   flick-c-pbe-sun phone-server.prc
+   # Final outputs: `phone-server.c' and `phone-server.h'.
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Server Functions}
+\label{subsec:ONCRPC:Server Functions}
+
+For the server, Flick will create a \cfunction{main} function (found in
+\filename{phone-server.c}).  In order to complete the server, you must:
+
+\begin{itemize}
+  \item define the data structures that the server will need in order to manage
+  its phonebook; and
+
+  \item write functions to implement the operations listed in the IDL file.
+\end{itemize}
+
+In comparison with the CORBA version of our phonebook server, the ONC~RPC
+server will be simpler because it will only manage one phonebook, not several.
+(If we wanted our ONC~RPC server to manage multiple books, we would need to
+change our IDL file so that we could pass a phonebook name to each operation.)
+So, our ONC~RPC server simply needs to maintain a single array of phonebook
+entries:
+
+\begin{verbatim}
+   entry **pb = 0;      /* The array of pointers to entries. */
+   int pb_elems = 0;    /* # of entries in `pb'.             */
+   int pb_size = 0;     /* The size of the `pb' array.       */
+\end{verbatim}
+
+The \ctype{entry} type definition is created by Flick from the \idl{entry}
+definition in the original IDL file.  Now we are ready to write the server work
+functions to implement the operations defined in our phonebook interface.  The
+C prototypes of those functions are shown below:
+
+\begin{list}{}{}
+  \item{\cprototype{int *add_1(entry *arg, struct svc_req *obj);}}\\
+  %
+  Add an entry to the phonebook.  Return pointer to zero to indicate success,
+  or pointer to non-zero to indicate an error.
+
+  \item{\cprototype{int *remove_1(name *arg, struct svc_req *obj);}}\\
+  %
+  Remove the entry containing the given name from the phonebook.  Return
+  pointer to zero to indicate success, or pointer to non-zero to indicate an
+  error.
+
+  \item{\cprototype{phone *find_1(name *arg, struct svc_req *obj);}}\\
+  %
+  Find the phone number corresponding to the given name in the phonebook.
+  Return an empty string to indicate failure.
+\end{list}
+
+The name of each function is constructed from the name of the corresponding
+operation defined in IDL, followed by an underscore and the version number of
+the interface (in this case, 1).  The second argument to each function is a
+``service request'' structure that would generally contain data about the
+current request and the requesting client.  \emph{Flick's ONC/TCP runtime does
+not currently initialize this structure!}  Flick-generated stubs include this
+parameter simply to be prototype-compatible with \program{rpcgen}-generated
+code.
+
+Complete code for all of these functions is contained in the
+\filename{phone-workfuncs.c} file in Flick's ONC~RPC phonebook source
+directory.  Abbreviated code for \cfunction{add_1} is shown below.  Note that
+as expected of ONC~RPC work functions, the return value is a pointer to a
+statically allocated result.
+
+\begin{verbatim}
+   int *add_1(entry *arg, struct svc_req *obj)
+   {
+       static int result;
+       int i;
+
+       /* Return result: zero for success, or non-zero for error. */
+       result = 1;
+
+       /* See if this entry is already in the phonebook. */
+       for (i = 0; i < pb_size; ++i) {
+           if (pb[i] && !strcmp(pb[i]->n, arg->n)) {
+               /* We found a duplicate!  Return an error code. */
+               return &result;
+           }
+       }
+
+       /* Find an empty entry in `pb'; grow the phonebook if necessary. */
+       i = find_empty_entry();
+       if (i == NULL_PB_INDEX)
+           return &result;
+
+       /*
+        * Allocate memory for the new entry.  Note that we have to copy the
+        * `arg' data because ONC RPC says we can't keep pointers into `in'
+        * data after this function has returned.
+        */
+       pb[i] = (entry *) malloc(sizeof(entry));
+       if (!pb[i])
+           return &result;
+
+       pb[i]->n = (char *) malloc(sizeof(char) * (strlen(arg->n) + 1));
+       pb[i]->p = (char *) malloc(sizeof(char) * (strlen(arg->p) + 1));
+       if (!(pb[i]->n) || !(pb[i]->p)) {
+           /* Free what we have allocated and signal an exception. */
+           ...
+       }
+
+       /* Copy the `arg' information into our phonebook. */
+       strcpy(pb[i]->n, arg->n);
+       strcpy(pb[i]->p, arg->p);
+
+       /* Increment the number of entries in our phonebook. */
+       pb_elems++;
+
+       /* Success! */
+       result = 0;
+       return &result;
+   }
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Client Program}
+\label{subsec:ONCRPC:Client Program}
+
+You must provide the \cfunction{main} function for the client, which will allow
+the user to invoke the Flick-generated stubs to communicate with the ONC~RPC
+phonebook server.  The host name of the server is provided on the command line;
+the values of \cidentifier{netphone} and \cidentifier{firstphone} are defined
+in the file \filename{phone-client.h}, which is created by Flick.  The
+\ctype{FLICK_SERVER_LOCATION} structure is described in
+Section~\ref{subsec:Connecting to a Server}.
+
+\begin{verbatim}
+   int main(int argc, char **argv)
+   {
+       CLIENT client_struct, *c;
+       FLICK_SERVER_LOCATION s;
+       int sel, done;
+
+       c = &client_struct;
+
+       if (argc != 2) {
+           fprintf(stderr, "Usage: %s <host>\n", argv[0]);
+           exit(1);
+       }
+
+       s.server_name = argv[1];
+       s.prog_num = netphone;
+       s.vers_num = firstphone;
+       create_client(c, s);
+
+       done = 0;
+       while (!done) {
+           read_integer(("\n(1) Add an entry (2) Remove an entry "
+                         "(3) Find a phone number (4) Exit: "),
+                        &sel);
+           switch(sel) {
+           case 1:  add_entry(c); break;
+           case 2:  remove_entry(c); break;
+           case 3:  find_entry(c); break;
+           case 4:  done = 1; break;
+           default: printf("Please enter 1, 2, 3, or 4.\n");
+           }
+       }
+       return 0;
+   }
+\end{verbatim}
+
+The client's \cfunction{add_entry} function invokes \cfunction{add_1}, which is
+the Flick-generated stub for the \idl{add} operation.  Exceptions are detected
+by examining the return value of the stub function.  A null pointer indicates
+an RPC failure; otherwise, \cidentifier{res} points to the return code for the
+operation.
+
+\begin{verbatim}
+   void add_entry(CLIENT *c)
+   {
+       entry e;
+       char name_array[NAME_SIZE], phone_array[PHONE_SIZE];
+       int *result;
+
+       e.n = name_array;
+       e.p = phone_array;
+
+       read_string("Enter the name: ", e.n, NAME_SIZE);
+       read_string("Enter the phone number: ", e.p, PHONE_SIZE);
+
+       result = add_1(&e, c);
+       if (!result)
+           printf("Error: bad RPC call for add_1.\n");
+       else if (*result)
+           printf("Error: `%s' not added, error code = %d.\n",
+                  e.n, *result);
+       else
+           printf("`%s' has been added.\n", e.n);
+   }
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Compiling the Application}
+\label{subsec:ONCRPC:Compiling the Application}
+
+The \filename{test/examples/phone/oncrpc} directory contains a simple
+\filename{Makefile} for compiling the phonebook server and client programs.
+You will need to edit the \filename{Makefile} slightly in order to suit your
+build environment.  Once that is done, and you have built Flick and the ONC/TCP
+runtime, you should be able to type \program{make} to build the ONC~RPC
+phonebook.  Two programs will be created: \program{phoneserver}, the server,
+and \program{phonebook}, the client.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Using the Phonebook}
+\label{subsec:ONCRPC:Using the Phonebook}
+
+To run the application you must first start the phonebook server.  Note that
+unlike the CORBA phonebook server, our ONC~RPC server does not require any
+command line arguments.  Once the \program{phoneserver} program is running, you
+can invoke the \program{phonebook} program, giving it the name of the host on
+which the server is running.
+
+\begin{verbatim}
+   1 marker:~> phoneserver
+   Server sendbuf: 0 2 65536
+   Server recvbuf: 0 2 65536
+
+   # Run a client on the same machine or on a different machine.
+
+   3 fast:~> phonebook marker
+   Client sendbuf: 0 0 65536
+   Client recvbuf: 0 0 65536
+
+   (1) Add an entry (2) Remove an entry (3) Find a phone number (4) Exit:
+   ...
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

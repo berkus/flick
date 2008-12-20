@@ -1,0 +1,151 @@
+#
+# Copyright (c) 1996 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+
+This is a small filesystem library, taken from Peter and Aleksandra.
+This is their original readme file.
+
+	- Godmar
+
+
+		L E M M I N G S        F I L E   S E R V E R
+
+
+General Information:
+
+	This submission consists of the following files:
+	
+		server		our sun-executable server
+	
+		server.c	our main server program
+	
+		ops.c		our functions for client requests
+		ops.h		function decls for ops.c
+	
+		file.c		our low level access functions to help ops.c
+		file.h		function and global data decls
+		
+		cache.c		our cache routines
+		cache.h		function decls for cache.c
+	
+		makefile	our makefile
+	
+		tygrys		our sun-executable pseudo-shell
+	
+		tygrys.c	source code for our shell
+		
+
+
+Formatting our disk
+
+	To format our disk, type 'server format'.  The disk format should
+proceed.
+
+
+		
+Testing information
+
+	We tested our program almost exclusively with tygrys.  It is a 
+pseudo shell which provides a command line.  To run it, start the server
+and then start tygrys.
+
+	The commands are:
+	
+		make filename		creates an empty file
+		mkdir filename		creates an empty directory
+		
+		ln name1 name2		name2 becomes a hard link to name1
+		
+		ls			displays directory
+		
+		cd			changes directory as expected
+		
+		del filename		deletes the file
+		
+		load unixname name	copys unix file to our disk
+		
+		diff unixname name	compares unix file to file on our disk
+		
+		show #			causes server to display the block.
+		
+		show -#			syncs the file (given as a negative #)
+		
+		exit			exits tygrys without shutting down
+		
+		quit			exits and shuts down the server	
+		
+		
+		
+Program layout
+
+	Our program is divided into four logical sections.  Server.c dispatches
+client requests to the appropriate functions in ops.c (operations file).
+
+	The functions in ops.c complete the requests.  These functions avoid
+dealing with the disk directly; instead, the functions call helper functions
+in file.c to perform rudimentary tasks such as reading/writing a range of bytes.
+
+	The functions in file.c cover the basics of getting file information,
+adding/removing/finding names in a directory, or reading or writing a range of
+blocks to a file.
+
+	File.c also contains the bootstrap code (which traverses the disk looking
+for free blocks).  It also contains our code for formatting the disk.	
+
+	Cache.c contains the code for caching read and write blocks as well as
+the code for syncing files and the disk.
+
+
+
+Disk layout
+
+	Our disk has only one type of data structure on it -- files.  There is
+no inode table to complicate things.  File information and disk mappings are
+stored as the first bytes of a file.
+
+	Rather than having inodes, each file is given a file #.  The file #
+corresponds to the first block of the file.  (It also contains a unique number
+to prevent latent accesses to deleted files.)  This file # is our ONLY file
+identifier.  No translation tables or the like are used.
+
+	To access a file, we simply extract the base block number from the
+file handle.  When we read in the base block, we get all 'inode' information,
+disk mappings, and the first bytes of actual file data.
+
+	Our 'inode' information contains:
+	
+		A repeat of this file handle for verification
+		The last modification date
+		A flag indicating if this file is a directory
+		A count of the number of entries in this directory (if valid)
+		The filesize
+		The number of links to this file
+		
+	Our files have a maximum size of over 2 meg, we only have one level
+of indirect mapping.  Small files are contained entirely in direct mapping.
+
+	Directories are laid out in a straight-forward fasion.  Each entry
+takes a multiple of 16 bytes.  The first field in each directory entry is
+the length in bytes of the entry.  The second field is the file handle (or
+0 for an invalid entry).  Lastly is the zero terminated file name (up to 128
+characters).
+
+

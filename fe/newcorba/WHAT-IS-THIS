@@ -1,0 +1,2 @@
+This directory contains Flick's CORBA IDL front end, which translates CORBA IDL
+input files into AOI.

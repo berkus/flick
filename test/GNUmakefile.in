@@ -1,0 +1,949 @@
+#
+# Copyright (c) 1996, 1997, 1998, 1999 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+#### Start of configuration section ####
+
+SRCDIR	= @top_srcdir@
+#OBJDIR	= @top_objdir@
+OBJDIR	= ..
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+include $(OBJDIR)/GNUmakeconf
+
+##### End of configuration section #####
+
+###############################################################################
+###############################################################################
+####
+#### Here we define our lists of tests and test directories.
+####
+###############################################################################
+###############################################################################
+
+SECTIONS += test
+
+# Normally, `TESTS' is the list of all tests, and the various Makefiles for
+# building the tests don't care which are CORBA-based and which are Sun
+# RPC-based.  We *do* care, however, so we play some tricks to segregate the
+# lists.
+
+TESTS := 
+include $(SRCDIR)/test/fe/sun/TESTLIST
+TESTS_SUN := $(TESTS)
+TESTS :=
+
+include $(SRCDIR)/test/fe/corba/TESTLIST
+TESTS_CORBA := $(TESTS)
+TESTS :=
+
+include $(SRCDIR)/test/fe/mig/TESTLIST
+TESTS_MIG := $(TESTS)
+TESTS :=
+
+# `TEST_SUBDIRS' is a list of all the leaf directories in the Flick test tree.
+
+TEST_SUBDIRS = fe/corba fe/mig fe/sun \
+	       pfe/corba pfe/corbaxx pfe/fluke pfe/mig pfe/sun \
+	       pbe/fluke pbe/iiop pbe/iiopxx pbe/khazana pbe/mach3mig pbe/sun \
+			pbe/trapeze \
+	       programs/fluke programs/iiop programs/iiopxx programs/mach3mig \
+			programs/sun programs/trapeze
+
+TEST_PROGRAM_SUBDIRS = $(filter programs/%,$(TEST_SUBDIRS))
+
+TEST_SUBDIRS_EXCEPT_PROGRAMS = $(filter-out programs/%,$(TEST_SUBDIRS))
+
+ARCHETYPE_EXTS = 
+
+# It is important that `TESTS' be an empty list at this point because the
+# `GNUmakerules.common' file defines some rules for archetyping based on
+# `TESTS'.  We want to define our own archetyping rules below.
+
+include $(SRCDIR)/test/GNUmakerules.common
+
+###############################################################################
+###############################################################################
+####
+#### Here is a general explanation of the targets in this file.
+####
+###############################################################################
+###############################################################################
+
+# A note about dependencies in this Makefile:
+#
+# The `all.*' targets (excluding `all-corba', `all-mig', `all-sun', and
+# `all-*-by-test.*') use directory-based dependencies.  This means that if
+# *any* test within a particular subdirectory fails to build, then Make will
+# not attempt to build *anything* in the subdirectories that depend on the
+# failed directory.  For example, if one test in `fe/sun' fails, then Make will
+# not attempt to build *any* of the tests in `pfe/sun'.  In effect,
+# *everything* from one stage of the Flick compiler must succeed in order for
+# `make all' to proceed to the subsequent stages of the compiler.  Pros and
+# cons of this scheme:
+#
+#   + The scheme is centered around the different Flick programs, not the
+#     individual test inputs.
+#   + It is easy to determine which stages of the Flick compiler experienced
+#     failures.
+#   + Make goes into a directory, builds everything, and then moves on.  Make
+#     doesn't jump to a directory, build one target, jump to another directory,
+#     build one more target, and so on.
+#   - Individual tests may not be made as far as possible.  The PRES_C files
+#     for test `A' won't be made if the AOI files for test `B' fail.
+#
+# The `<test>.*' targets, on the other hand, use test-based dependencies.  This
+# means that Make will continue until some stage of the given <test> fails.  If
+# you make multiple tests at once and use the `-k' option, Make will treat each
+# test separately.  Pros and cons of this scheme:
+#
+#   + The scheme is centered around the individual tests, and therefore, is
+#     useful for testing Flick against particular IDL constructs.
+#   + Every test will be built as far as possible, without regard to the
+#     success or failure of Flick against other test inputs.
+#   - When building multiple tests, Make continually jumps between different
+#     subdirectories.  This makes the output more difficult to read.
+#
+# The `<subdir>.*' targets use directory-based dependencies, not surprisingly.
+#
+# The `corba.*', `mig.*', and `sun.*' targets are designed to build all CORBA
+# IDL-based tests, all MIG IDL-based tests, and all Sun RPC IDL-based tests,
+# respectively.  These targets use a hybrid dependency scheme: The FE and PFE
+# stages are directory-based, and the PBE and program stages are test-based.
+# The `corba-by-test.*', `mig-by-test.*', and `sun-by-test.*' targets are
+# exceptions to this scheme, as described below.
+#
+# Finally, to allow for building special groups of tests on a test-by-test
+# basis, this Makefile provides special `by-test' targets.  These include
+# `all-by-test.*', `corba-by-test.*', `mig-by-test.*', and `sun-by-test.*'.
+
+###############################################################################
+###############################################################################
+####
+#### Here are the top-level `all' targets.
+####
+###############################################################################
+###############################################################################
+
+.PHONY: all corba all-corba mig all-mig sun all-sun
+
+# `all', `corba', `mig', and `sun' don't build the program directories because
+# it is likely that Flick will be run on a platform that doesn't support one or
+# more or the transports.  Use one of the `*.stubs' or `*.programs' targets
+# below to build the actual test programs.
+#
+# XXX: At the moment, the `*.stubs' and other program-compiling targets in this
+# Makefile require that ALL transports be available!  Clearly this often won't
+# be the case.  I haven't yet determined how one should specify the desired
+# transports at this level.  Auto-detect?  In the meantime, one can work around
+# this problem by either (1) editing this Makefile, or (2) using the Makefiles
+# in the individual program subdirectories.
+
+all: $(TEST_SUBDIRS_EXCEPT_PROGRAMS)
+
+corba all-corba: fe/corba pfe/corba pfe/corbaxx pfe/fluke
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $(TESTS_CORBA)
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $(TESTS_CORBA)
+	$(MAKE) -C $(TEST_PBE_IIOPXX_DIR) $(TESTS_CORBA)
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $(TESTS_CORBA)
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $(TESTS_CORBA)
+	$(MAKE) -C $(TEST_PBE_SUN_DIR) $(TESTS_CORBA)
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $(TESTS_CORBA)
+
+mig all-mig: fe/mig pfe/mig
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $(TESTS_MIG)
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $(TESTS_MIG)
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $(TESTS_MIG)
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $(TESTS_MIG)
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $(TESTS_MIG)
+#
+# XXX --- The Sun back end requires a peek at the AOI contained in its input
+# PRES_C file, but the MIG presentation generator doesn't fill in that field.
+# So for now we can't generate MIG IDL stubs for Sun transport.  When this
+# restriction is lifted, look for all instances of `#***' in this file and
+# uncomment those lines.  Fix `test/README' and `test/pbe/sun/GNUMakefile.in',
+# too!
+#
+#***	$(MAKE) -C $(TEST_PBE_SUN_DIR) $(TESTS_MIG)
+
+sun all-sun: fe/sun pfe/sun
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $(TESTS_SUN)
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $(TESTS_SUN)
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $(TESTS_SUN)
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $(TESTS_SUN)
+	$(MAKE) -C $(TEST_PBE_SUN_DIR) $(TESTS_SUN)
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $(TESTS_SUN)
+
+#
+
+# NOTE that a `programs' target here would conflict with the `programs'
+# subdiretory target defined later on.  (Actually, the targets would end up
+# doing the same thing, but better safe than sorry.)
+
+.PHONY: stubs all-stubs all.stubs \
+	client all-client all.client \
+	clients all-clients all.clients \
+	server all-server all.server \
+	servers all-servers all.servers \
+	all-programs all.programs
+
+stubs all-stubs all.stubs:		programs.stubs
+client all-client all.client:		programs.client
+clients all-clients all.clients:	programs.clients
+server all-server all.server:		programs.server
+servers all-servers all.servers:	programs.servers
+all-programs all.programs:		programs.programs
+
+# The test-by-test versions of these targets:
+
+.PHONY: all-by-test \
+	corba-by-test all-corba-by-test \
+	mig-by-test all-mig-by-test \
+	sun-by-test all-sun-by-test
+
+all-by-test: $(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN)
+corba-by-test all-corba-by-test: $(TESTS_CORBA)
+mig-by-test all-mig-by-test: $(TESTS_MIG)
+sun-by-test all-sun-by-test: $(TESTS_SUN)
+
+.PHONY: stubs-by-test all-stubs-by-test all-by-test.stubs \
+	client-by-test all-client-by-test all-by-test.client \
+	clients-by-test all-clients-by-test all-by-test.clients \
+	server-by-test all-server-by-test all-by-test.server \
+	servers-by-test all-servers-by-test all-by-test.servers \
+	programs-by-test all-programs-by-test all-by-test.programs
+
+stubs-by-test all-stubs-by-test all-by-test.stubs: \
+		$(addsuffix .stubs,$(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN))
+client-by-test all-client-by-test all-by-test.client: \
+		$(addsuffix .client,$(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN))
+clients-by-test all-clients-by-test all-by-test.clients: \
+		$(addsuffix .clients,$(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN))
+server-by-test all-server-by-test all-by-test.server: \
+		$(addsuffix .server,$(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN))
+servers-by-test all-servers-by-test all-by-test.servers: \
+		$(addsuffix .servers,$(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN))
+programs-by-test all-programs-by-test all-by-test.programs: \
+		$(addsuffix .programs,$(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN))
+
+# XXX: I should add targets for actually running the test programs, timing the
+# programs, and collecting the results.
+
+###############################################################################
+###############################################################################
+####
+#### Here are the rules for building individual subdirectories.
+####
+###############################################################################
+###############################################################################
+
+.PHONY: $(TEST_SUBDIRS)
+
+$(TEST_SUBDIRS):
+	$(MAKE) -C $@
+
+fe/corba:
+fe/mig:
+fe/sun:
+pfe/corba:		fe/corba
+pfe/corbaxx:		fe/corba
+pfe/fluke:		fe/corba
+pfe/mig:		fe/mig
+pfe/sun:		fe/sun
+pbe/fluke:		pfe/fluke pfe/mig pfe/sun
+pbe/iiop:		pfe/corba pfe/mig pfe/sun
+pbe/iiopxx:		pfe/corbaxx
+pbe/khazana:		pfe/corba pfe/mig pfe/sun
+pbe/mach3mig:		pfe/corba pfe/mig pfe/sun
+pbe/sun:		pfe/corba         pfe/sun #*** pfe/mig
+pbe/trapeze:		pfe/corba pfe/mig pfe/sun
+programs/fluke:		pbe/fluke
+programs/iiop:		pbe/iiop
+programs/iiopxx:	pbe/iiopxx
+programs/mach3mig:	pbe/mach3mig
+programs/sun:		pbe/sun
+programs/trapeze:	pbe/trapeze
+
+#
+
+.PHONY: fe pfe pbe programs
+
+fe:		fe/corba fe/mig fe/sun
+pfe:		pfe/corba pfe/corbaxx pfe/fluke pfe/mig pfe/sun
+pbe:		pbe/fluke pbe/iiop pbe/iiopxx pbe/khazana pbe/mach3mig \
+		pbe/sun pbe/trapeze
+programs:	programs/fluke programs/iiop programs/iiopxx \
+		programs/mach3mig programs/sun programs/trapeze
+
+# Compiling stubs and test programs in the `programs/*' directories.
+
+.PHONY: $(addsuffix .stubs,$(TEST_PROGRAM_SUBDIRS)) \
+	$(addsuffix .client,$(TEST_PROGRAM_SUBDIRS)) \
+	$(addsuffix .clients,$(TEST_PROGRAM_SUBDIRS)) \
+	$(addsuffix .server,$(TEST_PROGRAM_SUBDIRS)) \
+	$(addsuffix .servers,$(TEST_PROGRAM_SUBDIRS)) \
+	$(addsuffix .programs,$(TEST_PROGRAM_SUBDIRS))
+
+$(addsuffix .stubs,$(TEST_PROGRAM_SUBDIRS)):
+	$(MAKE) pbe/$(basename $(notdir $@))
+	$(MAKE) -C $(basename $@) all-stubs
+
+$(addsuffix .client,$(TEST_PROGRAM_SUBDIRS)) \
+$(addsuffix .clients,$(TEST_PROGRAM_SUBDIRS)):
+	$(MAKE) pbe/$(basename $(notdir $@))
+	$(MAKE) -C $(basename $@) all-clients
+
+$(addsuffix .server,$(TEST_PROGRAM_SUBDIRS)) \
+$(addsuffix .servers,$(TEST_PROGRAM_SUBDIRS)):
+	$(MAKE) pbe/$(basename $(notdir $@))
+	$(MAKE) -C $(basename $@) all-servers
+
+$(addsuffix .programs,$(TEST_PROGRAM_SUBDIRS)):
+	$(MAKE) pbe/$(basename $(notdir $@))
+	$(MAKE) -C $(basename $@) all-programs
+
+# Compiling stubs and test programs in the `programs' directory.
+
+.PHONY: programs.stubs \
+	programs.client programs.clients \
+	programs.server programs.servers \
+	programs.programs
+
+programs.stubs: $(addsuffix .stubs,$(TEST_PROGRAM_SUBDIRS))
+programs.client programs.clients: $(addsuffix .clients,$(TEST_PROGRAM_SUBDIRS))
+programs.server programs.servers: $(addsuffix .servers,$(TEST_PROGRAM_SUBDIRS))
+programs.programs: $(addsuffix .programs,$(TEST_PROGRAM_SUBDIRS))
+
+###############################################################################
+###############################################################################
+####
+#### Here are the rules for individual tests: building, verifying, archetyping,
+#### and cleaning.
+####
+###############################################################################
+###############################################################################
+
+.PHONY: $(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN) \
+	$(addsuffix .verify,   $(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN)) \
+	$(addsuffix .archetype,$(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN)) \
+	$(addsuffix .stubs,    $(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN)) \
+	$(addsuffix .client,   $(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN)) \
+	$(addsuffix .clients,  $(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN)) \
+	$(addsuffix .server,   $(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN)) \
+	$(addsuffix .servers,  $(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN)) \
+	$(addsuffix .programs, $(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN)) \
+	$(addsuffix .clean,    $(TESTS_CORBA) $(TESTS_MIG) $(TESTS_SUN))
+
+# These targets DO NOT process the `programs' directory.
+$(TESTS_CORBA) \
+$(addsuffix .verify,$(TESTS_CORBA)) \
+$(addsuffix .archetype,$(TESTS_CORBA)):
+	$(MAKE) -C $(TEST_FE_CORBA_DIR) $@
+	$(MAKE) -C $(TEST_PFE_CORBA_DIR) $@
+	$(MAKE) -C $(TEST_PFE_CORBAXX_DIR) $@
+	$(MAKE) -C $(TEST_PFE_FLUKE_DIR) $@
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $@
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $@
+	$(MAKE) -C $(TEST_PBE_IIOPXX_DIR) $@
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $@
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $@
+	$(MAKE) -C $(TEST_PBE_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $@
+
+# These targets DO process the `programs' directory.
+$(addsuffix .stubs,$(TESTS_CORBA)) \
+$(addsuffix .client,$(TESTS_CORBA)) \
+$(addsuffix .clients,$(TESTS_CORBA)) \
+$(addsuffix .server,$(TESTS_CORBA)) \
+$(addsuffix .servers,$(TESTS_CORBA)) \
+$(addsuffix .programs,$(TESTS_CORBA)):
+	$(MAKE) $(basename $@)
+	$(MAKE) -C $(TEST_PROGRAMS_FLUKE_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_IIOP_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_IIOPXX_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_MACH3MIG_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_TRAPEZE_DIR) $@
+
+# These targets DO process the `programs' directory.
+$(addsuffix .clean,$(TESTS_CORBA)):
+	$(MAKE) -C $(TEST_FE_CORBA_DIR) $@
+	$(MAKE) -C $(TEST_PFE_CORBA_DIR) $@
+	$(MAKE) -C $(TEST_PFE_CORBAXX_DIR) $@
+	$(MAKE) -C $(TEST_PFE_FLUKE_DIR) $@
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $@
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $@
+	$(MAKE) -C $(TEST_PBE_IIOPXX_DIR) $@
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $@
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $@
+	$(MAKE) -C $(TEST_PBE_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_FLUKE_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+	$(MAKE) -C $(TEST_PROGRAMS_IIOP_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+	$(MAKE) -C $(TEST_PROGRAMS_IIOPXX_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+	$(MAKE) -C $(TEST_PROGRAMS_MACH3MIG_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+	$(MAKE) -C $(TEST_PROGRAMS_SUN_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+	$(MAKE) -C $(TEST_PROGRAMS_TRAPEZE_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+
+# These targets DO NOT process the `programs' directory.
+$(TESTS_MIG) \
+$(addsuffix .verify,$(TESTS_MIG)) \
+$(addsuffix .archetype,$(TESTS_MIG)):
+	$(MAKE) -C $(TEST_FE_MIG_DIR) $@
+	$(MAKE) -C $(TEST_PFE_MIG_DIR) $@
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $@
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $@
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $@
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $@
+#***	$(MAKE) -C $(TEST_PBE_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $@
+
+# These targets DO process the `programs' directory.
+$(addsuffix .stubs,$(TESTS_MIG)) \
+$(addsuffix .client,$(TESTS_MIG)) \
+$(addsuffix .clients,$(TESTS_MIG)) \
+$(addsuffix .server,$(TESTS_MIG)) \
+$(addsuffix .servers,$(TESTS_MIG)) \
+$(addsuffix .programs,$(TESTS_MIG)):
+	$(MAKE) $(basename $@)
+	$(MAKE) -C $(TEST_PROGRAMS_FLUKE_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_IIOP_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_MACH3MIG_DIR) $@
+#***	$(MAKE) -C $(TEST_PROGRAMS_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_TRAPEZE_DIR) $@
+
+# These targets DO process the `programs' directory.
+$(addsuffix .clean,$(TESTS_MIG)):
+	$(MAKE) -C $(TEST_FE_MIG_DIR) $@
+	$(MAKE) -C $(TEST_PFE_MIG_DIR) $@
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $@
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $@
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $@
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $@
+#***	$(MAKE) -C $(TEST_PBE_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_FLUKE_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+	$(MAKE) -C $(TEST_PROGRAMS_IIOP_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+	$(MAKE) -C $(TEST_PROGRAMS_MACH3MIG_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+#***	$(MAKE) -C $(TEST_PROGRAMS_SUN_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+	$(MAKE) -C $(TEST_PROGRAMS_TRAPEZE_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+
+# These targets DO NOT process the `programs' directory.
+$(TESTS_SUN) \
+$(addsuffix .verify,$(TESTS_SUN)) \
+$(addsuffix .archetype,$(TESTS_SUN)):
+	$(MAKE) -C $(TEST_FE_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PFE_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $@
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $@
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $@
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $@
+	$(MAKE) -C $(TEST_PBE_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $@
+
+# These targets DO process the `programs' directory.
+$(addsuffix .stubs,$(TESTS_SUN)) \
+$(addsuffix .client,$(TESTS_SUN)) \
+$(addsuffix .clients,$(TESTS_SUN)) \
+$(addsuffix .server,$(TESTS_SUN)) \
+$(addsuffix .servers,$(TESTS_SUN)) \
+$(addsuffix .programs,$(TESTS_SUN)):
+	$(MAKE) $(basename $@)
+	$(MAKE) -C $(TEST_PROGRAMS_FLUKE_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_IIOP_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_MACH3MIG_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_TRAPEZE_DIR) $@
+
+# These targets DO process the `programs' directory.
+$(addsuffix .clean,$(TESTS_SUN)):
+	$(MAKE) -C $(TEST_FE_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PFE_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $@
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $@
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $@
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $@
+	$(MAKE) -C $(TEST_PBE_SUN_DIR) $@
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $@
+	$(MAKE) -C $(TEST_PROGRAMS_FLUKE_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+	$(MAKE) -C $(TEST_PROGRAMS_IIOP_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+	$(MAKE) -C $(TEST_PROGRAMS_MACH3MIG_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+	$(MAKE) -C $(TEST_PROGRAMS_SUN_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+	$(MAKE) -C $(TEST_PROGRAMS_TRAPEZE_DIR) $(TEST_PROGRAMS_NOENVS_DEF) $@
+
+###############################################################################
+###############################################################################
+####
+#### Here are the rules for doing ``longitudinal'' compilation of either (1)
+#### the CORBA-based tests, (2) the MIG-based tests, or (3) the Sun RPC-based
+#### tests.
+####
+###############################################################################
+###############################################################################
+
+.PHONY: corba.stubs all-corba.stubs \
+	corba.client all-corba.client corba.clients all-corba.clients \
+	corba.server all-corba.server corba.servers all-corba.servers \
+	corba.programs all-corba.programs\
+	mig.stubs all-mig.stubs \
+	mig.client all-mig.client mig.clients all-mig.clients \
+	mig.server all-mig.server mig.servers all-mig.servers \
+	mig.programs all-mig.programs \
+	sun.stubs all-sun.stubs \
+	sun.client all-sun.client sun.clients all-sun.clients \
+	sun.server all-sun.server sun.servers all-sun.servers \
+	sun.programs all-sun.programs
+
+corba.stubs all-corba.stubs \
+corba.client all-corba.client corba.clients all-corba.clients \
+corba.server all-corba.server corba.servers all-corba.servers \
+corba.programs all-corba.programs: corba
+	$(MAKE) -C $(TEST_PROGRAMS_FLUKE_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PROGRAMS_IIOP_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PROGRAMS_IIOPXX_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PROGRAMS_MACH3MIG_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PROGRAMS_SUN_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PROGRAMS_TRAPEZE_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_CORBA))
+
+mig.stubs all-mig.stubs \
+mig.client all-mig.client mig.clients all-mig.clients \
+mig.server all-mig.server mig.servers all-mig.servers \
+mig.programs all-mig.programs: mig
+	$(MAKE) -C $(TEST_PROGRAMS_FLUKE_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PROGRAMS_IIOP_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PROGRAMS_MACH3MIG_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_MIG))
+#***	$(MAKE) -C $(TEST_PROGRAMS_SUN_DIR) \
+#***		$(addsuffix $(suffix $@),$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PROGRAMS_TRAPEZE_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_MIG))
+
+sun.stubs all-sun.stubs \
+sun.client all-sun.client sun.clients all-sun.clients \
+sun.server all-sun.server sun.servers all-sun.servers \
+sun.programs all-sun.programs: sun
+	$(MAKE) -C $(TEST_PROGRAMS_FLUKE_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PROGRAMS_IIOP_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PROGRAMS_MACH3MIG_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PROGRAMS_SUN_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PROGRAMS_TRAPEZE_DIR) \
+		$(addsuffix $(suffix $@),$(TESTS_SUN))
+
+# The test-by-test versions of these targets:
+
+.PHONY: corba-by-test.stubs all-corba-by-test.stubs \
+	corba-by-test.client all-corba-by-test.client \
+	corba-by-test.clients all-corba-by-test.clients \
+	corba-by-test.server all-corba-by-test.server \
+	corba-by-test.servers all-corba-by-test.servers \
+	corba-by-test.programs all-corba-by-test.programs\
+	mig-by-test.stubs all-mig-by-test.stubs \
+	mig-by-test.client all-mig-by-test.client \
+	mig-by-test.clients all-mig-by-test.clients \
+	mig-by-test.server all-mig-by-test.server \
+	mig-by-test.servers all-mig-by-test.servers \
+	mig-by-test.programs all-mig-by-test.programs \
+	sun-by-test.stubs all-sun-by-test.stubs \
+	sun-by-test.client all-sun-by-test.client \
+	sun-by-test.clients all-sun-by-test.clients \
+	sun-by-test.server all-sun-by-test.server \
+	sun-by-test.servers all-sun-by-test.servers \
+	sun-by-test.programs all-sun-by-test.programs
+
+corba-by-test.stubs all-corba-by-test.stubs: \
+					$(addsuffix .stubs,$(TESTS_CORBA))
+corba-by-test.client all-corba-by-test.client: \
+					$(addsuffix .client,$(TESTS_CORBA))
+corba-by-test.clients all-corba-by-test.clients: \
+					$(addsuffix .clients,$(TESTS_CORBA))
+corba-by-test.server all-corba-by-test.server: \
+					$(addsuffix .server,$(TESTS_CORBA))
+corba-by-test.servers all-corba-by-test.servers: \
+					$(addsuffix .servers,$(TESTS_CORBA))
+corba-by-test.programs all-corba-by-test.programs: \
+					$(addsuffix .programs,$(TESTS_CORBA))
+
+mig-by-test.stubs all-mig-by-test.stubs: \
+					$(addsuffix .stubs,$(TESTS_MIG))
+mig-by-test.client all-mig-by-test.client: \
+					$(addsuffix .client,$(TESTS_MIG))
+mig-by-test.clients all-mig-by-test.clients: \
+					$(addsuffix .clients,$(TESTS_MIG))
+mig-by-test.server all-mig-by-test.server: \
+					$(addsuffix .server,$(TESTS_MIG))
+mig-by-test.servers all-mig-by-test.servers: \
+					$(addsuffix .servers,$(TESTS_MIG))
+mig-by-test.programs all-mig-by-test.programs: \
+					$(addsuffix .programs,$(TESTS_MIG))
+
+sun-by-test.stubs all-sun-by-test.stubs: \
+					$(addsuffix .stubs,$(TESTS_SUN))
+sun-by-test.client all-sun-by-test.client: \
+					$(addsuffix .client,$(TESTS_SUN))
+sun-by-test.clients all-sun-by-test.clients: \
+					$(addsuffix .clients,$(TESTS_SUN))
+sun-by-test.server all-sun-by-test.server: \
+					$(addsuffix .server,$(TESTS_SUN))
+sun-by-test.servers all-sun-by-test.servers: \
+					$(addsuffix .servers,$(TESTS_SUN))
+sun-by-test.programs all-sun-by-test.programs: \
+					$(addsuffix .programs,$(TESTS_SUN))
+
+###############################################################################
+###############################################################################
+####
+#### Here are the rules for verifying entire test directories.
+####
+###############################################################################
+###############################################################################
+
+.PHONY: verify all-verify all.verify $(addsuffix .verify,$(TEST_SUBDIRS))
+
+verify all-verify all.verify: $(addsuffix .verify,\
+					  $(TEST_SUBDIRS_EXCEPT_PROGRAMS))
+
+$(addsuffix .verify,$(TEST_SUBDIRS)):
+	$(MAKE) -C $(basename $@) verify
+
+#
+
+.PHONY: fe.verify pfe.verify pbe.verify programs.verify
+
+fe.verify:		fe/corba.verify \
+			fe/mig.verify \
+			fe/sun.verify
+pfe.verify:		pfe/corba.verify \
+			pfe/corbaxx.verify \
+			pfe/fluke.verify \
+			pfe/mig.verify \
+			pfe/sun.verify
+pbe.verify:		pbe/fluke.verify \
+			pbe/iiop.verify \
+			pbe/iiopxx.verify \
+			pbe/khazana.verify \
+			pbe/mach3mig.verify \
+			pbe/sun.verify \
+			pbe/trapeze.verify
+programs.verify:	programs/fluke.verify \
+			programs/iiop.verify \
+			programs/iiopxx.verify \
+			programs/mach3mig.verify \
+			programs/sun.verify \
+			programs/trapeze.verify
+
+#
+
+.PHONY: corba.verify all-corba.verify \
+	mig.verify all-mig.verify \
+	sun.verify all-sun.verify
+
+corba.verify all-corba.verify:	fe/corba.verify pfe/corba.verify \
+				pfe/corbaxx.verify pfe/fluke.verify
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $(addsuffix .verify,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $(addsuffix .verify,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_IIOPXX_DIR) $(addsuffix .verify,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $(addsuffix .verify,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $(addsuffix .verify,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_SUN_DIR) $(addsuffix .verify,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $(addsuffix .verify,$(TESTS_CORBA))
+
+mig.verify all-mig.verify: fe/mig.verify pfe/mig.verify
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $(addsuffix .verify,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $(addsuffix .verify,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $(addsuffix .verify,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $(addsuffix .verify,$(TESTS_MIG))
+#***	$(MAKE) -C $(TEST_PBE_SUN_DIR) $(addsuffix .verify,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $(addsuffix .verify,$(TESTS_MIG))
+
+sun.verify all-sun.verify: fe/sun.verify pfe/sun.verify
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $(addsuffix .verify,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $(addsuffix .verify,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $(addsuffix .verify,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $(addsuffix .verify,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_SUN_DIR) $(addsuffix .verify,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $(addsuffix .verify,$(TESTS_SUN))
+
+# The test-by-test versions of these targets:
+
+.PHONY: verify-by-test all-verify-by-test all-by-test.verify
+
+verify-by-test all-verify-by-test all-by-test.verify: \
+			$(addsuffix .verify,$(TESTS_CORBA) $(TESTS_SUN))
+
+.PHONY: corba-by-test.verify all-corba-by-test.verify \
+	mig-by-test.verify all-mig-by-test.verify \
+	sun-by-test.verify all-sun-by-test.verify
+
+corba-by-test.verify all-corba-by-test.verify: \
+					$(addsuffix .verify,$(TESTS_CORBA))
+
+mig-by-test.verify all-mig-by-test.verify: \
+					$(addsuffix .verify,$(TESTS_MIG))
+
+sun-by-test.verify all-sun-by-test.verify: \
+					$(addsuffix .verify,$(TESTS_SUN))
+
+###############################################################################
+###############################################################################
+####
+#### Here are the rules for archetyping entire test directories.
+####
+###############################################################################
+###############################################################################
+
+.PHONY: archetype all-archetype all.archetype \
+	$(addsuffix .archetype,$(TEST_SUBDIRS))
+
+archetype all-archetype all.archetype: $(addsuffix .archetype,\
+					 $(TEST_SUBDIRS_EXCEPT_PROGRAMS))
+
+$(addsuffix .archetype,$(TEST_SUBDIRS)):
+	$(MAKE) -C $(basename $@) archetype
+
+#
+
+.PHONY: fe.archetype pfe.archetype pbe.archetype programs.archetype
+
+fe.archetype:		fe/corba.archetype \
+			fe/mig.archetype \
+			fe/sun.archetype
+pfe.archetype:		pfe/corba.archetype \
+			pfe/corbaxx.archetype \
+			pfe/fluke.archetype \
+			pfe/mig.archetype \
+			pfe/sun.archetype
+pbe.archetype:		pbe/fluke.archetype \
+			pbe/iiop.archetype \
+			pbe/iiopxx.archetype \
+			pbe/khazana.archetype \
+			pbe/mach3mig.archetype \
+			pbe/sun.archetype \
+			pbe/trapeze.archetype
+programs.archetype:	programs/fluke.archetype
+			programs/iiop.archetype \
+			programs/iiopxx.archetype \
+			programs/mach3mig.archetype \
+			programs/sun.archetype \
+			programs/trapeze.archetype
+
+#
+
+.PHONY: corba.archetype all-corba.archetype \
+	mig.archetype all-mig.archetype \
+	sun.archetype all-sun.archetype
+
+corba.archetype all-corba.archetype: fe/corba.archetype pfe/corba.archetype \
+				     pfe/corbaxx.archetype pfe/fluke.archetype
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $(addsuffix .archetype,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $(addsuffix .archetype,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_IIOPXX_DIR) \
+		$(addsuffix .archetype,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) \
+		$(addsuffix .archetype,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) \
+		$(addsuffix .archetype,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_SUN_DIR) $(addsuffix .archetype,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) \
+		$(addsuffix .archetype,$(TESTS_CORBA))
+
+mig.archetype all-mig.archetype: fe/mig.archetype pfe/mig.archetype
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $(addsuffix .archetype,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $(addsuffix .archetype,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $(addsuffix .archetype,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) \
+		$(addsuffix .archetype,$(TESTS_MIG))
+#***	$(MAKE) -C $(TEST_PBE_SUN_DIR) $(addsuffix .archetype,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) \
+		$(addsuffix .archetype,$(TESTS_MIG))
+
+sun.archetype all-sun.archetype: fe/sun.archetype pfe/sun.archetype
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $(addsuffix .archetype,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $(addsuffix .archetype,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $(addsuffix .archetype,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) \
+		$(addsuffix .archetype,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_SUN_DIR) $(addsuffix .archetype,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) \
+		$(addsuffix .archetype,$(TESTS_SUN))
+
+# The test-by-test versions of these targets:
+
+.PHONY: archetype-by-test all-archetype-by-test all-by-test.archetype
+
+archetype-by-test all-archetype-by-test all-by-test.archetype: \
+			$(addsuffix .archetype,$(TESTS_CORBA) $(TESTS_SUN))
+
+.PHONY: corba-by-test.archetype all-corba-by-test.archetype \
+	mig-by-test.archetype all-mig-by-test.archetype \
+	sun-by-test.archetype all-sun-by-test.archetype
+
+corba-by-test.archetype all-corba-by-test.archetype: \
+					$(addsuffix .archetype,$(TESTS_CORBA))
+
+mig-by-test.archetype all-mig-by-test.archetype: \
+					$(addsuffix .archetype,$(TESTS_MIG))
+
+sun-by-test.archetype all-sun-by-test.archetype: \
+					$(addsuffix .archetype,$(TESTS_SUN))
+
+###############################################################################
+###############################################################################
+####
+#### Here are the rules for cleaning entire test directories.
+####
+###############################################################################
+###############################################################################
+
+.PHONY: clean all-clean all.clean $(addsuffix .clean,$(TEST_SUBDIRS))
+
+clean all-clean all.clean: $(addsuffix .clean,$(TEST_SUBDIRS))
+
+$(addsuffix .clean,$(TEST_SUBDIRS_EXCEPT_PROGRAMS)):
+	$(MAKE) -C $(basename $@) clean
+
+$(addsuffix .clean,$(TEST_PROGRAM_SUBDIRS)):
+	$(MAKE) -C $(basename $@) $(TEST_PROGRAMS_NOENVS_DEF) clean
+
+#
+
+.PHONY: fe.clean pfe.clean pbe.clean programs.clean
+
+fe.clean:		fe/corba.clean \
+			fe/mig.clean \
+			fe/sun.clean
+pfe.clean:		pfe/corba.clean \
+			pfe/corbaxx.clean \
+			pfe/fluke.clean \
+			pfe/mig.clean \
+			pfe/sun.clean
+pbe.clean:		pbe/fluke.clean \
+			pbe/iiop.clean \
+			pbe/iiopxx.clean \
+			pbe/khazana.clean \
+			pbe/mach3mig.clean \
+			pbe/sun.clean \
+			pbe/trapeze.clean
+programs.clean:		programs/fluke.clean \
+			programs/iiop.clean \
+			programs/iiopxx.clean \
+			programs/mach3mig.clean \
+			programs/sun.clean \
+			programs/trapeze.clean
+
+#
+
+.PHONY: corba.clean all-corba.clean \
+	mig.clean all-mig.clean \
+	sun.clean all-sun.clean
+
+corba.clean all-corba.clean: fe/corba.clean pfe/corba.clean pfe/corbaxx.clean \
+			     pfe/fluke.clean
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $(addsuffix .clean,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $(addsuffix .clean,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_IIOPXX_DIR) $(addsuffix .clean,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $(addsuffix .clean,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $(addsuffix .clean,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_SUN_DIR) $(addsuffix .clean,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $(addsuffix .clean,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PROGRAMS_FLUKE_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PROGRAMS_IIOP_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PROGRAMS_IIOPXX_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PROGRAMS_MACH3MIG_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PROGRAMS_SUN_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_CORBA))
+	$(MAKE) -C $(TEST_PROGRAMS_TRAPEZE_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_CORBA))
+
+mig.clean all-mig.clean: fe/mig.clean pfe/mig.clean
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $(addsuffix .clean,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $(addsuffix .clean,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $(addsuffix .clean,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $(addsuffix .clean,$(TESTS_MIG))
+#***	$(MAKE) -C $(TEST_PBE_SUN_DIR) $(addsuffix .clean,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $(addsuffix .clean,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PROGRAMS_FLUKE_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PROGRAMS_IIOP_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PROGRAMS_MACH3MIG_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_MIG))
+#***	$(MAKE) -C $(TEST_PROGRAMS_SUN_DIR) \
+#***		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_MIG))
+	$(MAKE) -C $(TEST_PROGRAMS_TRAPEZE_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_MIG))
+
+sun.clean all-sun.clean: fe/sun.clean pfe/sun.clean
+	$(MAKE) -C $(TEST_PBE_FLUKE_DIR) $(addsuffix .clean,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_IIOP_DIR) $(addsuffix .clean,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_KHAZANA_DIR) $(addsuffix .clean,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_MACH3MIG_DIR) $(addsuffix .clean,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_SUN_DIR) $(addsuffix .clean,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PBE_TRAPEZE_DIR) $(addsuffix .clean,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PROGRAMS_FLUKE_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PROGRAMS_IIOP_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PROGRAMS_MACH3MIG_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PROGRAMS_SUN_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_SUN))
+	$(MAKE) -C $(TEST_PROGRAMS_TRAPEZE_DIR) \
+		$(TEST_PROGRAMS_NOENVS_DEF) $(addsuffix .clean,$(TESTS_SUN))
+
+# The test-by-test versions of these targets:
+
+.PHONY: clean-by-test all-clean-by-test all-by-test.clean
+
+clean-by-test all-clean-by-test all-by-test.clean: \
+			$(addsuffix .clean,$(TESTS_CORBA) $(TESTS_SUN))
+
+.PHONY: corba-by-test.clean all-corba-by-test.clean \
+	mig-by-test.clean all-mig-by-test.clean \
+	sun-by-test.clean all-sun-by-test.clean
+
+corba-by-test.clean all-corba-by-test.clean: \
+					$(addsuffix .clean,$(TESTS_CORBA))
+
+mig-by-test.clean all-mig-by-test.clean: \
+					$(addsuffix .clean,$(TESTS_MIG))
+
+sun-by-test.clean all-sun-by-test.clean: \
+					$(addsuffix .clean,$(TESTS_SUN))
+
+## End of file.
+

@@ -1,0 +1,4 @@
+This directory contains the source code for `aoid', a pretty-printer for AOI
+files.  When the AOI format is changed, this tool should be modified to reflect
+those changes.  Given a `filename.aoi', the `aoid' program will create a
+human-readable `filename.aod' file.

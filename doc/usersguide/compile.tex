@@ -1,0 +1,360 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1997, 1998, 1999 The University of Utah and the Computer
+%% Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\emph{This chapter is adapted from the \filename{INSTALL} file located in the
+root of the Flick distribution source tree and from the \filename{README} file
+located in the \filename{test} directory.}
+
+\hspace{0pt}
+
+\noindent Flick~2.1 has been successfully built and tested on the following
+platforms:
+
+\begin{center}
+\begin{tabular}{lll}
+  \textbf{Operating System}	& \textbf{Host/Processor}
+				& \textbf{Compiler} \\
+  \hline
+  FreeBSD 3.0-CURRENT		& Intel Pentium II
+				& \program{gcc}/\program{g++} 2.95.1 \\
+  FreeBSD 3.0-CURRENT		& Intel Pentium II
+				& \program{gcc}/\program{g++} 2.7.2.1 \\
+%
+% XXX --- Flick 2.1 works on FreeBSD 2.2.6-BETA, but no need to list it.
+%
+% FreeBSD 2.2.6-BETA		& Intel Pentium II
+%				& \program{gcc}/\program{g++} 2.7.2.1 \\
+  Linux 2.2.12			& Intel Pentium II
+				& \program{egcs} 1.1.2 \\
+  SunOS 5.7 (Solaris)		& Sun 4u SPARC
+				& \program{gcc}/\program{g++} 2.8.0 \\
+  SunOS 5.7 (Solaris)		& Sun 4u SPARC
+				& Sun WorkShop C/C++ 5.0 \\
+  SunOS 5.7 (Solaris)		& Sun 4u SPARC
+				& Sun WorkShop C/C++ 4.2 \\
+%
+% XXX --- We don't have this OS anymore.
+%
+% SunOS 4.1.3			& Sun 4m SS10
+%				& \program{gcc}/\program{g++} 2.7.2 \\
+%
+% XXX --- Flick 2.1 was not tested on HPUX 10.
+%
+% HP-UX 10.20			& HP 9000/780 PA-RISC 1.1
+%				& \program{gcc}/\program{g++} 2.7.2.1 \\
+%
+% XXX --- Flick 2.1 was not tested on HPUX 9.
+%
+% HP-UX 9.03			& HP 9000/712 PA-RISC 1.1
+%				& \program{gcc}/\program{g++} 2.7.2.2.f.2 \\
+%
+% XXX --- Flick 2.1 was not tested on AIX.
+%
+% AIX 4.1.4			& IBM RS6000 PowerPC 604
+%				& \program{gcc}/\program{g++} 2.7.2 \\
+%
+  4.3+ BSD			& HP 9000/J210XC PA-RISC 1.1
+				& \program{gcc}/\program{g++} 2.7.2 \\
+  IRIX64 6.5			& SGI Origin 2000
+				& MIPSpro 64-bit C/C++ 7.30 \\
+  Windows 95			& Intel Pentium II
+				& \program{egcs} 1.1 \\
+				&
+				& \quad{}with Cygnus' Cygwin library b20.1 \\
+  Windows NT 4.0		& Intel Pentium Pro
+				& \program{egcs} 1.1 \\
+				&
+				& \quad{}with Cygnus' Cygwin library b20.1 \\
+  \hline
+\end{tabular}
+\end{center}
+
+FreeBSD is the current Flick development platform.  Flick-generated stubs have
+also been tested on Mach/Lites and our Fluke OS\@.  If you build Flick on a
+platform other than the ones listed above, the Flick developers would love to
+know about it.  Of course, if the build fails, they would like to know about
+that, too.  Send build reports, bug reports, praise and damnation to
+\flickbugsemail.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Building the Flick Programs}
+\label{sec:Building the Flick Programs}
+
+In order to build Flick you will need:
+
+\begin{commandlist}
+  \item[\textrm{An ANSI C compiler}]
+  %
+  \program{gcc} 2.7.2.1 is our usual compiler.  Flick has previously been built
+  with \program{gcc} 2.6.3 and 2.5.8.\footnote{Using
+  \program{gcc}/\program{g++} 2.5.8 may cause problems with debugging.  Flick's
+  data structures are not fully specified in the debugging information output
+  by early versions of \program{g++}.  This causes \program{gdb} not to examine
+  many data structures fully.  We recommend that you use \program{g++} 2.7.2.1
+  in order to avoid this problem.}
+
+  \item[\textrm{An ANSI C++ compiler}]
+  %
+  \program{g++} 2.7.2.1 is our usual compiler.  Again, Flick has worked with
+  \program{g++} 2.6.3 / 2.5.8 in the past.
+
+  \item[\textrm{GNU} make]
+  %
+  Versions 3.69, 3.74, 3.75, and 3.77 have been tested.
+
+  \item[flex \orcommand{} lex]
+  %
+  \program{flex} versions 2.4.6, 2.5.2, and 2.5.4 have been tested.
+  Vendor-provided versions of \program{lex} should work, but this has not been
+  extensively tested.
+
+  \item[bison \orcommand{} yacc]
+  %
+  \program{bison} version 1.25 has been tested; version 1.22 is known not to
+  work.   Vendor-provided versions of \program{yacc} should work, but have not
+  been extensively tested.
+
+  \item[\textrm{Disk space}]
+  %
+  You will need \~{}140MB of free disk space for a fully debuggable Flick
+  object tree, and an additional 100--200MB in order to run the Flick tests.
+\end{commandlist}
+
+Once you have those tools, you must unpack the Flick distribution \program{tar}
+file and create a build tree to contain the object files.  If you create a
+build directory called \filename{obj}, your directory setup would look as
+follows:
+
+\begin{filenamelist}
+  \item[~/flick-2.1]  The Flick source tree, unpacked from
+  \filename{flick-2.1.tar.gz}.
+
+  \item[~/obj] The Flick object tree, which you will use to build Flick.
+\end{filenamelist}
+
+\noindent In that configuration, you would type the following commands in order
+to first configure Flick for your operating system and then compile all of the
+Flick tools:\footnote{Cygwin users should read the
+\filename{support/cygwin32/README} file to learn about additional support files
+that must be installed before Flick can be compiled on Windows 95/NT with the
+Cygwin library and tools.}
+
+\begin{verbatim}
+        cd ~/obj
+        ../flick-2.1/configure
+        make
+\end{verbatim}
+
+\noindent If all goes well, links to the suite of Flick programs will be
+installed in \filename{~/obj/bin}.  Section~\ref{sec:Installing Flick} below
+explains how to install the Flick tools in a place outside of the Flick object
+tree.  Section~\ref{sec:Testing Flick} explains how to test Flick against the
+set of included sample IDL inputs and driver programs.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Building the Flick Runtime Libraries}
+\label{sec:Building the Flick Runtime Libraries}
+
+Flick's \program{configure} script automatically determines which of Flick's
+runtime libraries should be built and installed for your system.  In general,
+the IIOP and ONC/TCP runtimes (for CORBA C language stubs and ONC~RPC C
+language stubs, respectively) are always built.  The other, more
+special-purpose runtime libraries are built only when \program{configure}
+detects that special header files are available on your system.
+
+In particular, Flick's \program{configure} script looks for the following
+header files in order to decide which runtime libraries will be compiled on
+your system:
+
+\begin{filenamelist}
+  \item[<sys/socket.h>] If this file is found, the IIOP and ONC/TCP runtimes
+  will be built.
+
+  \item[<mach/mach_types.h>] If this file exists, the Mach~3 runtime will be
+  built.
+
+  \item[<tpz_api.h>] If this file is found, the Trapeze runtime will be built.
+  \program{configure} will look in \filename{$(TPZ_HOME)/include} for this
+  header.
+
+  \item[<gm.h>] If this file exists, the Khazana runtime will be built.
+  \program{configure} will look in \filename{$(KHAZANA_ROOT)/src} for this
+  file.
+\end{filenamelist}
+
+Flick's C++ CORBA stub generator creates stubs that work with TAO, the
+real-time ORB from Washington University in St.\ Louis.  You will need a copy
+of TAO version~\taoversion{} (from \taourl{} or \taosrcurl{}) in order to make
+use of Flick's optimized C++ CORBA stubs.  TAO provides all the required
+runtime support for Flick-generated C++ stubs, and therefore, there is no
+library in Flick's \filename{runtime} directory for C++ CORBA stubs.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Installing Flick}
+\label{sec:Installing Flick}
+
+You can install the Flick binaries, libraries, and header files in a
+``standard'' place on your system by typing the following command in the root
+directory of the Flick object tree (\filename{~/obj} in our example
+configuration):
+
+\begin{verbatim}
+        make install
+\end{verbatim}
+
+\noindent By default, the root installation directory is \filename{/usr/local}.
+You can change this default by specifying the \option{--prefix} option to
+\program{configure}, e.g.:
+
+\begin{verbatim}
+        ../flick-2.1/configure --prefix=/usr/local/flick
+
+        make            # to build Flick
+        make install    # to install Flick under `/usr/local/flick'
+\end{verbatim}
+
+It is not necessary to ``install'' Flick in order to run the provided tests (as
+described in the next section) or to build your own stubs.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Testing Flick}
+\label{sec:Testing Flick}
+
+Flick comes with a set of test IDL inputs and example programs; these are
+located in the \filename{test} subdirectory of the distribution source tree.  A
+\program{make} in the root of the Flick object tree will \emph{not} run the
+Flick tools against these test inputs.  However, running your newly compiled
+tools against the provided tests is easy.  In a sentence: Go to the
+\filename{test} subdirectory of your Flick object tree and type \program{make}.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Running Flick}
+\label{subsec:Running Flick}
+
+You will need \~{}100MB of free disk space in order to run Flick against all of
+the provided test IDL inputs, and an \emph{additional} \~{}100MB if you want to
+run regression tests.  To run regression tests you must acquire the ``known
+good'' output files from
+\urlftp{ftp://flux.cs.utah.edu/flux/flick/2.1/flick-2.1-tests.tar.gz}.
+Download that file and unpack it \emph{on top of your Flick source tree}.  For
+example, if the root of your Flick source tree is \filename{~/flick-2.1}, you
+would install the regression test files by typing:
+
+\begin{verbatim}
+        cd ~
+        tar xf flick-2.1-tests.tar      # Adds to `~/flick-2.1'
+\end{verbatim}
+
+Once you have found enough disk space and (optionally) installed the files for
+regression testing, go into the \filename{test} directory of your Flick
+\emph{object tree} (\filename{~/obj/test} in our running example) and type one
+of the following commands:
+
+\begin{commandlist}
+  \item[make]
+  %
+  \ldots{}if you simply want to run all of the Flick compiler components.  The
+  generated `\filename{.c}'/`\filename{.cc}' and `\filename{.h}' files will be
+  output into the \filename{pbe/*} subdirectories of \filename{test}.  If
+  everything runs smoothly, Flick is most likely working correctly.  (You
+  should ignore warnings from the Trapeze back end about maximum message sizes,
+  array sizes, and unsupported features.)
+
+  \item[make verify]
+  %
+  \ldots{}if you want to run all of the Flick compiler components \emph{and}
+  compare their outputs to ``known good archetype'' copies of the output files
+  (i.e., do regression testing).\footnote{The regression tests are slightly
+  different on Windows platforms because a text file line break consists of a
+  CR/LF pair rather than just LF as on UNIX systems.  Thus, the generated code
+  files will differ, and the verification will fail.  However, one can still
+  perform the regression tests provided that the comparison of text files is
+  done in text mode.  The comparison program can be overridden by supplying a
+  definition for \texttt{CMP} on the command line as follows:
+  \texttt{make~CMP=diff~verify}.}
+\end{commandlist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Compiling and Running the Test Programs}
+\label{subsec:Compiling and Running the Test Programs}
+
+The above commands will produce the stub source code files, but will not
+attempt to compile that code or link it with client or server application code.
+% (Flick's \program{make} setup isn't smart enough to determine which of the
+% runtime libraries can be built on your system, and therefore, doesn't know
+% which of the test programs can be compiled and linked.  Refer to
+% Section~\ref{sec:Building the Flick Runtime Libraries} for help building and
+% installing Flick's runtime libraries.)
+
+The test programs in \filename{test/programs/*} illustrate how client and
+server code can use Flick's IIOP, ONC/TCP, Mach~3, and Trapeze runtime
+libraries in conjunction with Flick-generated stubs.
+%% XXX --- What about TAO and Khazana?
+To compile and link the programs in one of these directories, you must first
+compile the corresponding runtime library and then create the stubs that will
+be compiled and linked to create the various client and server programs.  Once
+those steps are complete, you can navigate to the \filename{test} directory and
+\program{make} the directory that you want to compile, e.g.:
+
+\begin{verbatim}
+        make programs/iiop
+\end{verbatim}
+
+\noindent That command will compile and link the programs that exercise the
+IIOP stubs.  You may navigate into the \filename{programs/iiop} directory in
+order to run the newly compiled test programs.  Refer to Chapter~\ref{cha:Using
+Flick's Runtime Libraries} for lists of the available command line options.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Additional Tests and Test Programs}
+\label{subsec:Additional Tests and Test Programs}
+
+The \filename{README} file in Flick's \filename{test} source directory contains
+additional, more detailed instructions for compiling the various test IDL
+inputs and programs.
+
+The \filename{test/examples/phone} directory contains the source code for the
+example application programs developed in Chapter~\ref{cha:Putting It Together:
+A Phonebook Application}.  All of the other example application programs in
+\filename{test/examples}, however, are out of date and may not compile at all.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

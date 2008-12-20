@@ -1,0 +1,139 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1997, 1999 The University of Utah and the Computer Systems
+%% Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\emph{This guide assumes that the reader is familiar with the basics of
+distributed application programming: RPCs, RMIs, IDLs, and the various
+distributed computing standards such as CORBA and ONC~RPC\@.  Readers who are
+unfamiliar with distributed computing should review these terms before
+proceeding through this manual.}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{What is Flick?}
+\label{sec:What is Flick?}
+
+Flick is a flexible and optimizing compiler for interface definition languages
+(IDLs).  The name ``Flick'' is an acronym for ``Flexible IDL Compiler Kit.''
+Like a traditional IDL compiler, Flick can read a high-level specification
+describing an interface to a software component or module, and from that,
+produce special functions called \emph{stubs} to implement the interface in the
+C or C++ programming language.  The stubs implement remote procedure call (RPC)
+or remote method invocation (RMI) semantics and allow separate client and
+server processes to communicate through what appear to be ordinary, local
+procedure calls or method invocations.
+
+Unlike traditional IDL compilers, however, Flick is implemented as a set of
+programs, each implementing a single phase of compilation.  These separate
+programs allow Flick to support features beyond the capabilities of ordinary
+IDL compilers:
+
+\begin{itemize}
+  \item \emph{Multiple IDLs.}
+  %
+  Most RPC and distributed object systems, including CORBA and ONC~RPC (Sun
+  RPC), specify \emph{an} IDL and from then on refer to it as \emph{the} IDL\@.
+  Flick, however, does not introduce a new IDL but instead supports a number of
+  existing ones side-by-side.  Any IDL supported by Flick can be used to
+  generate stubs for any environment (with some limitations).  Supporting
+  multiple IDLs allows for backward compatibility and migration of existing
+  programs, and also allows developers to choose the best IDL for the task at
+  hand.
+
+\com{%
+  % We will revisit flexible presentation in a future version of Flick.
+  \item \emph{Flexible presentations.}
+  %
+  For the most important and performance-critical target languages (C and C++),
+  Flick allows the behavior of generated stubs to be declaratively altered to
+  suit the needs of the particular client or server they're used in, without
+  altering the actual interface between the client and server.  This feature
+  allows applications make RPC more efficient --- and more convenient ---
+  without affecting interoperability.  Fundamentally, Flick separates the
+  notion of \emph{presentation} from the notion of \emph{interface}.  In short,
+  the \emph{interface} between a client and a server is the basic protocol they
+  use to communicate with each other, upon which they must agree.  The
+  \emph{presentation} is the mapping of an interface to the local language
+  constructs within a particular client or server.  With Flick, unlike other
+  RPC and distributed object systems, the two can be specified independently.
+  This separation brings several potential benefits:
+
+  \begin{itemize}
+    \item greater interoperability;
+    \item narrower interfaces;
+    \item better performance;
+    \item more flexibility in interface specification; and
+    \item easier use of RPC interfaces.
+  \end{itemize}
+
+  For a more complete discussion of flexible presentation, see our
+  presentation/interface papers, available at \fluxurl{}.
+} % End \com.
+
+  \item \emph{Sophisticated code generation and optimization.}
+  %
+  Flick was originally targeted toward communication in microkernel-based
+  systems.  In that environment, Flick provides the user-level glue between the
+  microkernel's primitive IPC facilities and user-level application code.  This
+  target environment implies that Flick-generated stubs must be \emph{very
+  fast}: good microkernels always have extremely fast and tightly optimized
+  primitive IPC paths, so inefficient stubs could easily raise the effective
+  IPC time by an order of magnitude.  Today, Flick produces optimized code for
+  \emph{all} of its supported transport facilities including TCP-based
+  transports and lower-level, microkernel-based IPC\@.
+
+  \item \emph{Multiple back ends.}
+  %
+  Finally, while many RPC and distributed object systems claim to support
+  multiple transport protocols, the protocols they support are generally
+  only slight variations of each other.  For example, ONC~RPC supports multiple
+  transports in the sense that it can pass messages across either TCP or UDP
+  links.  However, the basic data encoding scheme used (XDR) is the same in
+  each case, as are the stubs generated by the IDL compiler.  The multiple
+  protocol support is really just a stream-based abstraction layer in the RPC
+  runtime support library.  There is little hope, for example, that the ONC~RPC
+  system could easily be made to support the CORBA Internet Inter-ORB Protocol
+  (IIOP) even though both are based on TCP\@.
+
+  Flick, on the other hand, aggressively supports multiple protocols by
+  allowing different stub code generators (back ends) to be used
+  interchangeably.  Each back end has complete control over the RPC protocols
+  that it implements: the back end determines not only the underlying transport
+  protocol (e.g., TCP, UDP, Mach 3 messages, direct function call, etc.)\ but
+  also the data encoding scheme used (e.g., Sun's XDR, DCE's NDR, CORBA's CDR,
+  ``dumb'' architecture-specific encoding, etc.)\ and the high-level RPC
+  protocol layered above the low-level stream or message protocol (e.g.,
+  ONC~RPC, CORBA IIOP, Mach 3's MIG protocol, etc.).  Flick contains several
+  back ends supporting extremely diverse protocol combinations.
+\end{itemize}
+
+Flick is being developed as part of the Flux Operating Systems Project at the
+University of Utah.  However, Flick is intended to be an open ``kit'' that
+others will extend and adapt for their own projects.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

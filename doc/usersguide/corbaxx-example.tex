@@ -1,0 +1,428 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1999 The University of Utah and the Computer Systems
+%% Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+In this section we will show you how to make a CORBA C++ version of the
+phonebook application.  The source code for this example can be found in the
+\filename{test/examples/phone/tao-corbaxx} directory of the Flick distribution.
+
+\emph{Note that you must acquire and install TAO version~\taoversion{}, the
+real-time ORB from Washington University in St.\ Louis, before you will be able
+to compile the CORBA C++ phonebook or any other Flick-generated CORBA C++ code.
+See Section~\ref{sec:Building the Flick Runtime Libraries} for more
+information.}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Interface Definition}
+\label{subsec:CORBAXX:Interface Definition}
+
+The CORBA IDL specification of our phonebook, contained in the
+\filename{phone.idl} file, is the same as the IDL shown previously in
+Section~\ref{subsec:CORBA:Interface Definition}.  Because CORBA IDL is
+independent of the target programming language, we can use the same IDL file to
+generate both C and C++ versions of our phonebook application.
+%
+We produce our C++ stubs with the following commands:\footnote{The actual
+commands issued by the \filename{Makefile} are somewhat more complicated
+because they do not assume that you have installed Flick on your system.  Read
+the \filename{Makefile} for details.}
+
+\begin{verbatim}
+   flick-fe-newcorba phone.idl
+
+   flick-c-pfe-corbaxx -c -o phoneC.prc phone.aoi
+   flick-c-pbe-iiopxx -f phoneS.h phoneC.prc
+   # Final outputs: `phoneC.cc' and `phoneC.h'.
+
+   flick-c-pfe-corbaxx -s -o phoneS.prc phone.aoi
+   flick-c-pbe-iiopxx -F phoneC.h phoneS.prc
+   # Final outputs: `phoneS.cc' and `phoneS.h'.
+\end{verbatim}
+
+\noindent The reasons for the \option{-f} and \option{-F} command line options
+are described in Section~\ref{subsec:BE:Additional Comments}.
+%% XXX --- We should \ref{subsubsec:BE:IIOP/C++ Back End Issues}, but doing so
+%% confuses `TeX4ht'.  It makes a link with empty text, presumably because
+%% subsubsections aren't displayed with numbers.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Server Implementation}
+\label{subsec:CORBAXX:Server Implementation}
+
+Flick generates a server skeleton from the phonebook IDL\@.  To complete the
+server, we need to write an actual implementation of the phonebook object
+ourselves.  Writing an implementation class is just like writing a regular C++
+class, but with some additional idioms imposed by CORBA\@.  Below is the
+definition of our phonebook implementation class, called \ctype{phone_i}:
+
+\begin{verbatim}
+   class phone_i : public POA_data::phonebook
+   {
+   public:
+       phone_i();
+       ~phone_i();
+
+       /* The functions that implement the `phone.idl' interface. */
+       virtual void add(const data::entry &e, CORBA::Environment &);
+       virtual void remove(const char *n, CORBA::Environment &);
+       virtual data::phone find(const char *n, CORBA::Environment &);
+
+   private:
+       /* We implement the phonebook with a simple linked list. */
+       struct impl_node_t {
+           data::entry         entry;
+           struct impl_node_t *next;
+       };
+       typedef struct impl_node_t *impl_node_ptr;
+
+       /* The head of the linked list. */
+       impl_node_ptr head;
+
+       /*
+        * `find_node' locates and returns an `impl_node_ptr' to an existing
+        * node that contains the given name, or a null pointer if no node
+        * contains the name.
+        */
+       impl_node_ptr find_node(const char *name);
+   };
+\end{verbatim}
+
+The declaration of this class is made up of a constructor and destructor, some
+virtual functions corresponding to the interface operations, and some private
+members used in the implementation.
+
+Notice that the \ctype{phone_i} class inherits from a special class called
+\ctype{POA_data::phonebook}.  This \emph{POA class}, also called a
+\emph{skeleton class}, is created for you by Flick and is the abstract base
+class for all implementations of the \idl{data::phonebook} interface.  The
+skeleton class takes care of marshaling and unmarshaling data for the methods
+that implement the phonebook interface (\cfunction{add}, \cfunction{remove},
+and \cfunction{find}).  Flick also generates special ``tie'' and ``collocated''
+classes for each interface in the IDL; to learn more about these, consult the
+CORBA specification and the TAO documentation.
+
+Now that the \ctype{phone_i} class is declared, we need to write the methods
+that implement the operations listed in our IDL\@.  Code for the
+\cfunction{phone_i::add} method is shown below.  Complete source code for all
+of the \ctype{phone_i} methods is contained in the \filename{phone_i.cc} file
+in the example source code directory.
+
+\begin{verbatim}
+   void phone_i::add(const data::entry &e, CORBA::Environment &ACE_TRY_ENV)
+   {
+       impl_node_ptr node_ptr;
+
+       /* Check for a duplicate name. */
+       node_ptr = find_node(e.n);
+       if (node_ptr) {
+           /*
+            * We already have this number.  Use the `ACE_THROW' macro to
+            * throw an exception.
+            */
+           ACE_THROW(data::duplicate(node_ptr->entry.p));
+       } else {
+           /*
+            * Make a new node and add it in.  Note that the structure
+            * assignment below does a *deep* copy: the structure type is
+            * defined in IDL, and the generated assignment operator does a
+            * deep copy as required by the CORBA C++ language mapping.
+            */
+           node_ptr = new impl_node_t;
+           node_ptr->entry = e; /* Deep copy. */
+           node_ptr->next = head;
+           head = node_ptr;
+       }
+   }
+\end{verbatim}
+
+The implementation of our phonebook operations is rather ordinary C++ code,
+plus some special idioms for handling exceptions.
+%
+CORBA suggests that an IDL-to-C++ compiler should produce code that handles
+CORBA-defined exceptions as regular C++ exceptions, whenever the target C++
+compiler has working exception support.  Flick does not yet implement this code
+style because many C++ compilers still have poor support for exceptions.
+Instead, Flick supports the CORBA standard's \emph{alternate mapping} for
+exceptions, which works with all C++ compilers.  In this mapping, CORBA
+exceptions are communicated through an extra \ctype{CORBA::Environment}
+parameter to the generated stubs, as in the standard CORBA C language mapping.
+%
+TAO provides some exception-related macros (e.g., \cfunction{ACE_THROW}) that
+hide the details of exception handling, thus allowing our code to be largely
+independent of the specific exception mapping implemented by Flick.  Refer to
+the TAO documentation for more information about these facilities.
+
+Once the \ctype{phone_i} implementation is complete, the only remaining task
+for our server is to implement the \cfunction{main} function.  Our
+\cfunction{main} function initializes the ORB and then creates a set of
+phonebook objects as described by the server's command line.  (The command line
+is parsed by the function \cfunction{parse_args}, not shown.)  When everything
+is set up, we simply set the system in motion and let the server process
+requests from clients.
+
+\begin{verbatim}
+   int main(int argc, char **argv)
+   {
+       TAO_ORB_Manager orb_manager;
+       CORBA::Environment ACE_TRY_ENV;
+
+       /* Use `try' because there might be an exception. */
+       ACE_TRY {
+           phone_impl *pi;
+
+           /* Initialize the POA. */
+           orb_manager.init_child_poa(argc, argv, "child_poa", ACE_TRY_ENV);
+           ACE_TRY_CHECK;
+
+           /* Parse the command line; creates `the_impls' list. */
+           if (parse_args(argc, argv) != 0)
+               return 1;
+
+           /*
+            * Walk through the list of implementations and attach each
+            * one to the server.
+            */
+           for (pi = the_impls; pi; pi = pi->next) {
+               /*
+                * Add the head of the `pi' list to the POA and get the
+                * IOR for the object.
+                */
+               CORBA::String_var ior
+                   = (orb_manager.
+                      activate_under_child_poa(pi->name,
+                                               &pi->servant,
+                                               ACE_TRY_ENV));
+               ACE_TRY_CHECK;
+
+               /* Give the IOR to the user. */
+               ACE_DEBUG((LM_DEBUG, "Object `%s' is ready.\n", pi->name));
+               ACE_DEBUG((LM_DEBUG, "  IOR:  %s\n", ior.in()));
+           }
+           /*
+            * Make sure there is at least one object and then start the
+            * server.
+            */
+           if (the_impls)
+               orb_manager.run(ACE_TRY_ENV);
+           else
+               ACE_ERROR_RETURN((LM_ERROR,
+                                 "No implementations were specified.\n"),
+                                1);
+           ACE_TRY_CHECK;
+       }
+       /* Catch any system exceptions. */
+       ACE_CATCH (CORBA::SystemException, ex) {
+           ex._tao_print_exception("System Exception");
+           return 1;
+       }
+       ACE_ENDTRY;
+
+       return 0;
+   }
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Client Program}
+\label{subsec:CORBAXX:Client Program}
+
+With the server side implemented, we can now create a client to allow for
+interactions with the phonebook.  Flick creates the stubs that will send
+requests to the server process and receive the server's replies.  A programmer,
+however, must write the client program's \cfunction{main} function to
+initialize the ORB and establish the client's connection to a phonebook, i.e.,
+obtain a reference to a phonebook object that resides in the server.  The code
+for our sample client \cfunction{main} function is shown below.
+
+Our client establishes a connection by taking an IOR from the command line.
+(The arguments ``\option{-k~\optionarg{IOR}}'' are parsed by the function
+\cfunction{parse_args}, not shown.)  Once the client has established the
+phonebook connection, we can treat the phonebook reference as a normal C++
+object, which makes it easy to write the rest of the client.
+
+The client is interactive so there is a small event loop that prompts the user
+for requests.  When the user decides to exit, the \cfunction{main} function
+terminates, and the connection to the server is closed.  (When we leave the
+\cfunction{main} function, the `\ctype{_var}'-style object references are
+automatically destroyed, with the result being that our connection to the
+server is closed.)
+
+\begin{verbatim}
+   int main(int argc, char **argv)
+   {
+       CORBA::ORB_var orb;
+       CORBA::Object_var object;
+       data::phonebook_var pb;
+       CORBA::Environment ACE_TRY_ENV;
+       const char *op_name;
+       int sel, done;
+
+       /* Parse the command line; initializes `ior'. */
+       if (parse_args(argc, argv) != 0)
+           return 1;
+
+       ACE_TRY {
+           /* Initialize the ORB. */
+           op_name = "CORBA::ORB_init";
+           orb = CORBA::ORB_init(argc, argv, 0, ACE_TRY_ENV);
+           ACE_TRY_CHECK;
+
+           /* Get the object reference with the IOR. */
+           op_name = "CORBA::ORB::string_to_object";
+           object = orb->string_to_object(ior, ACE_TRY_ENV);
+           ACE_TRY_CHECK;
+
+           /* Narrow the object to a `data::phonebook'. */
+           op_name = "data::phonebook::_narrow";
+           pb = data::phonebook::_narrow(object.in(), ACE_TRY_ENV);
+           ACE_TRY_CHECK;
+       }
+       ACE_CATCH (CORBA::Exception, ex) {
+           ex._tao_print_exception(op_name);
+           return 1;
+       }
+       ACE_ENDTRY;
+
+       done = 0;
+       while (!done) {
+           read_integer(("\n(1) Add an entry (2) Remove an entry "
+                         "(3) Find a phone number (4) Exit: "),
+                        &sel);
+           switch (sel) {
+           case 1:  add_entry(pb); break;
+           case 2:  remove_entry(pb); break;
+           case 3:  find_entry(pb); break;
+           case 4:  done = 1; break;
+           default: printf("Please enter 1, 2, 3, or 4.\n");
+           }
+       }
+       return 0;
+   }
+\end{verbatim}
+
+The client's \cfunction{add_entry} function invokes the
+\cfunction{data::phonebook::add} method, which is the Flick-generated stub for
+the \idl{add} operation.  Because the stub can signal an exception, the
+\cfunction{add_entry} function is careful to catch exceptions as shown below.
+(As previously described in Section~\ref{subsec:CORBAXX:Server Implementation},
+we use the \cfunction{ACE_*} macros provided by TAO to make our code more
+portable across different C++ compilers and different ways of handling CORBA
+exceptions.)
+
+\begin{verbatim}
+   void add_entry(data::phonebook_var obj)
+   {
+       data::entry e;
+       char name[NAME_SIZE], phone[PHONE_SIZE];
+       CORBA::Environment ACE_TRY_ENV;
+
+       read_string("Enter the name: ", name, NAME_SIZE);
+       read_string("Enter the phone number: ", phone, PHONE_SIZE);
+       /*
+        * Duplicate the strings; they will be freed when `e' is destroyed.
+        */
+       e.n = CORBA::string_dup(name);
+       e.p = CORBA::string_dup(phone);
+
+       ACE_TRY {
+           obj->add(e, ACE_TRY_ENV);
+           /* Check for exceptions. */
+           ACE_TRY_CHECK;
+           printf("`%s' has been added.\n", name);
+           break;
+       }
+       ACE_CATCH(data::duplicate, ex) {
+           /*
+            * Catch a `data::duplicate' exception.  It contains the
+            * phone number that is already in the database.
+            */
+           printf("A user exception was raised: ");
+           printf("duplicate, phone = `%s'.\n", (const char *) ex.p);
+       }
+       ACE_CATCH(CORBA::Exception, ex) {
+           /* Catch all other exceptions. */
+           ex._tao_print_exception("data::phonebook::add");
+       }
+       ACE_ENDTRY;
+   }
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Compiling the Application}
+\label{subsec:CORBAXX:Compiling the Application}
+
+The \filename{test/examples/phone/tao-corbaxx} directory contains a
+\filename{Makefile} for compiling the phonebook server and client programs.
+You will need to edit the \filename{Makefile} slightly in order to suit your
+build environment.  Once that is done, and you have built both Flick and TAO,
+you should be able to type \program{make} to build the CORBA phonebook.  Two
+programs will be created: \program{phoneserver}, the server, and
+\program{phonebook}, the client.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Using the Phonebook}
+\label{subsec:CORBAXX:Using the Phonebook}
+
+To run the application you must first start the phonebook server.  The server
+expects to receive at least one argument on the command line:
+
+\begin{optionlist}
+  \item[-I~\optionarg{name}]
+  %
+  The names of the object instances that the server will create.  This option
+  may be repeated in order to create several object instances.  Each object
+  must have a unique name.
+\end{optionlist}
+
+Once the \program{phoneserver} program is running, you can invoke the
+\program{phonebook} program, giving it the IOR of a server object.
+
+\begin{verbatim}
+   1 marker:~> phoneserver -I OfficeList -I DeptList
+   Object `DeptList' is ready.
+     IOR:  IOR:010000001700000049444c3a646174612f70686f6e65626f6f6b3...
+   Object `OfficeList' is ready.
+     IOR:  IOR:010000001700000049444c3a646174612f70686f6e65626f6f6b3...
+
+   # Run a client on the same machine or on a different machine.
+
+   1 fast:~> phonebook -k IOR:010000001700000049444c3a646174612f7068...
+
+   (1) Add an entry (2) Remove an entry (3) Find a phone number (4) Exit:
+   ...
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

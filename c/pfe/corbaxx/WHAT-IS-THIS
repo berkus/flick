@@ -1,0 +1,3 @@
+This directory contains the code for Flick's CORBA C++ language presentation
+generator.  Like the CORBA C presentation, this is also implemented as a
+library (libcorbaxx), so this directory is practically empty.

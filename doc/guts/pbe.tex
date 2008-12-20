@@ -1,0 +1,844 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1995, 1996, 1999 The University of Utah and the Computer
+%% Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{Back Ends}
+\label{cha:BE}
+
+The presentation created by the presentation generators contains only the
+outside view, the language presentation and behavior, of a series of functions.
+To create the actual implementations of these presentations they need to be fed
+into a back end code generator.  There are several distinct back ends which are
+based on a common library that does most of the work.  The library and specific
+back ends are located under the \filename{c/pbe} directory.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{The Back End Library}
+\label{sec:BE:The Back End Library}
+
+The back end library is the base implementation for code generation which is
+then specialized to an encoding scheme and runtime.  The library provides a
+great deal of infrastructure for dealing with various things, like command line
+arguments, and loading the \PRESC{} input file.  However, the primary job of
+the library is to handle the translation and optimization of the input \PRESC{}
+descriptions into C or C++ code.  The process of interpreting the \PRESC{} tree
+falls to the \ctype{mu_state} family of classes which provide a number of
+functions for walking the tree and interpreting its nodes.  The
+\ctype{mu_state} can then be overridden by specific back ends to implement
+their own functionality.  In addition to generating code from the \PRESC{}
+description of stubs, the back end can also employ \SCML{} code to generate
+formatted C and C++ source code.  This \SCML{} code is usually defined
+externally and then called explicitly by the back end.  The process of calling
+\SCML{} macros can be done manually as it is for creating the header and footer
+for output files, or through the presentation implementation and collection
+classes described later.
+
+The declarations for the library classes and functions can be found in the
+\filename{mom/c/be} directory and the source in \filename{c/pbe/lib}.
+
+\subsection{Back End State}
+\label{subsec:BE:Back End State}
+
+The first set of classes we'll look at are used for maintaining state in the
+back end and managing the top level flow of control.  The classes and functions
+work together based on a simple event based methodology to allow for easy
+expansion.  The core of this model is a handler object which can process an
+event, it does not necessarily have to process every event, just the ones it is
+interested in.  These handlers are then prioritized and collected into an
+object which is able to distribute a single event amongst its set of handlers.
+The resulting system allows for easy addition of code into the root control
+path without having to tamper directly with the library.
+
+Types:
+
+\begin{ctypelist}
+  \item[be_event] A simple structure which has an event identifier and
+  can be subclassed to contain extra information about an event.
+
+  \item[be_handler] Contains a function pointer which is expected to
+  handle any \ctype{be_event}s passed to it.
+
+  \item[be_looper] A subclass of \ctype{be_handler} that maintains a
+  list of target \ctype{be_handler}s.  Whenever an event is given to the looper
+  it will distribute it to the target handlers.
+
+  \item[be_file] A subclass of \ctype{be_looper} that is used to track
+  any files in the back end as well as generate their output.  The handlers
+  that are added to the \ctype{be_file} object are expected to generate the
+  output for that file.
+
+  \item[be_state] A subclass of \ctype{be_looper} that acts as the
+  primary event handler and dumping ground for anything a back end might be
+  interested in.  Handlers added to a \ctype{be_state} object are used for
+  initializing variables, reacting to command line arguments and directing
+  the \ctype{be_files} to generate themselves.
+\end{ctypelist}
+
+Functions:
+
+\begin{cprototypelist}
+  \item[be_state *get_be_state()] Retrieve the \ctype{be_state}
+  object for a specific back end
+
+  \item[int main(int argc, char **argv)] The library provided
+  \cfunction{main} simply gets a \ctype{be_state} from
+  \cfunction{get_be_state()} and then installs any handlers.  Next, the command
+  line arguments are passed to the \ctype{be_state} for processing and finally
+  it is all set in motion by sending the initialize, command line args, and
+  shutdown events to the \ctype{be_state}.
+\end{cprototypelist}
+
+The current set of handler functions can be found in
+\filename{c/pbe/lib/arg_handlers.cc}, \filename{c/pbe/lib/state_handlers.cc},
+and \filename{c/pbe/lib/file_handlers.cc}.  The handlers are all relatively
+simple, they just react to whatever events they are interested in and can then
+choose what to do from there.  Currently, only the IIOPXX back end installs its
+own handler: it squelches the output of any definitions from the
+\filename{orb.idl} file after the \PRES{} has been read in by the earlier
+handlers.
+
+\subsection{Stub Generators}
+\label{subsec:BE:Stub Generators}
+
+Once the flow of control comes down from the high level handler functions, we
+finally get to generate the contents of a file.  The handlers in
+\filename{file_handlers.cc} take care of this by calling stub generation
+functions for each stub described in the \PRESC{}.  The functions provided by
+the back end library are empty for the most part since they are expected to be
+implemented by the specific back end: information is required about the runtime
+in order to generate correct code.
+
+Type marshaling and unmarshaling stubs are generated a bit different from
+regular client and server stubs.  Since they are rarely used, we generate them
+on demand to prevent excessive output.  Whenever one of these stubs is needed
+(a call to the stub is generated in the code), we create an
+\ctype{mu_stub_info_node} and store a reference to the stub and how it is
+going to be used (parameter direction and byteswap flag).  This node is then
+put into a list kept by the \ctype{be_state}.  After all other stubs have been
+generated, the set of required marshal/unmarshal stubs are generated by
+traversing the list.
+
+\begin{cprototypelist}
+  \item[void w_stub(pres_c_1 *pres, int idx)] This will dispatch
+  to one of the functions below depending on the type of stub.  The stubs below
+  are meant to be overridden by the back end since they tend to be specific to
+  the runtime.
+
+  \item[void w_marshal_stub(pres_c_1 *pres, int idx)] Writes out a marshaling
+  stub for a specific data type.  The base library defines this to do nothing.
+
+  \item[void w_unmarshal_stub(pres_c_1 *pres, int idx)] Writes out an
+  unmarshaling stub for a specific data type.  The base library defines this to
+  do nothing.
+
+  \item[void w_client_stub(pres_c_1 *pres, int stub_idx)] Writes out a client
+  \RPC{} stub.  This is left undefined in the base library; the responsibility
+  belongs entirely to the specific back end how a client stub is generated.
+
+  \item[void w_skel(pres_c_1 *pres, int stub_idx)] Writes out a server or
+  client skeleton (dispatch function).  This is left undefined in the base
+  library; the responsibility belongs entirely to the specific back end how a
+  skeleton is generated.
+
+  \item[void w_send_stub(pres_c_1 *pres, int stub_idx)] Writes out a stub meant
+  only for sending a specific message type (part of the decomposed stub model).
+  The base library version causes a warning to be emitted, and no code is
+  generated.
+
+  \item[void w_recv_stub(pres_c_1 *pres, int stub_idx)] Writes out a stub meant
+  only for receiving a specific message type (part of the decomposed stub
+  model).  The base library version causes a warning to be emitted, and no code
+  is generated.
+
+  \item[void w_msg_marshal_stub(pres_c_1 *pres, int idx)] Writes out a stub
+  meant for marshaling a complete, specific message type (part of the
+  decomposed stub model).  The base library version causes a warning to be
+  emitted, and no code is generated.
+
+  \item[void w_msg_unmarshal_stub(pres_c_1 *pres, int idx)] Writes out a stub
+  meant for unmarshaling a complete, specific message type (part of the
+  decomposed stub model).  The base library version causes a warning to be
+  emitted, and no code is generated.
+
+  \item[void w_continue_stub(pres_c_1 *pres, int idx)] Writes out a stub meant
+  for continuing a delayed message (part of the decomposed stub model).  The
+  base library version causes a warning to be emitted, and no code is
+  generated.
+
+  \item[void do_main_output(pres_c_1 *pres)] This can be used to write out a
+  main function for a server.  By default, nothing is generated.
+
+  \item[void make_interface_graph(pres_c_1 *pres)] This is a bit
+  of a hack used to get information about runtime type information into source
+  code.  This is only really used to help implement \CORBA{}'s \idl{is_a}
+  operation.  The function will write out a data structure containing
+  information about interface inheritance which is then used by the runtime
+  \idl{is_a} function.
+\end{cprototypelist}
+
+\subsection{mu\_state}
+\label{subsec:BE:mustate}
+
+The \ctype{mu_state} C++ class is the primary mechanism for creating marshaling
+and unmarshaling code.  An object of this class is created and initialized with
+the necessary data structures from the \PRESC{} and then set in motion to
+create the code.  Basically, this code creation is done by interpreting the
+intentions of the \PRESC{} nodes in the presence of specific state options, set
+at initialization or by context, to produce the actual code.  The class itself
+is simply made up of a set of functions, each handling a single \PRESC{} node.
+Each function does some processing on the node, which may include using the
+\ctype{mu_state} to process any child nodes.  Thus, flexibility comes from
+overriding these functions to specialize them to the needs of a back end.  Any
+code produced is stored in \CAST{} blocks rather than directly writing to the
+file, since we we may want to perform some post-processing on the generated
+code.  Finally, the user of the \ctype{mu_state} takes whatever \CAST{} is left
+after processing and wraps it with whatever boilerplate code is necessary for a
+complete construct.
+
+\subsubsection{Walking the PRES_C tree}
+\label{subsubsec:BE:Walking the PRESC tree}
+
+Processing a \PRESC{} node usually requires more information than is contained
+in the node itself.  This is due to the structure of the \PRESC{} tree; since
+it does not always encode references to \CAST{} and \MINT{} structures, these
+need to be walked in parallel.  This is why some functions require arguments
+for \CAST{} and \MINT{} structures, however, a \PRESC{} node does not
+necessarily have to traverse the structures.  For example, a
+\cidentifier{PRES_C_MAPPING_POINTER} will pass down the C type that the pointer
+is referring to, but the \MINT{} structure is not descended since it has no
+representation of pointers.  The functions that do not require a \CAST{} object
+instead work off of a collection of \CAST{} objects accessed through an
+\ctype{inline_state}.  The \ctype{inline_state} is used to map indices from a
+\cidentifier{PRES_C_INLINE_ATOM} to a C structure, union, or function encoded
+in \CAST{}.  Once, the \cidentifier{PRES_C_INLINE_ATOM} is executed the
+\ctype{mu_state} goes into ``mapping'' mode and the selected \CAST{} object is
+passed down to the mapping nodes.  Once we've figured out what objects we're
+trying to process we need to know what we're supposed to do with them.  The
+\cidentifier{op} slot in the \ctype{mu_state} is used for this; it can be set
+with several flags that will influence the code to do what is needed by the
+user.  The current set of flags is:
+
+\begin{cidentifierlist}
+  \item[MUST_ALLOCATE]
+  %
+  Memory should be allocated whenever it is needed.  For a server stub, the
+  space for the unmarshaled `in' parameters and ``root'' space for the `out'
+  parameters that will be filled in by the work function should be allocated at
+  this point.  For a client stub, the results contained in the reply message
+  may need to have space allocated so they can be returned to the client
+  program.  In addition, this iterator should deal with any setup necessary to
+  begin an \RPC{}.
+
+  \item[MUST_ENCODE]
+  %
+  Appropriate values should be marshaled into the message stream.  Given the
+  data values as parameters to the client stub or as return parameters from the
+  work function, they are serialized into a data stream according to the
+  requirements of the message format and data encoding scheme in use.
+
+  \item[MUST_DECODE]
+  %
+  Appropriate values should be unmarshaled from the message stream.  The
+  serialized data stream is converted into the data values that can be returned
+  by the client stub or handed to the work function, according to the message
+  format and data encoding scheme in use.
+
+  \item[MUST_DEALLOCATE]
+  %
+  Memory should be deallocated when it is no longer needed (where appropriate).
+  More generally, this is for any type of cleanup necessary to complete an
+  \RPC{}.
+
+  \item[MUST_REQUEST, MUST_REPLY]
+  %
+  These indicate that the current state is handling a request or reply message,
+  respectively.  This knowledge is implicitly held by the other flags and
+  whether client or server code is being generated; however, it is more
+  convenient to have an explicit flag to represent this.  Naturally, these
+  flags are mutually exclusive.
+\end{cidentifierlist}
+
+\subsubsection{Marshaling Buffer Management}
+\label{subsubsec:BE:Marshaling Buffer Management}
+
+Stubs generated for non-trivial \RPC{}s generally need some kind of
+\emph{marshaling buffer} or \emph{stream}, into which messages are marshaled or
+from which messages are unmarshaled.  Sometimes a message can use multiple
+marshaling buffers.  The format of the marshaled data in the buffer(s) depends
+on the encoding scheme being used by the back end (e.g., \XDR{} is an encoding
+scheme), and by the \MINT{} interface definition for the \RPC{} in question.
+The format of the marshaled data does \emph{not} usually depend on any aspects
+of presentation.
+
+Some transport mechanisms can transfer an ``unlimited'' amount of data in one
+message (e.g., Mach~3); others impose some arbitrary limit (e.g., Mach~4).
+Flick stubs are generally expected to be able to handle an unlimited amount of
+data, regardless of any limitations of the transport mechanism.  Fixed-length
+arrays are generally handled as merely a degenerate case of variable-length
+arrays: the two types of arrays are identical except that fixed-length arrays
+use a ``degenerate integer'' data type with only one possible value as their
+length data type.  Thus, fixed and variable-length arrays can usually be
+marshaled in exactly the same way; the simple-integer-marshaling code will
+automatically handle the degenerate length ``variable'' in fixed-length arrays
+(see \filename{mu_mapping_direct.cc}).
+
+The back end support library assumes that code generation can be done by
+traversing the type trees in a certain ``natural order'':
+
+\begin{cidentifierlist}
+  \item[MINT_STRUCT] Marshal each element of the struct in the same order in
+  which the elements appear in the presented structure.  Note that the element
+  ordering in the \cidentifier{MINT_STRUCT} may be different from that in the
+  presented structure, which may in turn be different from that which is
+  encoded on the wire.
+
+  \item[MINT_UNION] Marshal the union discriminator first, then marshal the
+  selected union case.
+
+  \item[MINT_ARRAY] First marshal the array's length (if non-constant), then
+  marshal each element in order, lowest-indexed element first.
+\end{cidentifierlist}
+
+This ordering is not mandated; it is the responsibility of the back end to
+choose an appropriate on-the-wire layout for the data, as the needs of a
+particular transport mechanism dictate.  For example, just because the type
+graphs are traversed in the order specified above does not mean the data must
+always appear in memory or on the wire in exactly this order; however, it is
+generally easier to write the back end if the layouts match.
+
+\subsubsection{Generated Code}
+\label{subsubsec:BE:Generated Code}
+
+The actual stub code that gets generated is made up of a number of macro calls
+and some control flow code.  The macros are all defined in the runtime header
+files and follow similar naming and calling conventions across implementations.
+
+\begin{filenamelist}
+  \item[runtime/headers/flick/pres] These headers are specific to the
+  presentation implementation; they provide macros for things like handling
+  exceptions and memory management.  This is also where any \SCML{} files
+  should be located.
+
+  \item[runtime/headers/flick/encode] These headers provide macros for encoding
+  and decoding data into and out of the message buffer.
+
+  \item[runtime/headers/flick/link] These headers provide macros for managing
+  the message buffers and adding any link level message data.
+\end{filenamelist}
+
+When the \ctype{mu_state} generates these macros it uses the \cidentifier{op}
+flags and names for the presentation, encoding scheme, and protocol (link) to
+determine the names of the macros.  For example, the macro to encode an 8-bit
+character in \CDR{} would be \cfunction{flick_cdr_encode_char8()}, and the
+macro to decode would be \cfunction{flick_cdr_decode_char8()}.  Unfortunately,
+this approach can cause some problems because it restricts what parameters we
+can pass to the macros, especially presentation specific macros which can vary
+greatly.
+
+Also note that much of Flick's flexibility is actually due to the
+implementation of the macro calls.  While the names change between back ends,
+often the series of macro calls is very similar, and thus a significant amount
+of the implementation comes from the definitions of the macros.
+
+\subsection{client\_mu\_state and target\_mu\_state}
+\label{subsec:BE:clientmustate and targetmustate}
+
+The \ctype{client_mu_state} and \ctype{target_mu_state} C++ classes inherit
+from the base \ctype{mu_state} class and describe how to marshal the client and
+target object references, respectively.  Most presentations do not have a
+client reference, and most protocols do not have an explicit representation for
+them.  The client reference is necessary in the decomposed stub presentation,
+and thus must be handled by the protocols and runtimes that support decomposed
+stubs.
+
+The reason these are special states is that the client and target references
+are often encoded differently than other object references; for instance, they
+may be placed at a known location within the message rather than encoded in the
+midst of other parameter data.  Since a single \ctype{mu_state} can only
+specify one method for handling object references (e.g., the handling of an
+arbitrary object reference parameter), the special client and server states
+provide the mechanism in which the client and target references can be handled
+specially and separately.
+
+\subsection{mem\_mu\_state}
+\label{subsec:BE:memmustate}
+
+The \ctype{mem_mu_state} class is an extension of the basic \ctype{mu_state}
+class, intended for use by typical back ends where parameters are marshaled (at
+least partly) into variable-length memory buffers of some kind.  It deals with
+things like buffer management, alignment, endian conversion, etc.
+
+For code optimization purposes, marshaled messages are logically divided into
+\emph{globs}, then subdivided into \emph{chunks}.
+
+A chunk is a sequence of bytes in the marshaled message whose length and
+internal format is known.  For example, a fixed-length array of bytes could be
+one big chunk; an array with variably sized elements would not be a chunk, but
+each individual element in that array could be.  Chunks are used primarily for
+optimization of data packing/unpacking code: once a chunk is started, no
+alignment checks or pointer adjustments need to be done between successive
+primitives in the chunk.
+
+A glob is part of a message whose \emph{maximum possible length} is a
+``smallish'' compile-time constant, even though the \emph{actual} length may
+not be constant.  For example, a variable-length array of bytes with a maximum
+length of 32 bytes would be a good candidate for being lumped into a single
+glob, whereas an array with variably sized elements and an unlimited length
+would not be: instead each individual element of the array could be a separate
+glob in that case.  (The definition of ``smallish'' is defined by the back end:
+each back end defines some maximum glob size, usually on the order of a few
+kilobytes.)  Globs are used to optimize marshaling buffer management: once
+``enough'' buffer memory is allocated at the beginning of a glob, the
+marshaling code within the glob can simply bump through with a pointer without
+having to worry about buffer space again until the next glob.
+
+\subsection{mu\_state\_arglist}
+\label{subsec:BE:mustatearglist}
+
+The \ctype{mu_state_arglist} class is used to help process some \PRESC{} nodes
+by coalescing information from their children.  For example, an allocation
+context node has children representing the length, buffer pointer, and possibly
+other attributes which need to be used together in order to do the correct
+allocation.  However, since this information is only known by the children, the
+arglist provides a way of passing it back up to the parent (and/or subsequently
+down to other siblings) so it can be used.  The actual filling of the arglist
+is taken care of by a \cidentifier{PRES_C_MAPPING_ARGUMENT} node on the path to
+the child which will capture the current \CAST{} expression and type and store
+it in a particular arglist and argument.
+
+\begin{cprototypelist}
+  \item[mu_state_arglist(const char *name, mu_state_arglist *aparent = 0)]
+  Constructs an arglist with a name and optionally connected to a parent (the
+  new arglist must have a unique name (it cannot clash with a parent,
+  grandparent, etc.).
+
+  \item[~mu_state_arglist()] Destructs the arglist by freeing the list of
+  arguments and any other information.
+
+  \item[void add(const char *aname, const char *arg)] Adds an argument to the
+  named list.
+
+  \item[void remove(const char *aname, const char *arg)] Removes an argument
+  from the named list.
+
+  \item[int getargs(const char *aname, const char *arg, cast_expr *expr,
+  cast_type *type)] This will attempt to find the argument, \cidentifier{arg}
+  in the arglist, \cidentifier{aname}.  If the argument is found, the
+  associated \CAST{} expression and type are returned with a nonzero result.
+  If the argument or arglist cannot be found, the method will return zero, and
+  \cidentifier{*expr} and \cidentifier{*type} will be set to \cliteral{NULL}.
+
+  \item[int setargs(const char *aname, const char *arg, cast_expr expr,
+  cast_type type)] Similar to \cfunction{getargs} except this will set the
+  value of argument.  The return value is true if the argument was found and
+  set, zero otherwise.
+
+  \item[argument *findarg(const char *arg)] This is a private function used to
+  locate an argument inside a single list (it does not look at parents).
+\end{cprototypelist}
+
+\subsection{mu\_abort\_block}
+\label{subsec:BE:muabortblock}
+
+The \ctype{mu_abort_block} class is used for tracking any error handling code
+in a stub.  Thus, we're able to do a proper recovery from any possible errors
+that occur during stub execution, such as a lack of memory or runtime error.
+To accomplish this task the class provides functionality to add code for
+handling an error, and then getting an ``abort label'' which the stub can jump
+to during execution if the error occurs.  The abort handling code is then
+dumped at the end of blocks and then linked together with \cidentifier{goto}s.
+Finally, the code is reduced to only contain those blocks that are reachable.
+
+\begin{cprototypelist}
+  \item[void set_kind(int kind), int get_kind()] Set/get the kind
+  of this abort block.  The possible kinds are:
+
+  \begin{cidentifierlist}
+    \item[MABK_NONE] No kind, this is illegal.
+
+    \item[MABK_THREAD] The abort block is a simple thread of
+    execution, one statement after another.
+
+    \item[MABK_CONTROL] The block has a unique control flow
+    amongst its children.
+
+    \item[MABK_CONTROL_IF] The block is an if statement, with the
+    only child representing the true branch.
+
+    \item[MABK_CONTROL_IF_ELSE] The block is an if/else statement,
+    where the child with an expression is the true arm and the one without is
+    the false arm.
+
+    \item[MABK_CONTROL_SWITCH] The block is a switch statement
+    with each child representing a case.
+  \end{cidentifierlist}
+
+  \item[void set_expr(cast_expr expr), cast_expr get_expr()]
+  Set/get the expression associated with this block.  The expression is used
+  by the parent control block to make a link to this child (for example, the
+  expression used in a case).
+
+  \item[void set_reaper_label(cast_stmt reaper_label), cast_stmt
+  get_reaper_label()] Set/get the reaper label for this block.  The reaper
+  label is the label to jump to at the end of the control flow for an abort
+  block.
+
+  \item[cast_stmt get_block_label()] Get the \ctype{cast_label}
+  associated with the abort block's \ctype{cast_block}.  The label's statement
+  is actually the block, and is used for external references to the start of
+  the block.  Any internal references will just be the first label in the
+  block.
+
+  \item[char *use_block_label()] Use the block label, this will increment the
+  use count in the \ctype{cast_label} and return the label string.
+
+  \item[void drop_block_label()] The opposite of \cfunction{use_block_label},
+  this will decrement the use count in the \ctype{cast_label}.
+
+  \item[void add_stmt(cast_stmt stmt)] Add a statement to the abort block.
+
+  \item[int stmt_count()] Return the number of statements in the
+  block.  This is really meant for internal use to figure out if a child block
+  really does anything and needs to be linked to by the parent.
+
+  \item[void add_child(struct mu_abort_block *mab, int
+  connection)] Add a child to the abort block using a certain type of
+  connection, which can be:
+
+  \begin{cidentifierlist}
+    \item[MABF_INLINE] This indicates that the
+    child's \CAST{} block should be inlined directly inside the parents.
+
+    \item[MABF_OUT_OF_LINE] This indicates that the child's
+    \CAST{} block is located somewhere else in the code and a
+    \cidentifier{goto} should be used to reach the block.
+  \end{cidentifierlist}
+
+  \item[struct mu_abort_block *find_child(char *child_label)] This
+  will locate the child with the given label.
+
+  \item[cast_stmt get_current_label()] Returns the current label string.
+
+  \item[char *use_current_label()] This will return the string
+  corresponding to the current label name and increment the use count in the
+  \ctype{cast_label}.
+
+  \item[void grab_label(char *label)] Locates the given label name
+  and increments its use count.
+
+  \item[void drop_label(char *label)] Locates the given label name
+  and decrements its use count.
+
+  \item[void begin(), void end()] These perform initialization and
+  finalization around any additions of statements and children.
+
+  \item[int rollback(int has_path = 0)] This function will walk through the
+  abort block and all of its children trying to remove any dead code.  The
+  \cidentifier{has_path} argument signifies whether or not a path begins with a
+  flow of control, and should almost always be left at zero when called
+  externally.  Basically, this function goes through each statement and tries
+  to figure out if there is a path to that statement.  If there is no path,
+  then it turns the statement to a \cidentifier{CAST_STMT_EMPTY}; otherwise the
+  statement is left alone.  Determining the possibility of a path is done by
+  looking for any \ctype{cast_label}s that are used, a prior statement that has
+  a path, or a path from a parent.
+
+  \item[int rollback_block(cast_block *block, int start, int len,
+  int has_path)] This is a helper function for \cfunction{rollback}; this just
+  works on \ctype{cast_block}s.  The return value indicates the possibility of
+  a control flow path.
+
+  \item[int rollback_stmt(cast_block *block, int pos, cast_stmt
+  curr_stmt, int has_path)] This is another helper function for
+  \cfunction{rollback}, and works on \ctype{cast_stmt}s.  Again, the return
+  value indicates the possibility of a control flow path.
+
+  \item[void make_dispatch()] This is a private function used to
+  create any code for MABK\_CONTROL\_* kinds.  Depending on the kind it will
+  produce the statements needed to do the test and dispatch to the correct
+  child block.
+\end{cprototypelist}
+
+\subsection{mu\_msg\_span}
+\label{subsec:BE:mumsgspan}
+
+The \ctype{mu_msg_span} class is used for putting buffer space checks into the
+stub code so it does not try to decode something that is not there.  The term
+``span'' is used to describe a message segment of an exact size that can be
+larger than a chunk, but not an approximation like a glob.  The class is
+used to describe each span in the message and join them together into a tree
+which can then be reduced in a second pass.  This reduction pass is used to
+merge checks together and to lift them out of array loops, if possible.
+For example, a union where each arm is the same size can be reduced to a single
+check before unmarshaling the union, rather than a check for each arm.
+
+Using the spans depends on the format of the message that is being unmarshaled
+at the time.  Normally, simple message segments are handled automatically by
+piggy-backing on the chunk functions in the \ctype{mem_mu_state}.  This allows
+us to figure out how big a segment is, but we do not necessarily know how to
+join it into the rest of the message.  This merging is done by creating another
+\ctype{mu_msg_span} which acts as a parent to a set of segments, and then
+setting the kind of the span to one of the formats described below.
+
+\begin{cprototypelist}
+  \item[void set_flags(int flags), int get_flags()] Set/get any
+  flags.  Currently, the only flag is \cidentifier{MSF_ALIGN} which indicates
+  that the span follows an alignment so it cannot be absorbed by any previous
+  spans.
+
+  \item[void set_kind(int kind), int get_kind()] Set/get the kind.
+  The possible kinds are:
+
+  \begin{cidentifierlist}
+    \item[MSK_NONE] These contain the actual lengths
+    of a span and are usually added to one of the other kinds.
+
+    \item[MSK_SEQUENTIAL] These contain other spans which are
+    organized in a sequential fashion.
+
+    \item[MSK_UNION] These contain other spans which are organized
+    in a union, so each child is a different possibility in the union.
+    Usually, the children are \cidentifier{MSK_SEQUENTIAL} spans which then
+    contain the actual span lengths.
+
+    \item[MSK_ARRAY] These contain another span which indicates
+    the size of each element in the array, and the size of the array itself is
+    contained in the this object's \cidentifier{size_expr}.
+  \end{cidentifierlist}
+
+  \item[void set_block(cast_stmt block), cast_stmt get_block()]
+  Set/get the block where any checks should be added.
+
+  \item[void set_abort(struct mu_abort_block *mab), struct
+  mu_abort_block *get_abort()] Set/get the abort block to use for getting
+  labels.
+
+  \item[void grow(int size)] Grow the size of the span by a fixed size.
+
+  \item[void shrink(int size)] Shrink the size of the span by a fixed size.
+
+  \item[void set_size(cast_expr size)] Set the size of the span,
+  which may, or may not be fixed size.  If this is a \cidentifier{MSK_ARRAY},
+  then this expression is used as the length of the array.
+
+  \item[void add_child(struct mu_msg_span *mms)] Add a child span
+  to this one.
+
+  \item[void begin(), void end()] These perform initialization and
+  finalization around any size modifications (growing, shrinking, adding
+  children).
+
+  \item[void drop()] Removes the check and drops the used abort label.
+
+  \item[void collapse()] This is called on the root span object to
+  go back through all of the children to optimize the sizes of the spans.  For
+  sequential spans it will walk backwards through its children trying to absorb
+  the sizes into the previous span nodes, until it hits a variable sized node
+  which cannot be absorbed by the previous child.  For unions, it will find the
+  minimum size of all the cases and use that as the size for the entire union.
+  For arrays, if the length is constant it will pull all the checks out of the
+  body of the loop and do a check at the start, otherwise it will just leave
+  the checks in the body.  Any check statements that reduce to zero are changed
+  to \cidentifier{CAST_STMT_EMPTY}.
+
+  \item[void commit()] This is done after the call to collapse, it
+  basically does the final lock-down, any checks that have a size are set,
+  empty checks are dropped.
+
+  \item[static void set_be_name(const char *name)] This sets the
+  back end name that the spans will use when producing macro calls.
+\end{cprototypelist}
+
+\subsection{Implementing Presentation Functions}
+\label{subsec:BE:Implementing Presentation Functions}
+
+The presentation generator is able to create ``presentation functions'' which
+have simple implementations and do not require optimization.  However, the
+presentation generator cannot provide the implementations since they may be
+dependent on the runtime or other things specific to a back end.  The current
+solution is to store a simple description of the presentation function, a
+semantically loaded string, in the presentation attributes tag lists.  These
+tag lists can then be processed by the back end to produce the needed code.
+However, writing \cfunction{printf}s for each function can become complicated
+and tedious, so the back end library provides a set of classes for
+semi-automatically passing this work off to \SCML{}.
+
+\begin{ctypelist}
+  \item[presentation_impl] This class is used to bind a tag in the
+  presentation attributes to a set of C++ functions and/or an \SCML{} macro.
+  The \SCML{} macro is determined by the \cidentifier{idl_type} and
+  \cidentifier{pres_type} which are nested scopes in \SCML{}, and finally the
+  macro is selected based on the string used to describe it in the presentation
+  generator.
+
+  \item[presentation_collection] This class walks over the tag lists in
+  the presentation attributes and then asks a set of \ctype{presentation_impl}
+  objects to implement whatever is described.
+\end{ctypelist}
+
+This approach is not always necessary since the \SCML{} interpreter can also be
+called explicitly to execute macro's.  See file prologue and epilogue handlers
+in \filename{file_handlers.cc} for an example.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Specific Back Ends}
+\label{sec:BE:Specific Back Ends}
+
+The back end library is not able to produce working code by itself, so a
+separate back end program must be created which provides its own functionality
+in addition to the library, specializing the generic code generated by the
+library into the specific code necessary to implement the encoding and
+transport layers required by a specific protocol and runtime system.  These
+back ends are located in the \filename{c/pbe} directory and are all structured
+very similarly.
+
+\begin{itemize}
+  \item Fluke - Produces stubs for the Fluke operating system.
+
+  \item IIOP - Produces \CORBA{} \IIOP{} stubs for the Flick-provided C
+  runtime.
+
+  \item IIOPXX - Produces \CORBA{} \IIOP{} stubs for the TAO C++ runtime.
+
+  \item Khazana - Produces stubs for use with the Khazana distributed memory
+  system.
+
+  \item Mach3Mig - Produces stubs for use in the Mach~3 operating system using
+  MIG-compatible messages.
+
+  \item Sun - Produces \ONCRPC{} stubs that can replace those generated by
+  \rpcgen{}.
+
+  \item Trapeze - Produces stubs for the Flick-provided Trapeze based runtime
+  using either \XDR{} or \CDR{} encoding (based on the originating
+  presentation\footnote{Basing the encoding scheme on the originating
+  presentation is certainly not an ideal solution: the choice of \XDR{} versus
+  \CDR{} should be independent of which presentation is desired.  See
+  Section~\ref{sec:BE:Summary and Comments} for a more detailed description of
+  the problem and proposed solution.}).
+\end{itemize}
+
+\subsection{The Basics}
+\label{subsec:BE:The Basics}
+
+The common tasks done in a back end are to create subclasses for the
+\ctype{be_state} and the various \ctype{mu_state}s that implement the correct
+behavior for the back end's encoding and runtime.  Once these classes have been
+filled out the stub writers are overridden to do some actual work.  Coding
+these stub generators is simply a matter of using the \ctype{mu_state}s to
+generate \CAST{} blocks which are then bracketed by the appropriate runtime
+code.  Unfortunately, since all of this is relatively similar across all back
+ends, it has become common practice to copy an existing back end and then
+change all the names and \cfunction{printf}s to your needs.  This results in a
+fast start up time; however, this quickly turns into a maintenance nightmare.
+Hopefully in the future the redundant code in the back ends will be
+consolidated so that maintenance will be easier.
+
+\subsection{Decomposed Stubs in IIOP and Khazana}
+\label{subsec:BE:Decomposed Stubs in IIOP and Khazana}
+
+Decomposed stub generation is an option of the presentation generator that
+causes regular client stubs to be split into separate stubs (see
+Section~\ref{subsec:PG:Decomposed Stubs Presentation} for more information).
+Handling this kind of presentation is done simply through implementation of the
+appropriate stub writers (for a detailed list, refer back to
+Section~\ref{subsec:BE:Stub Generators}, assuming the runtime can support
+it.  They work basically the same as the regular client and server stubs, with
+the functionality of the stubs split into separate functions. However, only the
+\IIOP{} and Khazana back ends are currently able to handle this presentation.
+
+\subsection{Presentation Implementation in IIOPXX}
+\label{subsec:BE:Presentation Implementation in IIOPXX}
+
+The IIOPXX back end is responsible for generating code specific to TAO, so
+anything that is implementation dependent must be handled before outputting any
+code.  For example, a string inside of a structure needs to be of the
+``TAO_Managed_String'' type and not a ``String_var'' like the PG will create
+since it does not know the implementation.  The solution is to use the
+presentation implementation facilities to do any preprocessing.  This type of
+code has all been dumped in the file \filename{c/pbe/iiopxx/tao_impl.cc}.
+Currently, this code ranges from generating \cidentifier{CORBA::TypeCode} to
+modifying the structs and classes created by the presentation generator.  Any
+associated \SCML{} code is located in
+\filename{runtime/headers/flick/pres/tao_*.scml}.  Eventually, it would be nice
+to organize the mess present in \filename{tao_impl.cc}, but exactly how best to
+do it is unknown.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Summary and Comments}
+\label{sec:BE:Summary and Comments}
+
+The back end code generators are one of the most complex pieces of Flick,
+mainly because of the number of choices that must (finally) be made.  While the
+current suite of back ends is impressive, particularly in their variety and
+capabilities, there are a few design changes that might make them even more
+flexible and useful.  Following are a few ideas for improvement:
+
+\begin{description}
+  \item[Reduce/Remove Dependence on Macros.]
+  %
+  Although a lot of flexibility arises through our use of macros, the macros
+  themselves can be hard to write and become a burden to maintain.  Ideally,
+  the back end should generate \emph{code} and not a list of macro calls.
+
+  \item[Split the Encoding Mechanism, the Protocol, and the Transport
+  Mechanism.]
+  %
+  Ideally, these could all be independently chosen (and independent of the
+  presentation as well) for maximum flexibility.  For example, it would be
+  conceivable to want \ONCRPC{}-style messages using \CDR{} encoding over a
+  Trapeze/Myrinet link.  To some extent, the current design allows some
+  flexibility: the Trapeze back end and runtime support either \IIOP{}-style
+  messages with the \CDR{} encoding or \ONCRPC{}-style messages with the \XDR{}
+  encoding.  However, most of the details are taken care of through macro magic
+  in the runtime header files, and the encoding/message format binding is still
+  fixed.  It may be possible in some cases to change the encoding or transport
+  protocol simply by redefining the macros for a particular back end.  However,
+  this is a rather daunting task and often requires at least some tweaks to the
+  back end code generator.  In the future, it would be nice to have each aspect
+  of the generated code in some form of encapsulated module that could be
+  either statically linked in as part of the back end, or perhaps even chosen
+  at runtime by the user.
+
+  \item[Better Define the Separation of Presentation From Implementation.]
+  %
+  While it is clear how a \CORBA{} exception might be encoded using \IIOP{} and
+  \CDR{}, it is not defined how such a construct might be sent in an
+  \ONCRPC{}-style message.  Some sort of conversion must be done between the
+  presentation and the encoding or message format layers to allow for the
+  abstract presentation entities to be encoded according to the link-layer
+  requirements.  See Section~\ref{sec:Runtime:Logical Runtime and Header
+  Separation for Flick} for more discussion on this as it relates to the
+  runtime.
+\end{description}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

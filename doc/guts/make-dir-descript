@@ -1,0 +1,57 @@
+#!/bin/sh
+#
+# Copyright (c) 1996, 1999 The University of Utah and the Computer Systems
+# Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 2 of the License, or (at your option) any later
+# version.
+#
+# Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+# 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+# Save our current directory
+OLD_PATH=`/bin/pwd`
+
+# If the flick root directory is a link we need to cd to it and then get
+# the real path
+cd $1
+THE_PATH=`/bin/pwd`
+
+# return to the current directory
+cd $OLD_PATH
+
+if test -e $2
+then
+	rm $2
+fi
+if test -e $2
+then
+	echo File $2 already exists.
+else
+	touch $2
+	for CURFILE in `find $THE_PATH -name WHAT-IS-THIS -print | sort` 
+	do
+		echo >> $2
+		# From $CURFILE, strip off the name of the source directory
+		# root, and strip off the `WHAT-IS-THIS' string.  Handle the
+		# root `WHAT-IS-THIS' file specially.  Note that we do not need
+		# to protect _'s in the filename; our LaTeX `filenamelist'
+		# environment handles _'s properly.
+		echo \\item\[`echo $CURFILE | sed -e "s:$THE_PATH/::" -e "s:/WHAT-IS-THIS::" -e "s:WHAT-IS-THIS:.:"`\] >> $2
+		# Protect _'s in the `WHAT-IS-THIS' descriptive text, however!
+		sed -e 's:_:\\_:g' $CURFILE >> $2
+	done
+fi
+
+## End of file.
+

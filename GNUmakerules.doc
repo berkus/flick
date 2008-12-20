@@ -1,0 +1,94 @@
+#
+# Copyright (c) 1999 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+ifndef _flick_makerules_doc_
+_flick_makerules_doc_ = yes
+
+# We must tell TeX where to find the source files.
+#
+# We prepend directories to the user's `TEXINPUTS', rather than override the
+# search path completely, because we may need the user's `TEXINPUTS' to find
+# ``standard'' LaTeX add-on packages that may not be installed in the usual
+# place on the user's system (e.g., `TeX4ht').  When reconstructing the search
+# path, we `$(filter-out ...)' to avoid oddities from recursive `make's, and to
+# just generally be clean.
+#
+# We completely override `BIBINPUTS', however, to ensure that we aren't picking
+# up bibliography data from outside the Flick source tree.
+#
+empty		:=
+space		:= $(empty) $(empty)
+
+TEXINPUTS_ENV	:= $(strip $(subst :,$(space),$(TEXINPUTS)))
+
+TEXINPUTS	= .:$(subst $(space),:,$(strip $(SRCDIRS) \
+					       $(filter-out \
+						  . $(SRCDIRS), \
+						  $(TEXINPUTS_ENV))))::
+BIBINPUTS	= .:$(subst $(space),:,$(strip $(SRCDIRS)))::
+
+export TEXINPUTS
+export BIBINPUTS
+
+# The names of the EPS files that we generate.
+#
+EPSFILES = $(notdir $(FIGFILES:.fig=.eps))
+
+# When cleaning, we remove the `TARGET'-related files with these suffixes.
+#
+TEX_CLEAN_SUFFIXES =	.aux .bbl .blg .dvi .idx .ilg .ind .lof .log .lot .ps \
+			.toc .otc .xref .idv
+CLEAN_FILES +=	$(addprefix $(basename $(TARGET)),$(TEX_CLEAN_SUFFIXES)) \
+		$(EPSFILES)
+
+##
+
+.PHONY: all
+
+all: $(TARGET)
+
+include $(SRCDIR)/GNUmakerules
+
+$(TARGET) : $(TEXFILES) $(EPSFILES)
+
+# Build the figures first!
+$(TEXFILES): $(EPSFILES)
+
+##
+
+.PHONY: install
+
+install:
+
+##
+
+.PHONY: print preview
+
+print: $(TARGET)
+	lpr $(TARGET)
+
+preview: $(TARGET)
+	gv $(TARGET)
+
+endif
+
+## End of file.
+

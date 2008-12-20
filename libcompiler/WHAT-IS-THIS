@@ -1,0 +1,3 @@
+This directory contains utility code used throughout Flick, including
+error-checked malloc/calloc/realloc routines, uniform warning and
+error printing routines, and some code printing routines.

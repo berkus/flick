@@ -1,0 +1,311 @@
+/*
+ * Copyright (c) 1997, 1998, 1999 The University of Utah and
+ * the Computer Systems Laboratory at the University of Utah (CSL).
+ *
+ * This file is part of Flick, the Flexible IDL Compiler Kit.
+ *
+ * Flick is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Flick is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Flick; see the file COPYING.  If not, write to
+ * the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+ */
+
+/*
+ * Operations that test the delivery and reception of both
+ * simple/standard and complex types, using both in-line and
+ * out-of-line methods.
+ */
+
+subsystem tests 5550000;
+
+serverprefix s_;
+
+
+/*************/
+/*** TYPES ***/
+/*************/
+
+/*#include <mach/std_type.defs>*/
+
+type mach_port_t = MACH_MSG_TYPE_COPY_SEND;
+type unsigned = MACH_MSG_TYPE_INTEGER_32;
+type mach_port_move_receive_t = MACH_MSG_TYPE_MOVE_RECEIVE ctype: mach_port_t;
+type mach_port_copy_send_t = MACH_MSG_TYPE_COPY_SEND ctype: mach_port_t;
+type mach_port_make_send_t = MACH_MSG_TYPE_MAKE_SEND ctype: mach_port_t;
+type mach_port_array_t = ^array[] of mach_port_make_send_t;
+type poly_t = MACH_MSG_TYPE_COPY_SEND | MACH_MSG_TYPE_POLYMORPHIC;
+type boolean_t = MACH_MSG_TYPE_BOOLEAN;
+
+type Iint = unsigned;
+type Oint = ^unsigned;
+type IFstruct = struct[100] of unsigned;
+type OFstruct = ^struct[200] of unsigned;
+type IFarray = array[300] of unsigned;
+type OFarray = ^array[400] of unsigned;
+type IBarray = array[*:500] of unsigned;
+/*type OBarray = ^array[*:600] of unsigned; -- not supported! */
+type Iarray = array[] of unsigned;
+type Oarray = ^array[] of unsigned;
+type IFstring = c_string[799];
+type OFstring = ^c_string[800];
+type IVstring = c_string[*:4997];
+/*type OVstring = ^c_string[*:1000]; -- not supported! */
+type Imach_port_array_t = array[] of mach_port_move_receive_t;
+type Imach_poly_array_t = array[] of poly_t;
+type Omach_poly_array_t = ^array[] of poly_t;
+
+/* The above types are defined in the following header file: */
+import "mig-tests.h";
+
+
+/******************/
+/*** OPERATIONS ***/
+/******************/
+
+
+/*********************/
+/*** IN-LINE TESTS ***/
+/*********************/
+
+skip;
+
+routine inline_integers(
+	target			: mach_port_t;
+	in	inInt		: Iint;
+	inout	inoutInt	: Iint;
+	out	outInt		: Iint
+	);
+
+routine inline_fixed_structs(
+	target			: mach_port_t;
+	in	inStruct	: IFstruct;
+	inout	inoutStruct	: IFstruct;
+	out	outStruct	: IFstruct
+	);
+
+routine inline_fixed_arrays(
+	target			: mach_port_t;
+	in	inArray		: IFarray;
+	inout	inoutArray	: IFarray;
+	out	outArray	: IFarray
+	);
+
+routine inline_bounded_arrays(
+	target			: mach_port_t;
+	in	inArray		: IBarray;
+/*	inout	inoutArray	: IBarray; -- not supported */
+	out	outArray	: IBarray
+	);
+
+routine inline_unbounded_arrays(
+	target			: mach_port_t;
+	in	inArray		: Iarray;
+/*	inout	inoutArray	: Iarray; -- not supported */
+	out	outArray	: Iarray
+	);
+
+routine inline_fixed_strings(
+	target			: mach_port_t;
+	in	inString	: IFstring;
+	inout	inoutString	: IFstring;
+	out	outString	: IFstring
+	);
+
+routine inline_bounded_strings(
+	target			: mach_port_t;
+	in	inString	: IVstring;
+/*	inout	inoutString	: IVstring; -- not supported */
+	out	outString	: IVstring
+	);
+
+routine inline_port_rights(
+	target			: mach_port_t;
+	in	inRight		: mach_port_move_receive_t;
+	inout	inoutRight	: mach_port_copy_send_t;
+	out	outRight	: mach_port_move_receive_t
+	);
+
+routine inline_port_arrays(
+	target			: mach_port_t;
+	in	inRight		: Imach_port_array_t;
+/*	inout	inoutRight	: Imach_port_array_t;*/
+	out	outRight	: Imach_port_array_t
+	);
+
+routine inline_poly_arrays(
+	target			: mach_port_t;
+	in	inRight		: Imach_poly_array_t;
+/*	inout	inoutRight	: Imach_poly_array_t;*/
+	out	outRight	: Imach_poly_array_t
+	);
+
+
+/*************************/
+/*** OUT-OF-LINE TESTS ***/
+/*************************/
+
+skip;
+
+routine outline_integers(
+	target			: mach_port_t;
+	in	inInt		: Oint;
+	inout	inoutInt	: Oint;
+	out	outInt		: Oint
+	);
+
+routine outline_fixed_structs(
+	target			: mach_port_t;
+	in	inStruct	: OFstruct;
+	inout	inoutStruct	: OFstruct;
+	out	outStruct	: OFstruct
+	);
+
+routine outline_fixed_arrays(
+	target			: mach_port_t;
+	in	inArray		: OFarray;
+	inout	inoutArray	: OFarray;
+	out	outArray	: OFarray
+	);
+
+/*
+routine outline_bounded_arrays(
+	target			: mach_port_t;
+	in	inArray		: OBarray;
+	inout	inoutArray	: OBarray;
+	out	outArray	: OBarray
+	);
+-- not supported */
+
+routine outline_unbounded_arrays(
+	target			: mach_port_t;
+	in	inArray		: Oarray;
+	inout	inoutArray	: Oarray;
+	out	outArray	: Oarray
+	);
+
+routine outline_fixed_strings(
+	target			: mach_port_t;
+	in	inString	: OFstring;
+	inout	inoutString	: OFstring;
+	out	outString	: OFstring
+	);
+
+/*
+routine outline_bounded_strings(
+	target			: mach_port_t;
+	in	inString	: OVstring;
+	inout	inoutString	: OVstring;
+	out	outString	: OVstring
+	);
+-- not supported */
+
+routine outline_port_arrays(
+	target			: mach_port_t;
+	in	inRight		: mach_port_array_t;
+	inout	inoutRight	: mach_port_array_t;
+	out	outRight	: mach_port_array_t
+	);
+
+routine outline_poly_arrays(
+	target			: mach_port_t;
+	in	inRight		: Omach_poly_array_t;
+	inout	inoutRight	: Omach_poly_array_t;
+	out	outRight	: Omach_poly_array_t
+	);
+
+
+/*******************/
+/*** OTHER TESTS ***/
+/*******************/
+
+skip;
+
+routine test_reply_ports(
+	replyport reply		: mach_port_t;
+	requestport target	: mach_port_t;
+	inout data		: unsigned
+	);
+
+routine test_sreply_ports(
+	target			: mach_port_t;
+	sreplyport reply	: mach_port_t;
+	inout data		: unsigned
+	);
+
+routine test_ureply_ports(
+	target			: mach_port_t;
+	ureplyport reply	: mach_port_t;
+	inout data		: unsigned
+	);
+
+routine test_param_flags(
+	waittime time		: unsigned;
+	msgoption opt		: unsigned;
+	requestport target	: mach_port_t;
+	msgseqno seq		: unsigned;
+	inout data		: unsigned
+	);
+
+#if 0
+routine test_samecount(
+	target			: mach_port_t;
+	in	inArray		: Iarray;
+	inout	inoutArray	: Iarray, samecount;
+	out	outArray	: Iarray, samecount
+	);
+#endif
+
+routine test_countinout(
+	target			: mach_port_t;
+	out	outArray	: Iarray, countinout
+	);
+
+routine test_dealloc_pointer(
+	target			: mach_port_t;
+	in	inArray		: Oarray, dealloc;
+	inout	inoutArray	: Oarray, dealloc;
+	out	outArray	: Oarray, dealloc
+	);
+#if 0 /* doesn't work */
+routine test_dealloc_port(
+	target			: mach_port_t;
+	in	inPort		: mach_port_t, dealloc;
+	inout	inoutPort	: mach_port_t, dealloc;
+	out	outPort		: mach_port_t, dealloc
+	);
+#endif /* doesn't work */
+
+routine test_dynamic_dealloc_pointer(
+	target			: mach_port_t;
+	in	inArray		: Oarray, dealloc[];
+	inout	inoutArray	: Oarray, dealloc[];
+	out	outArray	: Oarray, dealloc[]
+	);
+#if 0 /* doesn't work */
+routine test_dynamic_dealloc_port(
+	target			: mach_port_t;
+	in	inPort		: mach_port_t, dealloc[];
+	inout	inoutPort	: mach_port_t, dealloc[];
+	out	outPort		: mach_port_t, dealloc[]
+	);
+#endif /* doesn't work */
+
+routine test_servercopy(
+	target			: mach_port_t;
+	in	inArray		: Iarray, servercopy;
+	out	scopy		: boolean_t
+	);
+
+simpleroutine terminate(target	:mach_port_t);
+
+/* End of file. */
+

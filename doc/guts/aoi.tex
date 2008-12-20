@@ -1,0 +1,1158 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1995, 1996, 1999 The University of Utah and the Computer
+%% Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{Abstract Object Interface (AOI) Representation}
+\label{cha:AOI}
+
+The Abstract Object Interface (\AOI{}, pronounced ``ow-ee'') is a set of data
+structures designed to represent parsed \IDL{} files.  Most of Flick's front
+ends --- all but the \MIG{} front end --- convert \IDL{} into \AOI{} and then
+save the resultant \AOI{} to disk.  This provides a level of abstraction
+between Flick's front ends, which simply parse \IDL{}, and Flick's presentation
+generators, which map interface specifications onto specific programming
+language constructs.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{AOI Overview}
+\label{sec:AOI:AOI Overview}
+
+The \AOI{} format is intended to satisfy the following goals:
+
+\begin{itemize}
+  \item \textbf{Cleanly represent object interfaces in abstract terms.}
+  %
+  \AOI{} was designed to represent object interfaces and \IDL{}s in
+  approximately the way humans design and think about them, irrespective of how
+  they may boil down in implementation. For example, \AOI{} supports separate
+  notions of object methods, attributes, and exceptions, since people tend to
+  think of these as separate concepts, even though all of these are likely to
+  become simply ``messages'' eventually.
+
+  \item \textbf{Support the features available in typical existing \IDL{}s.}
+  %
+  \AOI{} should be well matched to many existing \IDL{}s, partly in order to
+  fulfill the above goal (examining a range of existing \IDL{}s helps to
+  identify ``the way humans design and think about them'') and partly to
+  support the practical goal of being able to write front ends that convert
+  human-readable \IDL{} files into \AOI{} format.
+
+  \item \textbf{Leave out highly language-specific or presentation-related
+  constructs.}
+  %
+  Some \IDL{}s are cluttered with features that are of little or no importance
+  to the abstract \RPC{} interface, such as pointer attributes in \DCE{} or
+  translation types in \MIG{}\@.  These ``annotations'' describe how an
+  interface is to be mapped onto a programming language: in Flick, the goal is
+  to separate the notions of abstract interface and language mapping, in order
+  to provide maximum flexibility.  Therefore, \AOI{} is designed to represent
+  interfaces in abstract terms only, excluding any presentation-level
+  ``cruft.''  (To preserve annotations in an \IDL{} file, one must convert
+  \IDL{} directly into a representation that describes presentation: namely,
+  \PRESC{}\@.  This is how Flick's \MIG{} front end operates; see
+  Section~\ref{sec:FE:MIG Front End} for further details.)
+
+  \item \textbf{Create similar representations for equivalent \IDL{}
+  constructs.}
+  %
+  By translating equivalent constructs from different \IDL{}s into similar or
+  identical \AOI{} representations, \AOI{} acts as a kind of multi-\IDL{}
+  pseudo-language.  This makes writing later pieces of Flick much simpler.  For
+  instance, by making a \CORBA{} \IDL{} \idl{interface} appear similar to an
+  \ONCRPC{} \IDL{} \idl{version}, the code to map these notions to programming
+  languages is also similar.  This, in turn, helps to promote mix-and-match
+  combinations of Flick's front ends and presentation generators.  (See
+  Section~\ref{sec:Coding:Flick Programs, Files, and Libraries}, however, for
+  comments about mixed \IDL{}/presentation combinations.)
+\end{itemize}
+
+Finally, because \AOI{} acts as the interface between Flick's front ends and
+presentation generators, \AOI{} was designed to be simple, and easily written
+to and read from disk.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{AOI Data Structures}
+\label{sec:AOI:AOI Data Structures}
+
+Because \AOI{} is written to and read from files, the \AOI{} format is defined
+using the \ONCRPC{} \IDL{}\@.  The data structures are defined in
+\filename{mom/aoi.x}; this file is processed by \rpcgen{} when Flick is
+compiled\footnote{The `\filename{.x}' files that define \AOI{} and Flick's
+other intermediate languages are also processed by \rpcgen{} when a Flick
+source distribution is created, so that users do not need to have \rpcgen{}
+installed and working in order to compile Flick.} to produce functions that
+write and read \AOI{} data to and from files.  Other functions for manipulating
+\AOI{} structures are defined in the \AOI{} library, which is contained the
+\filename{libaoi} directory.
+
+The root of an \AOI{} tree is a structure that holds a \META{} data structure
+(as described in Chapter~\ref{cha:META}) and an array of \AOI{} definitions
+corresponding to definitions given in the input \IDL{} file(s):
+
+\begin{verbatim}
+struct aoi {
+        aoi_def         defs<>;
+        meta            meta_data;
+};
+\end{verbatim}
+
+The \idl{meta_data} field holds the \META{} information describing the input
+\IDL{} files: i.e., the file names and the inclusion graph.  The \idl{defs}
+field is an array of associations between names and bindings, described below.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Definitions}
+\label{subsec:AOI:Definitions}
+
+An \AOI{} definition --- represented by an \idl{aoi_def} structure --- consists
+of a name, a scope identifier, a type that is bound to the name, and a
+reference (an \idl{io_file_index}) to the source file for the definition.  The
+file reference is an index into the \META{} array of file descriptions as
+described in Chapter~\ref{cha:META}.
+
+\begin{verbatim}
+struct aoi_def
+{
+        string    name<>;
+        int       scope;
+        io_file_index idl_file;
+        aoi_type  binding;
+};
+\end{verbatim}
+
+\begin{figure}
+  \centering
+  \begin{tabular}{l|l}
+    \hline
+    \CORBA{} \IDL{} & Corresponding \idl{aoi_def} Values \\
+    \hline
+      & \\
+    \idl{module MyMod_1} \texttt{\braceleft}
+      & \idl{name = "MyMod_1", scope = 0, ...} \\
+    \quad\idl{interface MyIntf_1} \texttt{\braceleft}
+      & \idl{name = "MyIntf_1", scope = 1, ...} \\
+    \qquad\idl{typedef ... T_1;}
+      & \idl{name = "T_1", scope = 2, ...} \\
+    \qquad\idl{typedef ... T_2;}
+      & \idl{name = "T_2", scope = 2, ...} \\
+    \quad\texttt{\braceright}\idl{;}
+      & \\
+    \quad\idl{interface MyIntf_2} \texttt{\braceleft}
+      & \idl{name = "MyIntf_2", scope = 1, ...} \\
+    \quad\texttt{\braceright}\idl{;}
+      & \\
+    \texttt{\braceright}\idl{;}
+      & \\
+    \idl{module MyMod_2} \texttt{\braceleft}
+      & \idl{name = "MyMod_2", scope = 0, ...} \\
+    \texttt{\braceright}\idl{;}
+      & \\
+    \hline
+  \end{tabular}
+  \caption{Representation of \IDL{} Scopes in \AOI{}\@.}
+  \label{fig:AOI:AOI Scopes}
+\end{figure}
+
+The \idl{name} is a string, usually taken from the \IDL{} file without any
+mangling.
+%
+The \idl{scope} is a number representing the lexical scope of the definition.
+In \AOI{}, all \idl{aoi_def} structures are contained in a single array: in
+other words, scopes are \emph{not} represented by nested \idl{aoi_def}
+structures.  Rather, scoping is represented by keeping track of the lexical
+scoping depth of each definition, as illustrated in Figure~\ref{fig:AOI:AOI
+Scopes}.  The \idl{aoi_def}s are arranged so that the order of the \IDL{}
+source definitions is preserved.  A top level \IDL{} definition has a scoping
+depth of zero.  When a definition introduces a new scope, the \AOI{} ``current
+scope'' depth is increased by one: thus, the \idl{aoi_def}s within a scope will
+have \idl{scope} values that are greater than the the \idl{scope} value of the
+containing \idl{aoi_def}.  Obviously, when an \IDL{} scope ends, the \AOI{}
+``current scope'' depth is decreased by one.  This representation of scopes
+makes it easy to search for the ``parent'' of an \idl{aoi_def}: simply search
+backward in the array of \idl{aoi_def}s for a definition with a lower
+\idl{scope} value, handling zero as a special case.  Searching for peer and
+child definitions is also straightforward.\footnote{\CORBA{} \IDL{} makes
+searching for peer and child definitions somewhat more complex.  For instance,
+because a \idl{module} can be opened many times, there may be multiple
+\idl{aoi_def}s corresponding to single module, and therefore one must search
+for all of those definitions.}
+
+The \idl{binding} in an \idl{aoi_def} refers to the definition's type,
+translated from the \IDL{} file and represented by an \idl{aoi_type}, to be
+described shortly.
+
+Before moving on, note that an \idl{aoi_ref} is a reference to an
+\idl{aoi_def}, implemented as an index into the \idl{aoi_def} array contained
+in the top-level \idl{aoi} structure shown in Section~\ref{sec:AOI:AOI Data
+Structures}.  A null reference is represented by the special constant
+\idl{aoi_ref_null}.
+
+\begin{verbatim}
+typedef int aoi_ref;
+const aoi_ref_null = -1;
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Fields}
+\label{subsec:AOI:Fields}
+
+An \idl{aoi_field} is similar to an \idl{aoi_def} except it is meant for use in
+compound types: structures, unions, and so on.  An \idl{aoi_field} associates a
+name and an type, but does not need a scope identifier or source file
+reference.
+
+\begin{verbatim}
+struct aoi_field
+{
+        string          name<>;
+        aoi_type        type;
+};
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Types}
+\label{subsec:AOI:Types}
+
+\begin{table}
+  \centering
+  \begin{tabular}{|l|l|}
+    %%
+    %% If you change the order of items in this table, you must also change the
+    %% text below that says that the types are discussed in the order in which
+    %% they are presented in this table.
+    %%
+    \hline
+    \AOI{} Type Kind     & Description \\
+    \hline
+    \idl{AOI_INTEGER}    & an integer with a specified minimum value and range
+                           \\
+    \idl{AOI_SCALAR}     & an integer with range determined by \# of bits \\
+    \idl{AOI_FLOAT}      & a floating-point type with a specified \# of bits \\
+    \idl{AOI_CHAR}       & a character with flags and a specified \# of bits \\
+    \idl{AOI_VOID}       & void \\
+    \idl{AOI_CONST}      & an \IDL{}-defined constant value \\
+     & \\
+
+    \idl{AOI_ENUM}       & an enumeration (i.e., a set of symbolic constants)
+                           \\
+    \idl{AOI_ARRAY}      & an array, fixed- or variable-length \\
+    \idl{AOI_STRUCT}     & a structure containing named fields \\
+    \idl{AOI_EXCEPTION}  & a structure used to signal exceptions \\
+    \idl{AOI_UNION}      & a discriminated union \\
+    \idl{AOI_OPTIONAL}   & an optional value (i.e., possibly no value) \\
+    \idl{AOI_ANY}        & ``any'' value, \emph{without} a type tag \\
+    \idl{AOI_TYPE_TAG}   & an opaque type identifier \\
+    \idl{AOI_TYPED}      & a pair: a type identifier and a value of that type
+                           \\
+     & \\
+
+    \idl{AOI_INTERFACE}  & an \IDL{}-defined interface or object type \\
+    \idl{AOI_FWD_INTRFC} & a forward interface or object declaration \\
+    \idl{AOI_NAMESPACE}  & a namespace for other definitions \\
+     & \\
+
+    \idl{AOI_INDIRECT}   & a reference to a named type (an \idl{aoi_def}) \\
+    \idl{AOI_ERROR}      & \emph{a parse error} \\
+    \hline
+  \end{tabular}
+  \caption{Summary of the Available \AOI{} Type Kinds.}
+  \label{table:AOI:AOI Kinds}
+\end{table}
+
+An \IDL{} type is represented by an \idl{aoi_type_u}: a discriminated union
+with branches that represent all \IDL{} types.  An \idl{aoi_type} is a pointer
+to an \idl{aoi_type_u}.  All kinds of name bindings are represented as
+``types,'' including bindings to constant values and references to other
+bindings (i.e., usage of named types).  The set of representable types is
+determined by the \idl{aoi_kind} enumeration, summarized in
+Table~\ref{table:AOI:AOI Kinds}.  The \idl{aoi_type_u} union has a branch or
+``arm'' for each possible \idl{aoi_kind}.  The details of a particular \AOI{}
+type definition are specified by further \AOI{} structures, as shown below.
+
+\begin{verbatim}
+enum aoi_kind
+{
+        AOI_INDIRECT    = 1,
+        ...
+        AOI_ERROR       = 20
+};
+
+typedef struct aoi_type_u *aoi_type;
+
+union aoi_type_u
+switch (aoi_kind kind)
+{
+        case AOI_INDIRECT:      aoi_ref                 indirect_ref;
+        case AOI_INTEGER:       aoi_integer             integer_def;
+        case AOI_SCALAR:        aoi_scalar              scalar_def;
+        case AOI_FLOAT:         aoi_float               float_def;
+        case AOI_CHAR:          aoi_char                char_def;
+        case AOI_ARRAY:         aoi_array               array_def;
+        case AOI_STRUCT:        aoi_struct              struct_def;
+        case AOI_UNION:         aoi_union               union_def;
+        case AOI_INTERFACE:     aoi_interface           interface_def;
+        case AOI_EXCEPTION:     aoi_exception           exception_def;
+        case AOI_ENUM:          aoi_enum                enum_def;
+        case AOI_VOID:          void;
+        case AOI_CONST:         aoi_const_def           const_def;
+        case AOI_NAMESPACE:     void;
+        case AOI_OPTIONAL:      aoi_optional            optional_def;
+        case AOI_FWD_INTRFC:    aoi_ref                 fwd_intrfc_def;
+        case AOI_ANY:           void;
+        case AOI_TYPE_TAG:      void;
+        case AOI_TYPED:         aoi_typed               typed_def;
+        case AOI_ERROR:         void;
+};
+\end{verbatim}
+
+The current \AOI{} type kinds are described below, in the order in which they
+appear in Table~\ref{table:AOI:AOI Kinds}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Integers}
+
+An \idl{AOI_INTEGER} represents an integer type with a specified (constant)
+minimum value and range.  This type is used to represent all integer types
+whose values can be represented with not more that 32~bits.  This includes
+unsigned and signed \mbox{32-,} \mbox{16-,} and 8-bit types, as well as
+booleans and certain integer ``constants.''  (If the specified \idl{range} is
+zero, then the \idl{AOI_INTEGER} describes a type with only one possible value.
+This is useful for describing other types such as fixed-length arrays.)
+
+\begin{verbatim}
+struct aoi_integer
+{
+        int      min;
+        unsigned range;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Scalars}
+
+An \idl{AOI_SCALAR} describes an integer type by specifying the number of bits
+in its range.  The minimum value is determined by flags that indicate whether
+the type is signed or unsigned.  Scalars are only used to describe integer
+types that an \idl{AOI_INTEGER} cannot represent (e.g., 64-bit and 128-bit
+integers).
+
+\begin{verbatim}
+typedef u_int aoi_scalar_flags;
+const AOI_SCALAR_FLAG_NONE      = 0;
+const AOI_SCALAR_FLAG_SIGNED    = 1;
+const AOI_SCALAR_FLAG_UNSIGNED  = 2;
+
+struct aoi_scalar
+{
+        int              bits;
+        aoi_scalar_flags flags;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Floats}
+
+An \idl{AOI_FLOAT} describes a floating point type in terms of the number of
+bits in the encoding of the type.
+
+\begin{verbatim}
+struct aoi_float
+{
+        int bits;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Characters}
+
+An \idl{AOI_CHAR} describes a character type.  Again, the range of the type is
+described by the number of bits required to encode values of the type
+(generally 8).  In addition, a set of flags describe additional properties,
+such as whether the characters are ``signed'' or ``unsigned.''
+
+\begin{verbatim}
+typedef u_int aoi_char_flags;
+const AOI_CHAR_FLAG_NONE     = 0;
+const AOI_CHAR_FLAG_SIGNED   = 1;
+const AOI_CHAR_FLAG_UNSIGNED = 2;
+
+struct aoi_char
+{
+        int            bits;
+        aoi_char_flags flags;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Voids}
+
+An \idl{AOI_VOID} represents a void type: a type with no values.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Constants}
+
+An \idl{AOI_CONST} corresponds to a literal constant value.  (An \idl{aoi_def}
+can be used to describe a \emph{symbolic} constant.)  The type of the constant
+is described by an \idl{aoi_type} and is also manifest in the \idl{aoi_const}
+value itself.  \AOI{} currently supports integer, character, and floating-point
+literals, and arrays and structures built from these literals.
+
+\begin{verbatim}
+typedef long aoi_const_int;
+typedef char aoi_const_char;
+typedef double aoi_const_float;
+typedef aoi_const aoi_const_struct<>;
+typedef aoi_const aoi_const_array<>;
+
+enum aoi_const_kind
+{
+        AOI_CONST_INT           = 1,
+        AOI_CONST_CHAR          = 2,
+        AOI_CONST_FLOAT         = 3,
+        AOI_CONST_STRUCT        = 4,
+        AOI_CONST_ARRAY         = 5
+};
+
+union aoi_const_u
+switch (aoi_const_kind kind)
+{
+        case AOI_CONST_INT:     aoi_const_int           const_int;
+        case AOI_CONST_CHAR:    aoi_const_char          const_char;
+        case AOI_CONST_FLOAT:   aoi_const_float         const_float;
+        case AOI_CONST_STRUCT:  aoi_const_struct        const_struct;
+        case AOI_CONST_ARRAY:   aoi_const_array         const_array;
+};
+
+struct aoi_const_def
+{
+        aoi_type        type;
+        aoi_const       value;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Enumerations}
+
+An \idl{AOI_ENUM} represents an enumerated data type, i.e., a set of symbolic
+constants.  The set is represented as an array of \idl{aoi_field}s, which are
+name-value pairs.  The associated values, of course, are expected to be
+constants, not arbitrary \AOI{} types.  The \idl{enum_label} contains any
+\IDL{}-specified label for the enumeration.
+
+\begin{verbatim}
+struct aoi_enum
+{
+        string           enum_label<>;
+        struct aoi_field defs<>;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Arrays}
+
+An \idl{AOI_ARRAY} describes an array type: this includes fixed-length arrays,
+variable-length arrays (what some \IDL{}s call ``sequences''), and
+NUL-terminated strings.  The length of an array is specified as an
+\idl{AOI_INTEGER}, thus giving the minimum and maximum lengths of instances of
+the array type.  The \idl{AOI_ARRAY} description also refers to the type of the
+array elements, as shown in the code.
+
+\begin{verbatim}
+typedef u_int aoi_array_flags;
+const AOI_ARRAY_FLAG_NONE                       = 0x00000000;
+const AOI_ARRAY_FLAG_NULL_TERMINATED_STRING     = 0x00000001;
+const AOI_ARRAY_FLAG_OPAQUE                     = 0x00000002;
+const AOI_ARRAY_FLAG_ALL                        = 0x00000003;
+
+struct aoi_array
+{
+        aoi_type           element_type;
+        aoi_type           length_type;
+
+        aoi_array_flags    flgs;
+};
+\end{verbatim}
+
+Additional properties of the type are specified as a set of flags in the
+\idl{flgs} field of the \idl{aoi_array} structure.  The
+\idl{AOI_ARRAY_FLAG_NULL_TERMINATED_STRING} flag indicates that the array type
+represents a NUL-terminated string type.
+%%
+%% If you remove `AOI_ARRAY_FLAG_OPAQUE', fix `fe.tex', too!
+%%
+At one time, \idl{AOI_ARRAY_FLAG_OPAQUE} was used to indicate that the array
+elements should be packed together when encoded.  This flag is no longer
+meaningful, since data encoding decisions are made elsewhere (i.e., by back
+ends, based on the element types of \MINT{} arrays).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Structures}
+
+An \idl{AOI_STRUCT} represents a compound data type with a fixed number of
+named fields (also known as slots or data members).  The structure type is
+represented as an array of (zero or more) slot descriptors, which give the name
+and type of each slot.  The order of the slots is preserved from the \IDL{}
+source definition of the structure type.
+
+\begin{verbatim}
+typedef aoi_field aoi_struct_slot;
+struct aoi_struct
+{
+        /* Type of each structure slot, in order.  */
+        aoi_struct_slot slots<>;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Exceptions}
+
+An \idl{AOI_EXCEPTION} type is similar to a regular structure type, but with an
+additional semantic: an \idl{AOI_EXCEPTION} represents an \IDL{}-specified
+exceptional runtime condition and its associated data (if any).  Because
+\IDL{}s distinguish between normal structure types and exception types, \AOI{}
+makes this distinction as well.
+
+\begin{verbatim}
+typedef aoi_field aoi_exception_slot;
+struct aoi_exception
+{
+        aoi_exception_slot slots<>;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Unions}
+
+An \idl{AOI_UNION} represents a \emph{discriminated} union: a compound data
+type containing a discriminator that selects from a set of possible ``arms''
+(also called cases, branches, or variants).  The value of the discriminator
+determines which one of the possible union arms is valid.
+
+Each arm is represented by an \idl{aoi_union_case} containing a discriminator
+value --- the value that selects the arm --- as well as a name and type for the
+arm.  (The \AOI{} representation of constant values will be described shortly.)
+
+The union as a whole is essentially represented as a kind of structure with a
+distinguished discriminator member, an array of \idl{aoi_union_case}s
+representing the arms of the union, and an optional ``default'' arm that is
+selected when none of the ordinary union cases are selected.  If there is no
+default branch, then the \idl{dfault} slot of the \idl{aoi_union} will be null.
+If there is a default case and that default case is \idl{void}, then
+\idl{dfault} must refer to a valid \idl{aoi_field} of type \idl{AOI_VOID}\@.
+Finally, the \idl{union_label} slot holds the \IDL{}-specified name (if any) of
+the union arms as a whole.  This may be used when mapping the discriminated
+union type into an appropriate C/C++ representation (e.g., a \ctype{struct}
+with a slot that is a \ctype{union} of the \AOI{}-described union branches).
+
+\begin{verbatim}
+struct aoi_union_case
+{
+        aoi_const       val;
+        aoi_field       var;
+};
+
+struct aoi_union
+{
+        aoi_field      discriminator;
+        string         union_label<>;
+        aoi_union_case cases<>;
+        aoi_field     *dfault;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Optional Values}
+
+An \idl{AOI_OPTIONAL} represents a ``maybe value'' type: a type that allows for
+empty values.  Intuitively, an \idl{AOI_OPTIONAL} corresponds to a pointer type
+that may be null.
+
+In common \IDL{}s, optional data can be described in several ways: as a
+variable-length array of zero or one elements, as a discriminated union with a
+void variant, or as a denoted optional element.  (The \ONCRPC{} \IDL{} provides
+``\idl{*}'' for denoting optional data.  \CORBA{} \IDL{} does not provide an
+equivalent construct.)  These techniques for ``optionality'' are logically
+equivalent, but each \IDL{} idiom generally results in a different presentation
+--- that is, a different set of generated programming language types.  Thus, no
+technique for describing optional data is redundant, and \AOI{} must describe
+them all.  \idl{AOI_OPTIONAL} corresponds to denoted optional data types; i.e.,
+the \ONCRPC{} \IDL{} ``\idl{*}'' construct.
+
+\begin{verbatim}
+struct aoi_optional
+{
+        aoi_type type;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Anys}
+
+An \idl{AOI_ANY} represents ``any type,'' the type of all possible values.
+Because \idl{AOI_ANY} is all-encompassing, there is no additional data
+associated with an \idl{AOI_ANY}\@.
+
+Unlike the \idl{any} types specified by some \IDL{}s, an \idl{AOI_ANY} does
+\emph{not} contain an implicit type tag.  The notion of a type-tagged value is
+represented by a separate \AOI{} notion called \idl{AOI_TYPED}\@.  \AOI{}
+distinguishes between tagged and untagged ``any'' values in order to provide
+flexibility.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Type Tags}
+
+An \idl{AOI_TYPE_TAG} represents an opaque indicator of a type.  In other
+words, the value of a type tag is a description of type.  Tags are opaque in
+the sense that the compiler portions of Flick do not provide, understand, or
+enforce any semantics for type tags.  Other than marshaling and unmarshaling
+tag instances, Flick does nothing with tags.  Semantics must be provided by
+runtime libraries.
+
+Since type tags are opaque, an \idl{AOI_TYPE_TAG} has no attributes.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Typed Values}
+
+Combining the two notions above, an \idl{AOI_TYPED} represents a pair
+containing a type description and a value of the described type.  In other
+words, an \idl{AOI_TYPED} represents type-tagged values.  The \idl{tag} and
+\idl{type} fields of an \idl{aoi_typed} structure may conceptually refer to any
+\AOI{} type, but in practice, the former is always an \idl{AOI_TYPE_TAG} and
+the latter is always an \idl{AOI_ANY}\@.
+
+\begin{verbatim}
+struct aoi_typed
+{
+        aoi_type        tag;
+        aoi_type        type;
+};
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Interfaces}
+
+An \idl{AOI_INTERFACE} represents an \IDL{}-defined interface or object type.
+\AOI{}'s notion of an interface is flexible enough to represent \CORBA{}
+\idl{interface} declarations and \ONCRPC{} \idl{version} declarations, and
+should be flexible enough to represent the corresponding notions of other
+\IDL{}s as well.
+
+An \idl{AOI_INTERFACE} supports separate notions for attributes (``data
+members'') and operations (``function members'').  Interface operations are
+stored in \idl{aoi_operation} structures, which are contained within the
+\idl{aoi_interface} structure shown below.  Each \ctype{aoi_operation} contains
+several bits of information: the operation name, its request and reply message
+identifiers, the parameters, exceptions that may be raised, and various flags.
+The \AOI{} data structures for representing these operation data are shown in
+the code below.  Most of these are what one would expect, except perhaps for
+the request and reply message identifiers.  These are intended to be
+\IDL{}-specified ``suggestions'' to the presentation generator and back end
+stages of Flick.  These later stages are responsible for deciding the actual
+identifiers and codes used to implement an interface.  A presentation generator
+and back end can use identifiers that come from the \IDL{} (as passed through
+\AOI{}), but are not \emph{required} to use them.\footnote{In practice, the
+current scheme for tracking \IDL{}-specified identifiers has proven to be too
+restrictive in some circumstances.  This is briefly discussed in
+Section~\ref{sec:AOI:Summary and Comments}.}
+
+Interface attributes are stored separately from general operations and are
+represented as special facilities for reading and writing and interface's
+``data members.''  An \idl{aoi_attribute} specifies four separate codes: two
+for reading (request and reply) and two for writing.  The type of the interface
+attribute is stored in the \idl{aoi_attribute} structure.
+
+\emph{Note that all of an interface's operation and attribute request and reply
+codes must be unique.  Moreover, the request and reply codes for a single
+operation or attribute cannot be identical.}  These restrictions ease the
+translation of \AOI{} into \MINT{} during presentation generation.  (See
+Section~\ref{subsec:PG:Overview of the Translation Algorithm} for details.)  In
+addition, because operations and attributes are quite similar, some
+presentation generators may choose to translate \idl{aoi_attribute}s into
+various \idl{aoi_operation}s for accessing the attributes.
+
+\begin{verbatim}
+enum aoi_direction
+{
+        AOI_DIR_IN      = 1,
+        AOI_DIR_OUT     = 2,
+        AOI_DIR_INOUT   = 3,
+        AOI_DIR_RET     = 4
+};
+
+struct aoi_parameter
+{
+        string          name<>;
+        aoi_direction   direction;
+        aoi_type        type;
+};
+
+typedef u_int aoi_op_flags;
+const AOI_OP_FLAG_NONE          = 0x00000000;
+const AOI_OP_FLAG_ONEWAY        = 0x00000001;
+const AOI_OP_FLAG_IDEMPOTENT    = 0x00000002;
+const AOI_OP_FLAG_SETTER        = 0x00000004;
+const AOI_OP_FLAG_GETTER        = 0x00000008;
+
+struct aoi_operation
+{
+        string          name<>;
+
+        /*
+         * Code uniquely identifying this operation within this interface;
+         * works the same way as the code_type and code in aoi_interface.
+         */
+        aoi_const       request_code;
+        aoi_const       reply_code;
+
+        aoi_op_flags    flags;
+
+        /* Parameters to/from this operation.  */
+        aoi_parameter   params<>;
+
+        /* Return type, if any. */
+        aoi_type        return_type;
+
+        /*
+         * Exceptions that can be raised by this method.  These must be
+         * AOI_INDIRECTS so that we can access the exceptions' names.
+         */
+        aoi_type        exceps<>;
+};
+
+struct aoi_attribute
+{
+        string    name<>;
+
+        /* Attribute code/identifier.  */
+        aoi_const read_request_code;
+        aoi_const read_reply_code;
+        aoi_const write_request_code;
+        aoi_const write_reply_code;
+
+        /* Type of this attribute.  */
+        aoi_type  type;
+
+        /* Is the attribute readonly */
+        bool      readonly;
+};
+
+struct aoi_interface
+{
+        /* IDL this interface was defined in - "top-level" interface ID.  */
+        aoi_idl_id      idl;
+
+        /*
+         * `code_type' is the type of the identifying interface, e.g. a
+         * char-array (string) for CORBA, a number for MIG, a struct for DCE
+         * uuid's, etc.  `code' is the actual code identifying this interface.
+         */
+        aoi_type        code_type;
+        aoi_const       code;
+
+        /* Other interfaces this inherits from. */
+        aoi_type        parents<>;
+
+        /* Type of the identifying code of each attribute/operation.  */
+        aoi_type        op_code_type;
+
+        /* Operations and attributes accessible through this interface. */
+        aoi_operation   ops<>;
+        aoi_attribute   attribs<>;
+
+        /* Exceptions that can be raised by any method in this interface.  */
+        aoi_type        excepts<>;
+};
+\end{verbatim}
+
+Note that the \idl{idl} and \idl{excepts} slots of an \idl{aoi_interface} are
+not currently used for anything useful.  (The \idl{idl} slot is occasionally
+used to work around certain translation problems in the presentation generator
+and back end stages of Flick, but all of these cases should be handled in more
+principled ways.)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Forward Interfaces}
+
+An \idl{AOI_FWD_INTRFC} is essentially a placeholder for an interface or object
+type that has been named but not yet defined.  After the input \IDL{} has been
+parsed, a front end must make a cleanup pass over the \AOI{} in order to attach
+\idl{AOI_FWD_INTRFC} definitions to the corresponding ``real''
+\idl{AOI_INTERFACE} definitions.  In some \IDL{}s (e.g., \CORBA{} \IDL{}), it
+is an error to forward-declare and interface and then not define it.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Namespaces}
+
+An \idl{AOI_NAMESPACE} describes a namespace in the input \IDL{} file(s).
+These are used, for instance, to represent \CORBA{} \idl{module} constructs.
+%%
+%% If you fix the following, fix the corresponding text in `fe.tex', too!
+%%
+At present, \idl{AOI_NAMESPACE}s are not entirely suitable for describing
+\ONCRPC{} \idl{program}s because an \idl{AOI_NAMESPACE} provides nowhere to
+store the program identifier.  See Section~\ref{sec:FE:ONC RPC (Sun) Front End}
+for details.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Indirect References}
+
+An \idl{AOI_INDIRECT} represents a reference to another \idl{aoi_def}, i.e., a
+reference to a name binding.  An \idl{AOI_INDIRECT} is used whenever an \IDL{}
+source construct refers to a named type --- e.g., a previously \idl{typedef}'ed
+type --- or to a named constant, or to any other kind of name binding.
+
+The \idl{indirect_ref} value within an \idl{AOI_INDIRECT} in the index of the
+\idl{aoi_def} that is being referenced.  (Remember that all \AOI{} definitions
+are stored in a single array.)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Errors}
+
+Finally, \idl{AOI_ERROR} is a placeholder used by Flick's front ends to handle
+\IDL{} parse errors in a graceful manner.  Instances of \idl{AOI_ERROR} should
+never be written to an \AOI{} file.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{The AOI Library}
+\label{sec:AOI:The AOI Library}
+
+Common functions for creating and manipulating \AOI{} data structures are
+contained in Flick's \AOI{} library.  The source code for the library is in the
+\filename{libaoi} directory, and the library header file is
+\filename{mom/libaoi.h}.  The library functions are summarized below.
+
+\begin{cprototypelist}
+  \item[aoi_const aoi_new_const(aoi_const_kind kind)]
+  %
+  Return an \ctype{aoi_const} that points to a newly allocated
+  \ctype{aoi_const_u} structure initialized with the given \AOI{} constant
+  \cidentifier{kind}.
+
+  In the structure returned by \cfunction{aoi_new_const}, any additional fields
+  for describing the constant are uninitialized and must be set by the caller.
+  For this reason, it is often more convenient to call one of the following,
+  more specific constant constructors:
+  %
+  \begin{cprototypelist}
+    \item[aoi_const aoi_new_const_char(char c)]
+    %
+    Return an \ctype{aoi_const} that points to a new \ctype{aoi_const_u}
+    describing the constant character \cidentifier{c}.
+
+    \item[aoi_const aoi_new_const_int(int val)]
+    %
+    Return an \ctype{aoi_const} that points to a new \ctype{aoi_const_u}
+    describing the constant integer \cidentifier{val}.
+
+    \item[aoi_const aoi_new_const_float(double val)]
+    %
+    Return an \ctype{aoi_const} that points to a new \ctype{aoi_const_u}
+    describing the constant floating-point \cidentifier{val}.
+
+    \item[aoi_const aoi_new_const_string(const char *s)]
+    %
+    Return an \ctype{aoi_const} that points to a new \ctype{aoi_const_u}
+    describing the constant string \cidentifier{s}.  Note that a string is
+    represented as an array of characters, \emph{without} a terminating NUL\@.
+
+    \item[aoi_const aoi_new_const_string_cat(const char *s1, const char *s2)]
+    %
+    Return an \ctype{aoi_const} that points to a new \ctype{aoi_const_u}
+    describing the concatenation of \cidentifier{s1} and \cidentifier{s2}.
+  \end{cprototypelist}
+
+  \item[int aoi_const_eq(aoi_const c1, aoi_const c2)]
+  %
+  Returns \cliteral{1} if the two constants are equal (i.e., structurally
+  identical, representing the same constant value) and \cliteral{0} if they are
+  not.
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  \item[void aoi_get_int_size(aoi_integer *ai, int *out_bits,
+                              int *out_is_signed)]
+  %
+  Determine the number of bits (1, 8, 16, or 32) required to represent the
+  given \ctype{aoi_integer} type.  In essence, this function converts a
+  description of an integer range into a bits/signedness representation.  The
+  required number of bits is stored in \cidentifier{*out_bits} and the
+  signedness indicator (zero or one) is stored in \cidentifier{*out_is_signed}.
+
+  \item[void aoi_get_array_len(aoi *a, aoi_array *at, unsigned *min,
+                               unsigned *max)]
+  %
+  Determine the minimum and maximum lengths of the given \ctype{aoi_array}
+  type.  The minimum length is stored in \cidentifier{*min} and the maximum is
+  stored in \cidentifier{*max}.  (If the lengths are equal, then the array is
+  fixed-length.)  Note that the entire \ctype{aoi} structure must be passed to
+  this function, because the length of the array may be an
+  \cidentifier{AOI_INDIRECT} to another \AOI{} type definition.
+
+  \item[aoi_ref aoi_get_parent_scope(aoi *the_aoi, aoi_ref ref)]
+  %
+  Return the index (\ctype{aoi_ref}) of the \AOI{} definition that started the
+  scope in which the definition at \cidentifier{ref} is contained.  More simply
+  put, find the definition of the parent scope of \cidentifier{ref}.  If
+  \cidentifier{ref} refers to a top-level definition (i.e., a definition in
+  scope zero), then the return value is the constant
+  \cidentifier{aoi_ref_null}.
+
+  \item[char *aoi_get_scoped_name(aoi_ref ref, const char *separator)]
+  %
+  Compute and return the fully scoped name of the \AOI{} definition referenced
+  by \ctype{ref}, according to the \AOI{} representation of scopes (described
+  in Section~\ref{subsec:AOI:Definitions}).  The name components are separated
+  by the \cidentifier{separator} string.
+
+  \item[int aoi_def_find_member(aoi *in_aoi, aoi_def *d, const char *name,
+                                aoi_def **out_d, int *out_memindex)]
+  %
+  Search through the given \ctype{aoi_def} \cidentifier{d} for any members that
+  have the given \cidentifier{name}.  The kinds of definitions that contain
+  named members are \idl{AOI_STRUCT}, \idl{AOI_UNION}, \idl{AOI_EXCEPTION},
+  \idl{AOI_ENUM}, and \idl{AOI_INTERFACE}.  In the case of interfaces, parents
+  are also searched for the given \cidentifier{name}.
+
+  If a matching member is found, this function returns true (\cliteral{1}) and
+  sets \cidentifier{**out_d} and \cidentifier{*out_memindex} to refer to the
+  location of the member.  \cidentifier{**out_d} is set to point to the
+  \ctype{aoi_def} in which the matching member was found; this will always be
+  the same as the original definition except when a member is located in a
+  parent interface.  \cidentifier{*out_memindex} is set to the index of the
+  member in the array of named elements in the definition (e.g., the array of
+  slots in an \idl{AOI_STRUCT}, or the array of values inside an
+  \idl{AOI_ENUM}).  Because interfaces have two lists of names --- operations
+  and attributes --- \cidentifier{*out_memindex} may be set specially.  If the
+  matching member is an attribute, the \cidentifier{*out_memindex} is offset by
+  the number of operations in the interface.  For example, if there were five
+  operations (at array indices zero through four), a
+  \cidentifier{*out_memindex} value of six would correspond to the second
+  attribute.
+
+  Of course, if no matching member is found, \cfunction{aoi_def_find_member}
+  returns false (\cliteral{0}).
+
+  \item[int aoi_def_has_member(aoi *in_aoi, aoi_def *d, const char *name)]
+  %
+  Returns true if the given \ctype{aoi_def} contains a member with the given
+  name.  This is a simplified interface to the \cfunction{aoi_def_find_member}
+  function described above.
+
+  \item[aoi_type aoi_indir(aoi *a, aoi_type t)]
+  %
+  Follow a chain of \idl{AOI_INDIRECT} type definitions, starting at
+  \cidentifier{t}, to determine the underlying ``real'' type.  Return the
+  located \ctype{aoi_type} (a pointer to the \ctype{aoi_type_u} structure
+  contained in the terminal \ctype{aoi_def}).  Note that if \cidentifier{t} is
+  not an indirect definition, then \cidentifier{t} is its own underlying type.
+
+  \item[aoi_type aoi_indir_1(aoi *a, aoi_type t)]
+  %
+  Follow a single level of an \idl{AOI_INDIRECT} chain; in other words,
+  ``dereference'' \cidentifier{t} and return the referenced \ctype{aoi_type}.
+  If \cidentifier{t} is not an indirect definition, then this function simply
+  returns \cidentifier{t}.
+
+  \item[aoi_ref aoi_deref_fwd(aoi *a, aoi_ref fwd)]
+  %
+  Locate and return the index of the \idl{AOI_INTERFACE} definition
+  corresponding to the \idl{AOI_FWD_INTRFC} definition at \AOI{} index
+  \cidentifier{fwd}.  If the ``real'' interface definition cannot be found,
+  this function returns \cidentifier{aoi_ref_null}.
+
+  (If \cidentifier{fwd} refers to an actual \cidentifier{AOI_INTERFACE}, then
+  \cidentifier{fwd} is returned.  If \cidentifier{fwd} refers to a
+  non-interface type, then \cidentifier{aoi_ref_null} is returned.)
+
+  This function is primarily useful for front ends only.  Other stages of
+  compilation can simply refer to the \ctype{aoi_ref} contained within an
+  \idl{AOI_FWD_INTRFC} definition in order to find the actual definition of an
+  interface.
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  \item[void aoi_check(aoi *dest)]
+  %
+  Check the validity of the given \ctype{aoi} structure.  \emph{At present,
+  this is largely unimplemented.}
+
+  \item[void aoi_readfh(aoi *dest, FILE *fh)]
+  %
+  Read an \ctype{aoi} structure from \cidentifier{fh} into \cidentifier{dest}.
+  (The disk data is stored in \XDR{} format, and the actual I/O is performed by
+  functions that are generated by \rpcgen{} from the \filename{mom/aoi.x}
+  file.)  If input fails for some reason, this function invokes
+  \cfunction{panic}, which causes the process to print an error message and
+  exit.
+
+  \item[void aoi_writefh(aoi *dest, FILE *fh)]
+  %
+  Write the given \ctype{aoi} structure to \cidentifier{fh}.  (As before, the
+  data in the file is stored in \XDR{} format, and the actual I/O is performed
+  by \rpcgen{}-generated functions.)  This function invokes
+  \cfunction{aoi_check} to verify the validity of the \AOI{} data before
+  writing the data to disk.  If output fails for some reason, this function
+  calls \cfunction{panic}.
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  \item[void translate_aoi_to_mint()]
+  %
+  Convert a set of \AOI{} definitions into an equivalent \MINT{} (Message
+  Interface) representation.  \MINT{} is the intermediate language for
+  describing, in an abstract way, the messages that will be exchanged between
+  clients and servers.  Chapter~\ref{cha:MINT} describes \MINT{} in detail, and
+  Chapter~\ref{cha:PG} describes Flick's presentation generators, which invoke
+  the \AOI{}-to-\MINT{} translator.
+\end{cprototypelist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{\aoid{}, the AOI Printing Utility}
+\label{sec:AOI:aoid, the AOI Printing Utility}
+
+The \aoid{} program is a simple pretty-printer that takes \AOI{} input from a
+file or standard input and outputs a human-readable, ASCII translation.  If the
+\AOI{} input comes from a file, the output is a corresponding `\filename{.aod}'
+(\AOI{} dump) file.  Otherwise, if the \AOI{} input comes from
+\cidentifier{stdin}, the human-readable output is sent to \cidentifier{stdout}.
+Note that as the \AOI{} format changes, this program must also be changed to
+support any new constructs, or modifications to existing ones.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Summary and Comments}
+\label{sec:AOI:Summary and Comments}
+
+Because \AOI{} has a relatively simple purpose, the \AOI{} format has been
+quite stable.  When features are added, it is generally to support new (or
+previously unsupported) \IDL{} constructs: only rarely has \AOI{} been changed
+in order to support the needs of presentation generators.  Still, there are
+several ideas for improving \AOI{} and its library, principally to support
+Flick's later stages of compilation:
+
+\begin{description}
+  \item[Uniform Handling of Names.]
+  %
+  Not all name bindings are represented as \idl{aoi_def} structures.  Most
+  notably, operation and attribute names are stored within an interface type,
+  not within the top-level \idl{aoi_def} array.  The same problem applies to
+  structure, union, enumeration, and exception members.  The non-uniform
+  handling of names makes it more difficult to locate and refer to certain
+  entities; \AOI{} would likely be improved if all names were handled in the
+  same way.
+
+  \item[Multiple Names.]
+  %
+  Some \IDL{}s provide multiple names for entities.  For example, in \ONCRPC{}
+  \IDL{}, a \idl{program} has both a name and a code.  \ONCRPC{} \idl{version}s
+  and operations also have both names and codes.  These cases are handled
+  specially in \AOI{}, but in general, \AOI{} should be designed to support
+  multiple identifiers (in multiple identifier spaces) for all nameable
+  objects.  This would be useful not only for \ONCRPC{} \IDL{}, but also for
+  \CORBA{} \IDL{} (which has both \IDL{}-given names and ``repository
+  identifiers'') and \MIG{} \IDL{} (in which a \idl{subsystem} has both a name
+  and a ``message base identifier'').
+
+  Note that if \AOI{} were improved in this way, then \MINT{} would need to be
+  extended in a similar way.  This would in fact solve an outstanding problem
+  with \MINT{}: namely, that the top levels of the \MINT{} tree are too
+  specific.  Interface and operation identifiers in \MINT{} are too specific,
+  are singular, and are chosen by the presentation generator.  This makes it
+  difficult for back ends to construct on-the-wire message identifiers
+  appropriate to their message formats.\footnote{The \ONCTCP{} back end, for
+  example, goes to painful lengths to generate
+  \idl{program}/\idl{version}-style message identifiers for operations defined
+  in ``foreign'' \IDL{}s.}  This problem could largely be solved by allowing
+  \AOI{} to keep multiple names, and extending \MINT{} to preserve the names as
+  ``hints'' to the presentation generator and back end.
+
+  \item[Annotations.]
+  %
+  Experience has shown that \AOI{}'s ``purity'' is practically inconvenient.
+  It is useful and necessary to distinguish interface specification from
+  presentation-level ``cruft'' when designing and implementing a flexible
+  \IDL{} compiler such as Flick.  However, the decision to exclude all
+  presentation-level details from \AOI{} --- and to represent only ``pure''
+  interface specifications --- means that \IDL{}s with annotations cannot be
+  supported.
+
+  An extended \AOI{} format with support for annotations would be useful for a
+  number of interesting projects.  Immediately, it would make it possible for
+  one to rearchitect Flick's \MIG{} front end and presentation generator to use
+  \AOI{} as an intermediate format.  Later, an annotatable \AOI{} would make it
+  easier for people to experiment with annotated \IDL{} specifications, e.g.,
+  specifications with embedded quality-of-service constraints).
+
+  \item[\idl{AOI_INTEGER} Versus \idl{AOI_SCALAR}.]
+  %
+  Obviously, these two types should be unified in some way.
+
+  \item[Using \rpcgen{}.]
+  %
+  See Section~\ref{sec:Coding:Flick Programs, Files, and Libraries} for general
+  comments about using \ONCRPC{} \IDL{} to define Flick's intermediate
+  languages.  The \AOI{} library in particular needs more functions that
+  abstract the underlying \AOI{} data structures.  (Some of these functions
+  already exist in the individual front ends, and should be relocated into
+  \filename{libaoi}.)
+\end{description}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

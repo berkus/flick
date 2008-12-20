@@ -1,0 +1,95 @@
+#
+# Copyright (c) 1996, 1997, 1998, 1999 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+#### Start of configuration section ####
+
+SRCDIR	= @top_srcdir@
+#OBJDIR	= @top_objdir@
+OBJDIR	= ../../..
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+include $(OBJDIR)/GNUmakeconf
+
+##### End of configuration section #####
+
+# `TEST_PROGRAMS_NOENVS' is set by the `test/GNUmakefile' for cleaning targets.
+ifndef TEST_PROGRAMS_NOENVS
+ifndef TPZ_HOME
+  # GNU Make 3.78 provides $(error ...), but the following works, too.
+  error :=$(shell echo >&2 You must define the TPZ_HOME environment variable.)
+  error
+endif
+ifndef MYRI_HOME
+  # GNU Make 3.78 provides $(error ...), but the following works, too.
+  error :=$(shell echo >&2 You must define the MYRI_HOME environment variable.)
+  error
+endif
+endif
+
+SECTIONS += test/programs/trapeze
+
+TEST_STUB_DIR_LIST = $(OBJDIR)/test/pbe/trapeze
+
+# `TEST_OBJECTS' is the set of files that constitute the testbed framework.
+# `TEST_*_OBJECTS' are the objects used for each kind of test; each of these
+# macros must include `TEST_OBJECTS'.
+#
+# `TEST_RUNTIME_LIBS' is the set of Flick runtime libraries required in order
+# to link a test program.  `TEST_OTHER_LIBS' is the set of non-Flick libraries
+# required to link a test program.
+
+ifdef TPZ_HOME
+  TPZ_ARCH := $(shell $(TPZ_HOME)/arch.sh)
+else
+  TPZ_ARCH := unknown
+endif
+
+TEST_OBJECTS = 	
+
+TEST_CLIENT_OBJECTS = $(TEST_OBJECTS) 
+TEST_SERVER_OBJECTS = $(TEST_OBJECTS) 
+TEST_SCHIZOID_OBJECTS = $(TEST_OBJECTS) 
+
+TEST_RUNTIME_LIBS = $(OBJDIR)/lib/libflick-trapeze.a
+TEST_OTHER_LIBS = $(TPZ_HOME)/OBJ/$(TPZ_ARCH)/tpz_init.o \
+		  $(TPZ_HOME)/OBJ/$(TPZ_ARCH)/tpz_api.o \
+		  -L$(MYRI_HOME)/lib/$(TPZ_ARCH) \
+		  -lLanaiDevice -lbfd -liberty @LIBS@
+
+INCDIRS += $(SRCDIR)/test/programs/trapeze \
+	   $(TEST_STUB_DIR_LIST) \
+	   $(OBJDIR)/runtime/headers \
+	   $(SRCDIR)/runtime/headers \
+	   $(TPZ_HOME)/include \
+	   $(MYRI_HOME)/include
+
+# XXX - defines for trapeze headers 
+DEFINES += -D$(TPZ_ARCH)
+
+include $(SRCDIR)/test/fe/corba/TESTLIST
+include $(SRCDIR)/test/fe/mig/TESTLIST
+include $(SRCDIR)/test/fe/sun/TESTLIST
+include $(SRCDIR)/test/GNUmakerules.programs
+
+## End of file.
+

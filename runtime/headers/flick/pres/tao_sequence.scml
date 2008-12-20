@@ -1,0 +1,517 @@
+<!--
+ === Copyright (c) 1999 The University of Utah and
+ === the Computer Systems Laboratory at the University of Utah (CSL).
+ === All rights reserved.
+ ===
+ === Permission to use, copy, modify and distribute this software is hereby
+ === granted provided that (1) source code retains these copyright, permission,
+ === and disclaimer notices, and (2) redistributions including binaries
+ === reproduce the notices in supporting documentation.
+ ===
+ === THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ === IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ === ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS
+ === SOFTWARE.
+ ===
+ === CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ === improvements that they make and grant CSL redistribution rights.
+ -->
+
+<!-- TAO CORBA C++ implementation for sequences -->
+
+<idl type="sequence">
+
+  <macro name="member_copy" rparams={ptype:tag_list arg:string}
+         oparams={ptr:bool=true}>
+  <if ptype.idl_type=="string" ||
+      ptype.idl_type=="array" ||
+      ptype.idl_type=="interface" ||
+      ptype.idl_type=="TypeCode">
+    <scope name="">
+      <scope name=ptype.idl_type>
+        <scope name="main">
+          <do_copy ptype=ptype ptr=ptr arg=arg>
+        </scope>
+      </scope>
+    </scope>
+  <else>
+    <(arg)>
+  </if>
+  </macro>
+
+  <macro name="member_free"
+         rparams={seq:tag_list ptype:tag_list arg:string}
+         oparams={ptr:bool=true}>
+  <if ptype.idl_type=="string" ||
+      ptype.idl_type=="array" ||
+      ptype.idl_type=="interface" ||
+      ptype.idl_type=="TypeCode">
+    <scope name="">
+      <scope name=ptype.idl_type>
+        <scope name="main">
+          <pre>
+          for(CORBA::ULong i = 0; i < this-><(seq.len)>; i++)
+          {
+            <do_free ptype=ptype arg=(arg + "[i]")>;
+	    <(arg)>[i] = <if ptype.idl_type=="interface"><(ptype.main.'_nil()'.name)>()<else>(<(ptype.definition)>)0</if>;
+	  }
+          </pre>
+        </scope>
+      </scope>
+    </scope>
+  </if>
+  </macro>
+
+  <pres type="var">
+  
+    <aliascmd name="T_var()" handler=base::var::'T_var()'>
+    <aliascmd name="T_var(T_ptr)" handler=base::var::'T_var(T_ptr)'>
+    <aliascmd name="T_var(const T_var &)"
+              handler=base::var::'T_var(const T_var &)'>
+    <aliascmd name="~T_var()" handler=base::var::'~T_var()'>
+    <aliascmd name="T_var &operator=(T_ptr)"
+              handler=base::var::'T_var &operator=(T_ptr)'>
+    <aliascmd name="T_var &operator=(T_var &)"
+              handler=base::var::'T_var &operator=(T_var &)'>
+    <aliascmd name="T_ptr operator->()"
+              handler=base::var::'T_ptr operator->()'>
+    <aliascmd name="const T_ptr operator->() const"
+              handler=base::var::'const T_ptr operator->() const'>
+    <aliascmd name="operator const T_ptr &() const"
+              handler=base::var::'operator const T_ptr &() const'>
+    <aliascmd name="operator T_ptr &()"
+              handler=base::var::'operator T_ptr &()'>
+    <aliascmd name="operator T_ptr &() const"
+              handler=base::var::'operator T_ptr &() const'>
+    <aliascmd name="in()" handler=base::var::'in()'>
+    <aliascmd name="inout()" handler=base::var::'inout()'>
+    <aliascmd name="ptr()" handler=base::var::'ptr()'>
+    
+    <func kind="T_slice operator[](ulong)" inline=true>
+    {
+      return this->ptr_->operator[](<(parameter[0])>);
+    }
+    </func>
+    
+    <func kind="const T_slice operator[](ulong) const" inline=true>
+    {
+      return this->ptr_->operator[](<(parameter[0])>);
+    }
+    </func>
+    
+    <func kind="out()" inline=true>
+    {
+      delete this->ptr_;
+      this->ptr_ = 0;
+      return this->ptr_;
+    }
+    </func>
+    
+    <func kind="_retn()" inline=true>
+    {
+      <(definition)> *tmp = this->ptr_;
+      this->ptr_ = 0;
+      return tmp;
+    }
+    </func>
+    
+  </pres>
+  
+  <pres type="out">
+  
+    <func kind="T_out(T_ptr &)" inline=true>
+      : ptr_(<(parameter[0])>)
+    {
+      this->ptr_ = 0;
+    }
+    </func>
+    
+    <func kind="T_out(T_var &)" inline=true>
+      : ptr_(<(parameter[0])>.out())
+    {
+      delete this->ptr_;
+      this->ptr_ = 0;
+    }
+    </func>
+    
+    <func kind="T_out(T_out &)" inline=true>
+      : ptr_(ACE_const_cast(<(out_pointer)>&amp;,<(parameter[0])>).ptr_)
+    {}
+    </func>
+    
+    <func kind="T_out &operator=(const T_out &)" inline=true>
+    {
+      this->ptr_ = ACE_const_cast(<(out_pointer)>&amp;,<(parameter[0])>).ptr_;
+      return *this;
+    }
+    </func>
+    
+    <func kind="T_out &operator=(T *)" inline=true>
+    {
+      this->ptr_ = <(parameter[0])>;
+      return *this;
+    }
+    </func>
+    
+    <func kind="operator T *&()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+    
+    <func kind="ptr()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+    
+    <func kind="T *operator->()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+    
+    <func kind="T_slice operator[](ulong)" inline=true>
+    {
+      return this->ptr_->operator[](<(parameter[0])>);
+    }
+    </func>
+    
+    <func kind="const T_slice operator[](ulong) const" inline=true>
+    {
+      return this->ptr_->operator[](<(parameter[0])>);
+    }
+    </func>
+    
+  </pres>
+  
+  <pres type="main">
+  
+    <aliascmd name="operator<<=(copy)" handler=base::main::'operator<<=(copy)'>
+    <aliascmd name="operator<<=(no-copy)"
+              handler=base::main::'operator<<=(no-copy)'>
+    <aliascmd name="bool operator>>=(any &, ptr &)"
+              handler=base::main::'bool operator>>=(any &, ptr &)'>
+    
+    <macro name="do_copy" rparams={ptype:tag_list ptr:bool arg:string}>
+    new <(ptype.definition)>(<if ptr>*</if><(arg)>)
+    </macro>
+    
+    <macro name="do_free" rparams={ptype:tag_list arg:string}>
+    delete <(arg)>
+    </macro>
+    
+    <macro name="do_access"
+           rparams={ptype:tag_list alloc_flag:string slot:string}>
+    <pre>
+    if( <(alloc_flag)> )
+      <(slot)> = new <(ptype.definition)>;
+    return <(slot)>;</pre>
+    </macro>
+    
+    <func kind="T()">
+      : <(max)>(<if bounded><(max_len)><else>0</if>),
+        <(len)>(0),
+	<(val)>(<if bounded><(main.'allocbuf(ulong)'.name)>(<(max_len)>)<else>0</if>),
+	<(release)>(<if bounded>1<else>0</if>)
+    {
+    }
+    </func>
+    
+    <func kind="T(ulong)">
+      : <(max)>(<(parameter[0])>), <(len)>(0), <(release)>(1)
+    {
+      this-><(val)> = <(main.'allocbuf(ulong)'.name)>(this-><(max)>);
+    }
+    </func>
+    
+    <simple_func kind="non_default_constructor">
+    <if bounded>
+    <pre><print_func def=c_func>
+      : <(max)>(<(max_len)>),
+        <(len)>(<(parameter[0])>),
+        <(val)>(<(parameter[1])>),
+	<(release)>(<(parameter[2])>)
+    {
+    }
+    </pre>
+    <else>
+    <pre><print_func def=c_func>
+      : <(max)>(<(parameter[0])>),
+        <(len)>(<(parameter[1])>),
+	<(val)>(<(parameter[2])>),
+	<(release)>(<(parameter[3])>)
+    {
+    }
+    </pre>
+    </if>
+    </simple_func>
+    
+    <func kind="T(T &)">
+      : <(max)>(<if bounded><(max_len)><else><(parameter[0])>.<(max)></if>),
+        <(len)>(<(parameter[0])>.<(len)>),
+	<(release)>(1)
+    {
+      <(array_slice)> *tmp1 = <(main.'allocbuf(ulong)'.name)>(this-><(max)>);
+      
+      <(array_slice)> * const tmp2 = ACE_reinterpret_cast(<(array_slice)> * ACE_CAST_CONST, <(parameter[0])>.<(val)>);
+      
+      for(CORBA::ULong i = 0; i < this-><(len)>; i++ )
+        tmp1[i] = <member_copy ptype=pres_type[slice_pres_index]
+	                           arg="tmp2[i]">;
+      
+      this-><(val)> = tmp1;
+    }
+    </func>
+    
+    <func kind="~T()">
+    {
+      this->_deallocate_buffer();
+    }
+    </func>
+    
+    <func kind="T &operator=(T &)">
+    {
+      if( this == &amp;<(parameter[0])> )
+        return *this;
+
+      if( this-><(release)> )
+      {
+      <if bounded><if pres_type[slice_pres_index].idl_type=="string">
+        char **tmp = ACE_reinterpret_cast(char **, this-><(val)>);
+	
+        for (CORBA::ULong i = 0; i < this-><(len)>; ++i)
+        {
+	  CORBA::string_free(tmp[i]);
+	  tmp[i] = 0;
+        }</if>
+      <else>
+        if( this-><(max)> < <(parameter[0])>.<(max)> )
+	{
+	  <(array_slice)> *tmp = ACE_reinterpret_cast(<(array_slice)> *, this-><(val)>);
+	  <member_free seq=main ptype=pres_type[slice_pres_index] arg="tmp">
+	  <(main.'freebuf(T)'.name)>(tmp);
+	  this-><(val)> = <(main.'allocbuf(ulong)'.name)>(<(parameter[0])>.<(max)>);
+	}
+      </if>
+      }
+      else
+        this-><(val)> = <(main.'allocbuf(ulong)'.name)>(<(parameter[0])>.<(max)>);
+
+      this-><(max)> = <(parameter[0])>.<(max)>;
+      this-><(len)> = <(parameter[0])>.<(len)>;
+      this-><(release)> = 1;
+      <(array_slice)> *tmp1 = ACE_reinterpret_cast(<(array_slice)> *, this-><(val)>);
+      <(array_slice)> * const tmp2 = ACE_reinterpret_cast(<(array_slice)> * ACE_CAST_CONST, <(parameter[0])>.<(val)>);
+
+      for(CORBA::ULong i = 0; i < this-><(len)>; i++ )
+        tmp1[i] = <member_copy ptype=pres_type[slice_pres_index]
+	                       arg="tmp2[i]">;
+
+      return *this;
+    }
+    </func>
+
+    <simple_func kind="T &operator[](ulong)">
+    <pre><print_func def=c_func inline=true>
+    {
+      ACE_ASSERT(<(parameter[0])> < this-><(max)>);
+      <(array_slice)> * tmp = ACE_reinterpret_cast(<(array_slice)> *, this-><(val)>);
+    </pre>
+    <if pres_type[slice_pres_index].idl_type=="string" inline=true>
+    <pre>  return TAO_SeqElem_String_Manager(tmp + <(parameter[0])>,
+                                        this-><(release)>);</pre>
+    <else>
+    <pre>  return tmp[<(parameter[0])>];</pre>
+    </if>
+    <pre>
+    }
+    </pre>
+    </simple_func>
+
+    <func kind="const T &operator[](ulong) const" inline=true>
+    {
+      ACE_ASSERT(<(parameter[0])> < this-><(max)>);
+      <(array_slice)> * const tmp = ACE_reinterpret_cast(<(array_slice)> *ACE_CAST_CONST, this-><(val)>);
+      return tmp[<(parameter[0])>];
+    }
+    </func>
+
+    <simple_func kind="allocbuf(ulong)">
+    <if pres_type[slice_pres_index].idl_type=="string">
+    <pre><print_func def=c_func>
+    {
+      char **buf = new char *[<(parameter[0])>];
+      for(CORBA::ULong i=0; i < <(parameter[0])>; i++)
+        buf[i] = 0;
+      return buf;
+    }
+    </pre>
+    <else>
+    <pre><print_func def=c_func>
+    {
+      <(array_slice)> *tmp;
+      tmp = new <(array_slice)>[<(parameter[0])>];
+      return tmp;
+    }
+    </pre>
+    </if>
+    </simple_func>
+
+    <simple_func kind="freebuf(T)">
+    <if bounded && pres_type[slice_pres_index].idl_type=="string">
+    <pre><print_func def=c_func>
+    {
+      for (CORBA::ULong i = 0; i < <(max_len)>; ++i)
+      {
+        if(<(parameter[0])>[i] != 0)
+	{
+	  CORBA::string_free(<(parameter[0])>[i]);
+	  <(parameter[0])>[i] = 0;
+	}
+      }
+      delete [] <(parameter[0])>;
+    }
+    </pre>
+    <else>
+    <pre><print_func def=c_func>
+    {
+      delete [] <(parameter[0])>;
+    }
+    </pre>
+    </if>
+    </simple_func>
+    
+    <func kind="_allocate_buffer(ulong)">
+    {
+      <(array_slice)> *tmp = <(main.'allocbuf(ulong)'.name)>(<(parameter[0])>);
+
+      if( this-><(val)> != 0 )
+      {
+        CORBA::ULong i;
+	<(array_slice)> *old = ACE_reinterpret_cast(<(array_slice)> *, this-><(val)>);
+
+	for( i = 0; i < this-><(len)>; i++ )
+	  tmp[i] = old[i];
+
+	if( this-><(release)> )
+	  <(main.'freebuf(T)'.name)>(old);
+      }
+      this-><(val)> = tmp;
+    }
+    </func>
+    
+    <func kind="_deallocate_buffer()">
+    {
+      if( this-><(val)> == 0 || this-><(release)> == 0 )
+        return;
+
+      <(array_slice)> *tmp = ACE_reinterpret_cast(<(array_slice)> *, this-><(val)>);
+      <member_free seq=main ptype=pres_type[slice_pres_index] arg="tmp">
+
+      <(main.'freebuf(T)'.name)>(tmp);
+      this-><(val)> = 0;
+    }
+    </func>
+    
+    <func kind="bool release()" inline=true>
+    {
+      return this-><(release)>;
+    }
+    </func>
+    
+    <func kind="ulong maximum()" inline=true>
+    {
+      return <if bounded><(max_len)><else>this-><(max)></if>;
+    }
+    </func>
+    
+    <func kind="ulong length()" inline=true>
+    {
+      return this-><(len)>;
+    }
+    </func>
+    
+    <func kind="length(ulong)">
+    {
+      if( <(parameter[0])> > this-><(max)> )
+      {
+        <if bounded>return;<else>this->_allocate_buffer(<(parameter[0])>);
+	this-><(max)> = <(parameter[0])>;
+	this-><(release)> = 1;</if>
+      }
+      else if (<(parameter[0])> < this-><(len)>)
+      {
+        this->_shrink_buffer(<(parameter[0])>, this-><(len)>);
+      }
+      this-><(len)> = <(parameter[0])>;
+    }
+    </func>
+    
+    <simple_func kind="_shrink_buffer(ulong, ulong)">
+    <if pres_type[slice_pres_index].idl_type=="interface" ||
+        pres_type[slice_pres_index].idl_type=="TypeCode" ||
+        pres_type[slice_pres_index].idl_type=="string" ||
+        pres_type[slice_pres_index].idl_type=="array">
+    <defvar ptype:tag_list=pres_type[slice_pres_index]>
+    <pre><print_func def=c_func>
+    {
+      <(array_slice)> *tmp = ACE_reinterpret_cast(<(array_slice)> *, this-><(val)>);
+      
+      for(CORBA::ULong i = <(parameter[0])>; i < <(parameter[1])>; i++)
+      {
+        <free ptype=ptype arg="tmp[i]">;
+	tmp[i] = <if ptype.idl_type=="interface"><(ptype.main.'_nil()'.name)>()<else>(<(ptype.definition)>)0</if>;
+      }
+    }
+    </pre>
+    <else>
+    <pre><print_func def=c_func unused={0 1}>
+    {
+    }
+    </pre>
+    </if>
+    </simple_func>
+    
+    <func kind="T get_buffer(bool)">
+    {
+      <(array_slice)> *result = 0;
+      if( <(parameter[0])> == 0 )
+      {
+        if( this-><(val)> == 0 )
+	{
+	  result = <(main.'allocbuf(ulong)'.name)>(this-><(len)>);
+	  this-><(val)> = result;
+	}
+	else
+	{
+	  result = ACE_reinterpret_cast(<(array_slice)> *, this-><(val)>);
+	}
+      }
+      else
+      {
+        if( this-><(release)> != 0 )
+	{
+	  result = ACE_reinterpret_cast(<(array_slice)> *, this-><(val)>);
+	  this-><(max)> = 0;
+	  this-><(len)> = 0;
+	  this-><(val)> = 0;
+	  this-><(release)> = 0;
+	}
+      }
+      return result;
+    }
+    </func>
+    
+    <func kind="const T get_buffer()">
+    {
+      return ACE_const_cast(const <(array_slice)> * ACE_CAST_CONST, this-><(val)>);
+    }
+    </func>
+    
+  </pres>
+
+</idl>
+
+<!-- End of file. -->
+

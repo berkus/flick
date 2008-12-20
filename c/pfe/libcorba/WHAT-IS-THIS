@@ -1,0 +1,3 @@
+This directory contains the CORBA-specific modifications to the ``generic'' AOI
+to C language mapping.  The CORBA language mapping is organized as a library so
+that the Fluke presentation generator can be derived from it.

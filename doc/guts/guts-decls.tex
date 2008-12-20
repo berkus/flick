@@ -1,0 +1,82 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1997, 1998, 1999 The University of Utah and the Computer
+%% Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\usepackage{fullpage}
+\usepackage{graphicx}
+\usepackage[obeyspaces,spaces]{url}
+
+%% Use the Times, Helvetica, and Computer Modern Typewriter typefaces.
+\renewcommand{\rmdefault}{ptm}
+\renewcommand{\sfdefault}{phv}
+\renewcommand{\ttdefault}{cmtt}
+
+%% Change underscore to be just a normal character.  Some of the typesetting
+%% commands in `user-commands.tex' (e.g., `\option') really only ``work''
+%% because of this.
+%%
+\catcode`\_=\active
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\title{Flick: The Flexible IDL Compiler Kit \\
+       Version 2.1 \\[3ex]
+       Programmer's Manual}
+
+\author{Flux Research Group \\
+        Department of Computer Science \\
+        University of Utah \\[2ex]
+        \fluxurl \\
+        \flickemail}
+
+\date{November~1999}
+
+\makeatletter
+%% The `begin' and `end' commands are hooks that we use when producing the HTML
+%% version.  See `guts.cfg'.
+\gdef\@copyrightnotice@begin{}
+\gdef\@copyrightnotice@end{}
+\gdef\@copyrightnotice{}
+\def\copyrightnoticebegin#1{\gdef\@copyrightnotice@begin{#1}}
+\def\copyrightnoticeend#1{\gdef\@copyrightnotice@end{#1}}
+\def\copyrightnotice#1{\gdef\@copyrightnotice{#1}}
+\makeatother
+
+\copyrightnotice{%
+  Copyright \copyright\ 1997, 1998, 1999 The University of Utah.
+  %
+  Permission is granted to make and distribute verbatim copies of this document
+  provided the copyright notice and this permission notice are preserved on all
+  copies.
+  %
+  Modified versions of this document may be copied and distributed with the
+  additional condition that the entire resulting derived work is distributed
+  under the terms of a permission notice identical to this one.%
+  }
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

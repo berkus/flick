@@ -1,0 +1,2338 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1995, 1999 The University of Utah and the Computer Systems
+%% Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{Presentation in C/C++ (PRES\_C) Representation}
+\label{cha:PRESC}
+
+A \PRESC{} file contains information describing the user-visible behavior of a
+set of stubs to be generated and anything else pertinent to the presentation.
+These files are used by the presentation generators to communicate their intent
+to the back ends.  This makes it possible to separate the presentation, the C
+declarations and definitions, from the implementation.
+
+The first few sections in this chapter describe the overall concepts embodied
+in the \PRESC{} format; the last section, Section~\ref{sec:PRESC:PRESC Data Structures},
+describes the actual \XDR{} data structures representing \PRESC{} files.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{PRES\_C Overview}
+\label{sec:PRESC:PRESC Overview}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Stubs}
+\label{subsec:PRESC:Stubs}
+
+A \PRESC{} file contains the blueprints for a set of \emph{stubs}.  Each of
+these blueprints, or \emph{stub definitions}, completely defines one stub which
+will be produced when the \PRESC{} file is run through a C back end.  A stub
+is a C function or data object which, when compiled and linked into a C
+program, can be invoked or otherwise utilized by that program as defined in the
+\PRESC{} file.  There are several different types of stubs that can be defined
+in a \PRESC{} file (and hence produced by a back end).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Marshaling and Unmarshaling Stubs}
+%\label{subsubsec:PRESC:Mashaling and Unmarshaling stubs}
+
+These stubs are able to marshal and unmarshal the various data types defined by
+the presentation.  The \PRESC{} file actually contains only stub ``templates''
+for such functions, rather than the complete stub definition.  This is the one
+exception to our stub definition above.  The back end is responsible for
+``specializing'' the stub for a particular parameter direction (and perhaps
+other aspects), based on how the stub is used.  If a stub is used in multiple
+ways, multiple versions of the stub will appear in the generated code.  For
+stubs that are not used, no code is generated.  Because of Flick's aggressive
+inlining of the marshaling/unmarshaling code, most of these stubs are rarely
+produced.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Client Stubs}
+%\label{subsubsec:PRESC:Client Stubs}
+
+A client stub is a C function that can be called from anywhere in the program
+it is linked with.  A client stub function packages up a request message, sends
+it to a server, and optionally waits for, receives, and unpacks a reply message
+from that server.  The C function's parameters and return value may be used to
+pass data to and from the server, as well as to specify the target of the
+\RPC{} (the object to be invoked) and to return error status.  Exactly how
+these C function parameters are used is entirely defined by the client stub
+definition; there are no fixed rules that must apply to all stubs, such as the
+target object being specified in a particular parameter, or the return value
+being used to return an error status code.  The name of the C client stub
+function is also defined in the \PRESC{} file; although it is usually based on
+the name of an \RPC{} operation defined in an \IDL{} file, it doesn't have to
+be.
+
+A client stub, when invoked, generally performs the following basic steps, not
+necessarily in this exact order:
+
+\begin{enumerate}
+  \item Determine the target of the \RPC{}: e.g., extract the target object
+  reference from the appropriate C function parameter.
+
+  \item Marshal the request message using the appropriate C function
+  parameters.
+
+  \item Send the request message to the server.
+
+  \item Await and receive the server's reply message.
+
+  \item Allocate any storage needed for unmarshaled reply data and not already
+  allocated by the caller of the client stub.
+
+  \item Unmarshal the reply message.
+
+  \item Deallocate any storage allocated by the caller to pass request data,
+  which the caller expects the client stub to deallocate on its behalf.
+
+  \item Return the appropriate return value, typically a status code or a piece
+  of unmarshaled reply message data.
+\end{enumerate}
+
+Of course, for one-way client stubs, steps 4--6 are not performed.  Steps 5 and
+6 are usually combined in actual stub implementations produced by typical PBEs
+(see Chapter~\ref{cha:BE} for more information).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Server Skeletons}
+%\label{subsubsec:PRESC:Server Skeletons}
+
+A server skeleton is the server-side analog to the client stub: it causes
+request messages received from clients to be converted into calls to C work
+functions in the server program.  Unlike a client stub, a server skeleton is
+not generally a C function: instead, it is an opaque transport-specific C
+object (e.g., a global variable) which the server program uses as a ``handle''
+when registering itself as a server.  Once the server has registered one or
+more object with the \ORB{}, it can begin accepting client messages.  These
+messages are then dispatched to the appropriate object and skeleton to be
+processed.
+
+Each skeleton acts like a dispatcher by decoding the message enough to figure
+out which server work function needs to be called and then unmarshaling the
+rest of the message.  Server work functions tend to correspond to operations in
+interfaces, but some may be implicitly defined by other definitions from the
+\IDL{}\@.  Each work function that can be called from a particular
+server skeleton can have a different C function signature, and can use
+its parameters and return value in a different way: a server skeleton
+definition in a \PRESC{} file contains a separate function
+parameter/return value mapping description for each supported server
+work function.
+
+When a request message is received from a client, the server skeleton generally
+causes the following operations to be performed, not necessarily in this exact
+order:
+
+\begin{enumerate}
+  \item Determine which server work function is to be called, based on the
+  contents of the request message.
+
+  \item Allocate any storage needed to hold unmarshaled request message data to
+  be passed to the server work function.
+
+  \item Unmarshal the request message.
+
+  \item Determine which specific server object was invoked by the client, and
+  indicate this to the server work function.
+
+  \item Allocate any storage for reply data from the server work function.
+
+  \item Call the server work function.
+
+  \item Marshal the reply message.  The marshaled data may include data
+  structures referred to by pointer parameters passed to the work function,
+  which the work function filled in or modified during its execution, and/or
+  the data returned by the work function in its return value.
+
+  \item Send the marshaled reply message back to the client.
+
+  \item Deallocate any storage used to hold reply message data before being
+  marshaled, which the server work function expects the skeleton to deallocate
+  on return.  This storage could have been allocated in step 5 above, or by the
+  server work function itself.
+
+  \item Deallocate any storage allocated above to hold unmarshaled request
+  message data, which the server work function expects the skeleton to
+  deallocate automatically on return (i.e., storage that the server work
+  function doesn't ``take control of'' and deallocate itself when finished with
+  it).
+
+  \item Return to the \ORB{} so that it can process subsequent messages.
+\end{enumerate}
+
+Of course, for one-way \RPC{} requests, steps 7--9 are not performed.  Steps 2
+and 3 are usually combined in actual server skeletons produced by typical PBEs.
+Steps 7 and 9 may also be combined in some cases.  See Chapter~\ref{cha:BE} for
+more information about PBE implementation.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Client Skeletons}
+%\label{subsubsec:PRESC:Client Skeletons}
+
+Used in clients that use an event-based programming model.  Not all PBEs or
+transport protocols may support client skeletons.
+
+A client skeleton is the client-side equivalent of the server skeleton.  Rather
+than dispatching requests to appropriate server work functions, a client
+skeleton dispatches reply messages to appropriate handlers, or client work
+functions.  It is responsible for decoding the reply message enough to figure
+out with which client request it is associated, and calling the reply handler
+with any information the client saved when the request was made.
+
+As on the server side, a ``handle'' or pseudo-object reference is used to
+identify the client skeleton expecting a reply message for the original
+request.  The handle is passed to the server, and the reply is much like a
+one-way request to the pseudo-object client.
+
+Unlike the server skeleton, however, the client skeleton does not bother to
+unmarshal the reply message (beyond the point that it needs to determine how to
+dispatch it), nor does it need to worry about marshaling data returned by the
+reply handler (there is no reply to the reply inherent in the model, although
+such functionality is certainly possible within the model).
+
+When a reply message is received from a server, the client skeleton generally
+causes the following operations to be performed, not necessarily in this exact
+order:
+
+\begin{enumerate}
+  \item Determine which client work function (reply handler) is to be called,
+  based on the contents of the reply message.
+
+  \item Determine which specific client pseudo-object was ``invoked'' by the
+  server, and indicate this to the reply handler.
+
+  \item Call the reply handler.
+
+  \item Return to the \ORB{} so that it can process subsequent messages.
+\end{enumerate}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Send and Receive Stubs}
+%\label{subsubsec:PRESC:Send and Receive Stubs}
+
+Used in clients and servers that use an event-based programming model.  Not all
+PBEs or transport protocols may support send and receive stubs.
+
+Send stubs are responsible only for sending a message to either the client or
+server.  They return immediately to the caller, regardless of whether a reply
+is expected (in the case of a request to the server).  Note that a send stub is
+similar to a one-way client stub in that the message is sent and control
+returns without waiting for a reply.  However, they different from each other
+in three important ways.  First, a send stub is not responsible for marshaling
+any data; it requires a pre-marshaled message as a parameter.  Second, a
+one-way client stub is used when no reply at all is expected for the \RPC{}
+invocation; a send stub is used even if a reply is expected, but its receipt
+will be deferred until later in the client program's execution.  Third, a send
+stub is not limited to the client; they exist on the server side to issue
+replies back to the client.  They are more in harmony with the concepts of
+message passing than with traditional \RPC{}\@.
+
+Receive stubs are not well defined for Flick.  Ideally, they represent a method
+of either polling or waiting for the reply from a previous send stub, although
+the implementation of such a stub has not been laid out for any of Flick's
+runtime layers.  Currently, the supported method of receiving a reply is via
+the client skeleton.
+
+In a sense, a send stub acts as a ``thread fork,'' allowing both the client and
+the server to work in parallel.  Similarly, a receive stub acts as a
+corresponding ``join'' operation, synchronizing the client thread with the
+server thread and returning the server's result.
+
+Note that although send and receive stubs are not explicitly responsible for
+marshaling or unmarshaling any data, implementationally they may do a small
+amount.  For example, a \CORBA{}/\IIOP{} client send stub must encode the
+\GIOP{} header and server object reference into the message before it can be
+sent to the server.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Continuation Stubs}
+%\label{subsubsec:PRESC:Continuation Stubs}
+
+Used in clients and servers that use an event-based programming model.  Not all
+PBEs or transport protocols may support continuation stubs.
+
+If for some reason a work function or reply handler is not able to complete
+(perhaps required data has not yet arrived to finish the computation), it may
+request that the work be deferred until a later time.  A continuation stub is
+used to indicate this to the runtime layer, and provide a way to save partially
+computed results so the work can be continued later (rather than being entirely
+restarted).  It is left up to the runtime how to ``awake'' one of these
+continued work functions to continue its processing.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Message Marshaling and Unmarshaling Stubs}
+%\label{subsubsec:PRESC:Message Marshaling and Unmarshaling Stubs}
+
+Used in clients and servers that use an event-based programming model.  Not all
+PBEs or transport protocols may support message marshal/unmarshal stubs.
+
+Like their marshal and unmarshal stub cousins, they are responsible for
+encoding and decoding data.  However, rather than working on specific types,
+they focus on the entire message for a request or reply.  By invoking a message
+marshal stub, one receives an opaque message object ready to be sent to a
+server (or multiple servers).  Likewise, by invoking a message unmarshal stub,
+one can decode a message object into the appropriate parameters.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Presentation Attributes}
+\label{subsec:PRESC:Presentation Attributes}
+
+For some presentations there are peripheral data types or just extra
+information that needs to be available in order to produce the correct code.
+For instance, the \CORBA{} C++ mapping requires the \IDL{} compiler to generate
+smart pointer classes for many of the defined types.  Most of this work can be
+accomplished during presentation generation and simply added to the \CAST{}
+part of the \PRESC{} file; however, producing the bodies of any functions is an
+implementation issue which should be left to the back end.  Thus, we must have
+a generic way of storing information in the \PRESC{}, whether it is
+presentation functions or any other things of interest.  The solution was to
+make a data structure in \XDR{} that could store tagged data so we could create
+semantically meaningful but otherwise arbitrary data values that could be
+stored in the \PRESC{} file.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Marshaling and Unmarshaling}
+\label{subsec:PRESC:Marshaling and Unmarshaling}
+
+Most of the types of stubs listed above perform marshaling and/or unmarshaling
+of messages in some context: after all, marshaling and unmarshaling is the
+central mechanism behind \RPC{}\@.  Marshaling can be defined as conversion of
+data from language-specific presented data formats (C-language data types in
+this case) to a language-independent in-transit message format useful for
+passing the data between a client and a server; unmarshaling is the opposite
+conversion.  There are an infinite number of ways message data can be presented
+in C, many of them reasonable and commonly used in different \RPC{} systems.
+Providing a convenient representation of a wide variety of these possible
+presentations is the primary challenge for the \PRESC{} file format.
+
+To this end, each \PRESC{} file contains three main parts:
+
+\begin{itemize}
+  \item A message interface (\MINT{}) type graph, representing the complete
+  on-the-wire message type signature used by the stubs.  See
+  Chapter~\ref{cha:MINT} for more information on \MINT{} type graphs.
+
+  \item A C abstract syntax tree (\CAST{}), representing the complete set of
+  C-language definitions and declarations for the C-language presentation the
+  stubs are required to implement.  The \CAST{} stored in a \PRESC{} file, when
+  converted to C source code, directly becomes the header file to be included
+  by the \RPC{} programmer in client or server code that uses the generated
+  stubs.  See Chapter~\ref{cha:CAST} for more information on the \CAST{}
+  format.
+
+  \item A set of stub definitions, as described above, each containing
+  references into the \MINT{} and \CAST{} sections of the file above, and
+  \emph{mapping} information describing how one corresponds to the other.
+\end{itemize}
+
+Thus, each stub definition in a \PRESC{} file refers to a ``common database''
+of message type definitions (the \MINT{}), and a ``common database'' of
+C-language definitions and declarations (the \CAST{})\@.  For example, to
+define how a client stub is to marshal a request message and unmarshal the
+reply, each client stub definition contains:
+
+\begin{itemize}
+  \item A reference to a subsection of the \MINT{} type graph representing the
+  message that the client stub will send to the server.
+
+  \item A reference to another subsection of the \MINT{} type graph
+  representing the reply message the stub expects to get back from the server.
+
+  \item A reference to the C function prototype declaration in the \CAST{}
+  defining the C-language type signature this particular client stub will have.
+
+  \item A tree of \emph{mapping} data structures defining how the C-language
+  parameters to the client stub are to be converted into the request message
+  defined above in the \MINT{}\@.
+
+  \item Another tree of mapping structures defining how the server's reply
+  message is to be converted back into presented C-language data types, either
+  by filling in pass-by-reference C data objects whose addresses were passed to
+  the client stub through C parameters, or directly through the client stub
+  function's return value.
+\end{itemize}
+
+In general, the C type definitions are usually more complicated than their
+corresponding \MINT{} types, although in a few cases the \MINT{} actually
+contains more information.  For example, \MINT{} integer types specify an exact
+range of allowable values, whereas C integer types are merely the well-known
+\ctype{char}, \ctype{int}, \ctype{long}, etc.
+
+\subsubsection{Mapping Between Presentation and Message}
+
+The stubs definitions are actually made up of a number of data structures
+defined in \filename{pres_c.x} and referred to as ``nodes''.  These nodes are
+connected together to form a tree that describes how to map to and from \CAST{}
+and \MINT{}\@.  The nodes themselves are split into two classes of structures
+called ``mappings'' and ``inlines''.  A mapping node is used to translate
+between whole types, a \CAST{} int to a \MINT{} int, for example.  An inline
+node works on an exploded type, for example, a mapping could match to a C
+structure, but an inline is used to access the slots of the struct.  Switching
+between these modes is done when a \cidentifier{PRES_C_INLINE_ATOM} is used to
+select what to map from an inline, and when a
+\cidentifier{PRES_C_MAPPING_STRUCT} is used to expand into an inline.  For
+example, a pointer to a C structure would be a mapping that then referred to an
+inline, since the pointer is a primitive, but once it has been dereferenced,
+you are left with a structure.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Memory Allocation and Deallocation}
+\label{subsec:PRESC:Memory Allocation and Deallocation}
+
+Memory allocation and deallocation must be dealt with whenever any level of
+pointer indirection appears in the C-language type signatures used by a stub.
+Basically, any pointer must be initialized to point to \emph{something} before
+use: either to memory on the stack, the heap, or even to a global variable.
+Similarly, that memory must be appropriately deallocated after it is no longer
+needed.  Pointer indirection is a necessary part of a viable C presentation for
+any non-trivial \IDL{}, and different \IDL{}s specify different ways of
+initializing and releasing these pointers.
+
+To handle a wide variety of different memory allocation and deallocation
+semantics, the \PRESC{} format associates some standard memory management
+information with each level of pointer indirection that appears in the C types
+a stub uses.  This memory management information is contained within a
+\cidentifier{PRES_C_INLINE_ALLOCATION_CONTEXT} node, along with references to
+\ctype{pres_c_inline} nodes describing the pointer and other associated
+information (e.g., the length of a sequence, or \CORBA{}'s sequence
+ownership/release flag).  Within these child inlines, \PRESC{} mapping nodes
+(typically a \cidentifier{PRES_C_MAPPING_POINTER} node; see
+Section~\ref{subsec:PRESC:Mapping Types} below) refer back to their allocation context by
+its unique name.  This memory management information specifies:
+
+\begin{itemize}
+  \item Whether, and under what circumstances, the stub should allocate memory
+  and initialize the pointer.  If the pointer isn't initialized by the stub,
+  then the stub expects it to have been initialized already by the program code
+  that interacts with the stub.
+
+  \item Whether, and under what circumstances, the stub should deallocate the
+  memory referred to by the pointer.  If the memory isn't deallocated by the
+  stub, then the stub expects the program to deallocate it at some other time
+  at its own convenience.
+
+  \item If the stub is to allocate or deallocate memory, what memory allocation
+  mechanism the stub should use.  Many operating systems have several
+  ``levels'' of memory allocation: for example, Mach has the low-level
+  page-granular \cfunction{vm_allocate} mechanism in addition to the high-level
+  \cfunction{malloc} mechanism provided by the C library; Windows provides
+  three different types of memory management functions (global, local, and
+  heap) in addition to \cfunction{malloc}.  If a piece of memory allocated
+  using one mechanism is freed using another, the process is likely to get
+  hopelessly confused.  Thus, whenever a stub may ``transfer'' a memory region
+  to the programmer or vice versa, they must agree on how the memory is to be
+  allocated.
+\end{itemize}
+
+Although the memory allocation and deallocation semantics are specified in the
+same mapping data structure tree that is used to specify how marshaling and
+unmarshaling code is generated, this does not mean that allocation and
+deallocation occurs at the same time as marshaling or unmarshaling.  For
+example, in the case of a server skeleton that must allocate memory to be used
+to hold data to be marshaled into the reply message, the memory must be
+allocated \emph{before} the server work function is called, so the work
+function will have a place to fill in its reply data; on the other hand the
+actual marshaling of the reply message can only be done \emph{after} the work
+function is called, when the data has been filled in.  In general, the point at
+which memory is allocated or freed depends on the type of stub; see
+Section~\ref{subsec:PRESC:Stubs} above for details on when this happens in each case.
+
+Although each pointer mapping node in a stub's mapping tree specifies both
+allocation and deallocation semantics for that pointer, in some cases one or
+the other of these is meaningless.  For example, a client stub has no
+opportunity to allocate memory for request data, because the request data must
+already be allocated and ready to marshal from when the client stub is first
+entered.  Similarly, a client stub has no opportunity to deallocate memory
+holding reply data, since the only time it could do so would be during the
+execution of the stub, and the calling program will not be able to examine the
+reply data until after the stub returns.  Therefore, for client stubs,
+allocation semantics for request data and deallocation semantics for reply data
+are ignored.
+
+In cases where a pointer is not merely a simple level of pointer indirection,
+but in fact holds the address of the first element in an \emph{array} of
+elements, the length of the block of memory allocated or deallocated naturally
+depends on the length of the array.
+
+\subsubsection{Pointer Aliasing}
+%\label{subsubsec:PRESC:Pointer Aliasing}
+
+In some cases, two pointer mapping nodes in a \PRESC{} file may refer to the
+\emph{same} actual pointer variable at runtime.  For example, most \IDL{}s
+support a notion of an ``inout'' parameter, where data for that parameter is to
+be sent in both the request and the reply message, but the parameter appears
+only once in the C function prototype for the stub or work function.  This
+parameter is a pointer to a data area to be used for both the request and the
+reply: the request data is expected to be overwritten during the \RPC{} with
+reply data.  In cases like this, care must be taken that the pointer is not
+allocated and initialized twice, causing memory to be irrevocably lost, and
+(even more importantly) is not freed twice.
+
+Presentation back ends that take \PRESC{} files as input cannot generally be
+expected to recognize when two pointer mapping nodes refer to the same pointer.
+Instead, the producer of the \PRESC{} file must take care to ensure that at
+most one of those nodes specify memory allocation, and at most one specifies
+deallocation.  If allocation for such a pointer is to be done by the stub, then
+the allocation semantics must be specified only in the pointer mapping node
+corresponding to the operation that is done \emph{first}; the other mapping
+node must specify \cidentifier{PRES_C_ALLOC_NEVER}\@.  Similarly, if
+deallocation is to be done by the stub, then the deallocation semantics must be
+specified only in the mapping node corresponding to the operation that is done
+\emph{last}.  For example, in the case of a server skeleton, allocation
+semantics for an ``inout'' pointer parameter must be specified in the pointer
+mapping node for the unmarshaled request data, whereas deallocation semantics
+for that same pointer parameter must be specified in the pointer mapping node
+for the marshaled reply data.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%\subsection{Target Object Specification and Identification}
+%\label{subsec:PRESC:Target Object Specification and Identification}
+
+%\subsubsection{Client Side Target Specification}
+%\label{subsubsec:PRESC:Client Side Target Specification}
+
+%\subsubsection{Server Side Target Identification}
+%\label{subsubsec:PRESC:Server Side Target Identification}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Exceptions}
+\label{subsec:PRESC:Exceptions}
+
+Exceptions as described in the \IDL{} must be expressed in the \PRESC{} so they
+can be properly marshaled, unmarshaled, and handled in an appropriate way.
+Since exceptions can abstractly be viewed as just another data type to be
+passed over the wire, there isn't any provision for a special exception mapping
+in \PRESC{}\@.  However, they do make their presence known by slightly changing
+the structure of reply messages.  Since an exception can occur based on data
+given to the server by a client, an exception message may be returned by the
+server in place of the normal reply message.  The exception may either be a
+system-defined exception due to a mal-formed request message (e.g., an
+undefined operation or unknown object reference), or the exception may be
+user-defined, generated by the server-side work function indicating the request
+could not be fulfilled for whatever reason.  This creates a union, if you will,
+of possible reply messages -- one that contains the normal reply, one that
+identifies a system exception, and one that identifies a user exception.  The
+\PRESC{} represents this as would be expected, a union of the three possible
+reply messages, the environment or status code in the reply being the
+discriminator as to which message actually exists on the wire.  The method of
+communicating the exception to the user is handled mostly by the back end; only
+the presented type and name of the parameter is specified in the \PRESC{}\@.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{PRES\_C Data Structures}
+\label{sec:PRESC:PRESC Data Structures}
+
+The top-level \PRESC{} structure is defined in \filename{mom/pres_c.x}.  This
+structure contains the necessary \MINT{}, \CAST{}, and tag information for
+producing stubs and any associated presentation.
+
+\begin{verbatim}
+struct pres_c_1
+{
+        mint_1      mint;
+        cast_1      cast;
+        cast_1      stubs_cast;
+        cast_1      pres_cast;
+        aoi         a;
+        pres_c_stub stubs<>;
+        string      pres_context<>;
+        cast_expr   error_mappings<>;
+        data_channel_mask       unpresented_channels<>;
+        tag_list    *pres_attrs;
+        meta        meta_data;
+        int         cast_language;
+};
+\end{verbatim}
+
+How individual elements in the \MINT{} and \CAST{} structures link together is
+specified by four kinds of data types.  First, stub types describe the
+functions generated by Flick necessary for the \IPC{} model.  Second, inline
+data structures traverse the \MINT{} data structure, or link together a \MINT{}
+interface type to one or more C function parameters.  Third, mapping data
+structures map one C function parameter in to the \MINT{}\@.  Finally,
+allocation types describe the allocation semantics associated with various
+pieces of the generated code.
+
+Let us look at each aspect of the \PRESC{} structure in more detail.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Stub Types}
+\label{subsec:PRESC:Stub Types}
+
+Stubs come in two forms.  The first form transforms data between a \MINT{}
+interface type and a complex data structure.  These stubs are called marshal
+and unmarshal stubs.  The second and more common form implements the \IPC{}
+mechanism between client and server.  These are known as client stubs and
+server skeletons (or dispatch routines).
+
+\begin{verbatim}
+union pres_c_stub
+switch (pres_c_stub_kind kind)
+{
+        case PRES_C_MARSHAL_STUB:       pres_c_marshal_stub     mstub;
+        case PRES_C_UNMARSHAL_STUB:     pres_c_marshal_stub     ustub;
+        case PRES_C_CLIENT_STUB:        pres_c_client_stub      cstub;
+        case PRES_C_SERVER_STUB:        pres_c_server_stub      sstub;
+        case PRES_C_CLIENT_SKEL:        pres_c_skel             cskel;
+        case PRES_C_SERVER_SKEL:        pres_c_skel             sskel;
+        case PRES_C_SEND_STUB:          pres_c_msg_stub         send_stub;
+        case PRES_C_RECV_STUB:          pres_c_msg_stub         recv_stub;
+        case PRES_C_MESSAGE_MARSHAL_STUB:   pres_c_msg_marshal_stub     mmstub;
+        case PRES_C_MESSAGE_UNMARSHAL_STUB: pres_c_msg_marshal_stub     mustub;
+        case PRES_C_CONTINUE_STUB:      pres_c_continue_stub    continue_stub;
+};
+\end{verbatim}
+
+Let us look at each \PRESC{} stub type in more detail.
+
+\subsubsection{\texttt{PRES\_C\_MARSHAL\_STUB},
+               \texttt{PRES\_C\_UNMARSHAL\_STUB}}
+
+Specifies a stub function which marshals/unmarshals a data structure.  Although
+they are generated for every data type defined in the \IDL{} (and in some cases
+the presentation itself), these stubs are only really needed to handle the
+complex structures which don't have a default mapping onto a \MINT{} type.
+Structures with pointers often fall into this category.
+
+Implementationally, both marshal and unmarshal stubs are represented by the
+same data structure.  However, they are separate members of the stub union, and
+should thus be treated separately.
+
+The marshal/unmarshal structure contains references to the stub function
+definition in the \CAST{}, and to the interface type in the \MINT{}\@.  The
+\ctype{pres_c_inline} structure links them together.  The
+\cidentifier{seethru_map} slot exports the internal workings of the stub so
+that it can be easily inlined in other code.
+
+\begin{verbatim}
+struct pres_c_marshal_stub /* Both marshal and unmarshal */
+{
+        cast_ref         c_func;
+        mint_ref         itype;
+        pres_c_inline    i;
+        /* How the connection to marshal to is specified.  */
+        pres_c_inline   target_i;
+
+        /* The PRES_C mapping that allows us to "see through" or "see into"
+           this stub.  We need this mapping when we want to inline the body of
+           this marshal stub into a client stub, a server function, etc. */
+        pres_c_mapping seethru_map;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_CLIENT\_STUB}}
+
+This is a representation of a client stub.  References are kept to the function
+definition in the \CAST{} structure and to the request and reply interface
+types in the \MINT{} structures.  Two \ctype{pres_c_inline} structures link the
+request and reply types to the C function parameters in the \CAST{}\@.
+
+\begin{verbatim}
+struct pres_c_client_stub
+{
+        cast_ref                c_func;
+        pres_c_stub_op_flags    op_flags;
+        mint_ref                request_itype;
+        mint_ref                reply_itype;
+        pres_c_inline           request_i;
+        pres_c_inline           reply_i;
+        mint_ref                target_itype;
+        pres_c_inline           target_i;
+        mint_ref                client_itype;
+        pres_c_inline           client_i;
+        mint_ref                error_itype;
+        pres_c_inline           error_i;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_SERVER\_SKEL},
+               \texttt{PRES\_C\_CLIENT\_SKEL}}
+
+For each interface there is at least a server-side skeleton in the \PRESC{}
+structure.  In some cases, a client-side skeleton will also exist if you have
+selected the decomposed stubs option.  In both cases, the skeleton structure
+holds a reference to the \CAST{} for the function prototype, the root \MINT{}
+for all incoming and outgoing messages, and the list of supported functions to
+which the skeleton can dispatch.
+
+Following are the data structures relevant to both client and server skeletons:
+
+\begin{verbatim}
+struct pres_c_skel
+{
+        cast_ref                c_def;
+        mint_ref                request_itype;
+        mint_ref                reply_itype;
+        pres_c_func             funcs<>;
+};
+
+struct pres_c_server_func
+{
+        cast_ref                c_func;
+        pres_c_stub_op_flags    op_flags;
+        mint_ref                simple_msg_itype;
+        pres_c_inline           msg_i;
+        mint_ref                target_itype;
+        pres_c_inline           target_i;
+        mint_ref                client_itype;
+        pres_c_inline           client_i;
+        mint_ref                error_itype;
+        pres_c_inline           error_i;
+};
+\end{verbatim}
+
+A \ctype{pres_c_func} is either a \ctype{pres_c_server_func} or
+\ctype{pres_c_receive_func}, depending on the stub model in place (typical
+\RPC{} or event-based message passing).  Each is defined almost identical to
+the \ctype{pres_c_client_stub} above.
+
+\subsubsection{\texttt{PRES\_C\_SEND\_STUB},
+               \texttt{PRES\_C\_RECV\_STUB}}
+
+These stubs are used in an event based system to send or receive a
+pre-marshaled message.  Note that the target object is still associated with
+the send or receive stub.  This facilitates the reusability of pre-marshaled
+messages, in that they can be cached and/or sent to multiple targets.  These
+stubs are non-blocking so waiting for or producing a reply must be done
+explicitly.
+
+\begin{verbatim}
+struct pres_c_msg_stub
+{
+        cast_ref        c_func;
+        mint_ref        msg_itype;
+        pres_c_inline   msg_i;
+        mint_ref        target_itype;
+        pres_c_inline   target_i;
+        int request;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MESSAGE\_MARSHAL\_STUB},
+               \texttt{PRES\_C\_MESSAGE\_UNMARSHAL\_STUB}}
+
+These stubs are used to marshal and unmarshal a complete message corresponding
+to a specific interface operation.  These are used to build or decode the
+pre-marshaled messages used by the send and receive stubs described above.
+
+\begin{verbatim}
+struct pres_c_msg_marshal_stub
+{
+        cast_ref                c_func;
+        pres_c_stub_op_flags    op_flags;
+        mint_ref                itype;
+        pres_c_inline           i;
+        int                     client;
+        int                     request;
+        string                  reply_handler_name<>;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_CONTINUE\_STUB}}
+
+A continuation stub is used to notify the runtime that a work function has not
+fully completed, but would like to defer its computation until a later time.
+
+\begin{verbatim}
+struct pres_c_continue_stub
+{
+        cast_ref        c_func;
+        mint_ref        itype;
+        pres_c_inline   i;
+        int request;
+};
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Presentation Attribute Types}
+\label{subsec:PRESC:Presentation Attribute Types}
+
+The \ctype{tag_data} structure is used to hold arbitrary information, but with
+a particular semantic meaning.  This provides the hooks necessary for a back
+end to generate appropriate implementations for certain pieces of the
+presentation.  For example, a smart pointer class for a data type is something
+defined by the presentation.  However, the implementation must be given by the
+back end.  The tags are used to give semantic meaning to the presentation
+pieces, allowing the back end to generate an appropriate implementation.
+
+In general, tags are stored in a \ctype{tag_list}, which provides a
+hierarchical list structure.  Lists contain \ctype{tag_item}s, which hold a tag
+name and its corresponding data.  The following is the definition of the tag
+infrastructure in the \PRESC{} file:
+
+\begin{verbatim}
+/* Tags are used for storing generic data which
+   have some properties specified by the tag */
+enum tag_data_kind
+{
+        TAG_NONE                        = 0x0001,
+        ...
+        TAG_CAST_INIT                   = 0x000f,
+        
+        TAG_ANY_ARRAY                   = 0x8002,
+        ...
+        TAG_CAST_INIT_ARRAY             = 0x800f
+};
+const TAG_ARRAY                         = 0x8000;
+
+typedef struct tag_list *tag_list_ptr;
+typedef string tag_string_array<>;
+typedef char   tag_object_array<>;
+
+union tag_data
+switch (tag_data_kind kind)
+{
+        case TAG_NONE:                          void;
+        case TAG_ANY:                           void;
+        case TAG_TAG_LIST:                      tag_list_ptr            tl;
+        case TAG_BOOL:                          char                    b;
+        case TAG_STRING:                        string                  str<>;
+        case TAG_INTEGER:                       int                     i;
+        case TAG_FLOAT:                         float                   f;
+        case TAG_REF:                           string                  ref<>;
+        case TAG_OBJECT:                        tag_object_array        obj;
+        case TAG_CAST_SCOPED_NAME:              cast_scoped_name        scname;
+        case TAG_CAST_DEF:                      cast_def_t              cdef;
+        case TAG_CAST_TYPE:                     cast_type               ctype;
+        case TAG_CAST_EXPR:                     cast_expr               cexpr;
+        case TAG_CAST_STMT:                     cast_stmt               cstmt;
+        case TAG_CAST_INIT:                     cast_init               cinit;
+        
+        case TAG_TAG_LIST_ARRAY:
+                tag_list_ptr            tl_a<>;
+        case TAG_BOOL_ARRAY:
+                char                    b_a<>;
+        case TAG_STRING_ARRAY:
+                tag_string_array        str_a<>;
+        case TAG_INTEGER_ARRAY:
+                int                     i_a<>;
+        case TAG_FLOAT_ARRAY:
+                float                   f_a<>;
+        case TAG_REF_ARRAY:
+                tag_string_array        ref_a<>;
+        case TAG_OBJECT_ARRAY:
+                tag_object_array        obj_a<>;
+        case TAG_CAST_SCOPED_NAME_ARRAY:
+                cast_scoped_name        scname_a<>;
+        case TAG_CAST_DEF_ARRAY:
+                cast_def_t              cdef_a<>;
+        case TAG_CAST_TYPE_ARRAY:       
+                cast_type               ctype_a<>;
+        case TAG_CAST_EXPR_ARRAY:
+                cast_expr               cexpr_a<>;
+        case TAG_CAST_STMT_ARRAY:
+                cast_stmt               cstmt_a<>;
+        case TAG_CAST_INIT_ARRAY:
+                cast_init               cinit_a<>;
+};
+
+struct tag_item
+{
+        string          tag<>;
+        tag_data        data;
+};
+
+struct tag_list
+{
+        struct tag_list *parent;
+        tag_item        items<>;
+};
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Inline Types}
+\label{subsec:PRESC:Inline Types}
+
+\PRESC{} inline types are used to map between high-level \MINT{} and \CAST{}
+types and also to traverse the \MINT{} or \CAST{} structures separately without
+directly mapping between the two.  They control the presentation of interfaces
+to the given language and control stub generation.
+
+\begin{verbatim}
+union pres_c_inline_u
+switch (pres_c_inline_kind kind)
+{
+        case PRES_C_INLINE_ATOM:
+                pres_c_inline_atom                      atom;
+
+        case PRES_C_INLINE_STRUCT:
+                pres_c_inline_struct                    struct_i;
+        case PRES_C_INLINE_FUNC_PARAMS_STRUCT:
+                pres_c_inline_func_params_struct        func_params_i;
+        case PRES_C_INLINE_HANDLER_FUNC:
+                pres_c_inline_handler_func              handler_i;
+
+        case PRES_C_INLINE_STRUCT_UNION:
+                pres_c_inline_struct_union              struct_union;
+        case PRES_C_INLINE_EXPANDED_UNION:
+                pres_c_inline_expanded_union            expanded_union;
+        case PRES_C_INLINE_VOID_UNION:
+                pres_c_inline_void_union                void_union;
+        case PRES_C_INLINE_COLLAPSED_UNION:
+                pres_c_inline_collapsed_union           collapsed_union;
+        case PRES_C_INLINE_VIRTUAL_UNION:
+                pres_c_inline_virtual_union             virtual_union;
+
+        case PRES_C_INLINE_TYPED:
+                pres_c_inline_typed                     typed;
+
+        case PRES_C_INLINE_THROWAWAY:
+                void;
+
+        case PRES_C_INLINE_XLATE:
+                pres_c_inline_xlate                     xlate;
+        case PRES_C_INLINE_ASSIGN:
+                pres_c_inline_assign                    assign;
+        case PRES_C_INLINE_COND:
+                pres_c_inline_cond                      cond;
+        case PRES_C_INLINE_MESSAGE_ATTRIBUTE:
+                pres_c_inline_message_attribute         msg_attr;
+        case PRES_C_INLINE_ALLOCATION_CONTEXT:
+                pres_c_inline_allocation_context        acontext;
+        case PRES_C_INLINE_TEMPORARY:
+                pres_c_temporary                        temp;
+
+        case PRES_C_INLINE_ILLEGAL:
+                void;
+};
+\end{verbatim}
+
+Let us look at each \PRESC{} inline type in detail.
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_ATOM} Type}
+
+This is the fundamental inline type and is used to map one single, simple
+\MINT{} type to one single C type.  It also marks the transition from inline
+mode to mapping mode, by selecting \CAST{} member \cidentifier{index} from the
+current inline state and passing that to the mapping.
+
+\begin{verbatim}
+struct pres_c_inline_atom
+{
+        pres_c_inline_index     index;
+        pres_c_mapping          mapping;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_STRUCT} Type}
+
+This inline type contains one \ctype{pres_c_inline} structure for each
+struct member.  This usually corresponds to a container of some kind, or
+something in the C and \MINT{} with multiple attributes.
+
+\begin{verbatim}
+struct pres_c_inline_struct
+{
+        pres_c_inline           slots<>;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_STRUCT\_UNION} Type}
+
+This inline type maps a \MINT{} union into a C struct containing a
+discriminator tag and the union.  For example, a \cidentifier{MINT_UNION}
+containing a \cidentifier{MINT_INTEGER} and \cidentifier{MINT_CHAR} might have
+a C mapping like this:
+
+\begin{verbatim}
+struct example_union 
+{
+    mint_type_tag kind;
+    union 
+    {
+        int i;
+        char c;
+    }
+}
+\end{verbatim}
+   
+\begin{verbatim}
+struct pres_c_inline_struct_union_case
+{
+        int                     index;
+        pres_c_mapping          mapping;
+};
+
+struct pres_c_inline_struct_union
+{
+        pres_c_inline_atom                      discrim;
+        pres_c_inline_index                     union_index;
+        pres_c_inline_struct_union_case         cases<>;
+        pres_c_inline_struct_union_case         *dfault;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_VOID\_UNION} Type}
+
+This inline type maps a \MINT{} union into a C struct containing a
+discriminator tag and a \ctype{void *} pointer to the data.  The previous
+example now might have a C mapping like this:
+
+\begin{verbatim}
+struct example_union 
+{
+    mint_type_tag kind;
+    void *data;
+}
+\end{verbatim}
+
+\begin{verbatim}
+struct pres_c_inline_void_union_case
+{
+        cast_expr case_value;
+        cast_type type;
+        pres_c_mapping mapping;
+};
+
+struct pres_c_inline_void_union
+{
+        pres_c_inline_atom                      discrim;
+        pres_c_inline_index                     void_index;
+        pres_c_inline_void_union_case           cases<>;
+        pres_c_inline_void_union_case           *dfault;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_EXPANDED\_UNION} Type}
+
+This inline type maps a \MINT{} union into a C struct containing a
+discriminator tag and slots for each member of the union.  This isn't currently
+used in Flick.
+
+\begin{verbatim}
+struct pres_c_inline_expanded_union
+{
+        pres_c_inline_atom      discrim;
+        pres_c_inline           cases<>;
+        pres_c_inline           dfault;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_COLLAPSED\_UNION} Type}
+
+This inline type forces the selection of a given member of union.  Only unions
+with this member selected will be accepted.  This type is often used to
+traverse down the \MINT{} structure (e.g., the union of all interfaces, and the
+union of all operations) until a certain section of the \MINT{} structure is
+reached (e.g., the request of a specific operation), holding fixed the various
+unions in the \MINT{} along this path.
+
+\begin{verbatim}
+struct pres_c_inline_collapsed_union
+{
+        mint_const              discrim_value;
+        pres_c_inline           selected_case;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_VIRTUAL\_UNION} Type}
+
+This inline type represents an ``arbitrary'' union.  It's main purpose is to
+allow the return from an operation to be either the regular result, a system
+error, or a user-defined exception.  Since the implementation is really left up
+to the back end, the presentation generator leaves this as an arbitrary union
+of the three possibilities.
+
+\begin{verbatim}
+typedef pres_c_inline pres_c_inline_virtual_union_case;
+
+struct pres_c_inline_virtual_union
+{
+        string arglist_name<>; /* Name of associated arglist. */
+        pres_c_inline_virtual_union_case discrim;
+        pres_c_inline_virtual_union_case cases<>;
+        pres_c_inline_virtual_union_case dfault;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_THROWAWAY} Type}
+
+Valid for receive-only mappings, it ignores any \MINT{} or \CAST{} that may
+remain in the current subtree, effectively throwing away their values.
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_ALLOCATION\_CONTEXT} Type}
+
+An allocation context is the main structure used for dealing with all types of
+allocation.  It does not correspond to any \MINT{} or \CAST{} directly, but
+provides context for (usually) a pointer type, such as length, maximum
+allocation size, allocation semantics, etc.  In some cases, these are known
+constants, while at other times the values can be known only at runtime and are
+included as part of the data structure (e.g., a \CORBA{} sequence's length and
+maximum fields).
+
+\begin{verbatim}
+struct pres_c_inline_allocation_context
+{
+        /* Allocation context: */
+        string arglist_name<>;          /* Name of the context's arglist. */
+        
+        /*
+         * XXX - The arguments below marked with `XXX' are NOT IMPLEMENTED.
+         * There is minimal support in place for handling them, but they are
+         * not currently being used to support any particular allocation
+         * semantics.
+         */
+/*XXX*/ pres_c_inline     offset;       /* First element to m/u */
+        pres_c_inline     length;       /* # of elements to m/u */
+        pres_c_inline     min_len;      /* [hard] minimum (usu. IDL const) */
+        pres_c_inline     max_len;      /* [hard] maximum (usu. IDL const) */
+        pres_c_inline     alloc_len;    /* allocated # of elements */
+        pres_c_inline     min_alloc_len;/* minimum length of allocation */
+/*XXX*/ pres_c_inline     max_alloc_len;/* maximum length of allocation */
+        pres_c_inline     release;      /* release of struct-owned buffer */
+        pres_c_inline     terminator;   /* buffer termination */
+        pres_c_inline     mustcopy;     /* must copy data to keep it */
+/*XXX*/ int               overwrite;    /* `out' buffer is preallocated */
+/*XXX*/ allocation_owner  owner;        /* entity ownership */
+
+        pres_c_allocation alloc;        /* the allocation semantics */
+        
+        /*
+         * The real inline to be handled:
+         * `ptr' must eventually lead to a PRES_C_MAPPING_INTERNAL_ARRAY node,
+         * a PRES_C_MAPPING_POINTER node, or a PRES_C_MAPPING_OPTIONAL_POINTER
+         * node, which is responsible for actually instantiating the
+         * allocation.
+         */
+        pres_c_inline     ptr;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_XLATE} Type}
+
+This inline transforms the current \CAST{} type to a known, fixed type.  This
+is useful when performing conversions between the presented type of a parameter
+and the type with which it is viewed by the stubs.  For example, \MIG{} allows
+the user to name somewhat abstract data structures (e.g., one can specify the
+size of a structure, but one cannot explicitly specify its contents or layout),
+but the stubs must have a concrete representation in order to marshal or
+unmarshal the data (e.g., a structure of a known size can be blindly copied
+into and out of the data stream).  This node facilitates the conversion between
+the user-defined type (unknown to the \IDL{} compiler) and an equivalent type
+the stubs can use to handle the data.
+
+\begin{verbatim}
+struct pres_c_inline_xlate
+{
+        /* the _real_ pres_c_inline... */
+        pres_c_inline           sub;
+
+        pres_c_inline_index     index;
+        cast_type               internal_ctype;
+
+        string                  translator<>;
+        string                  destructor<>;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_ASSIGN} Type}
+
+This inline allows an arbitrary \CAST{} expression to be assigned to the
+current entity.  This isn't currently used in Flick.
+
+\begin{verbatim}
+struct pres_c_inline_assign
+{
+        /* the _real_ pres_c_inline... */
+        pres_c_inline           sub;
+
+        pres_c_inline_index     index;
+        cast_expr               value;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_COND} Type}
+
+This is very similar to a union inline, except that it refers to a boolean
+``discriminator''.  The runtime value of the discriminator will select which
+inline is actually part of the execution path.
+
+\begin{verbatim}
+struct pres_c_inline_cond
+{
+        /* This index must refer to a boolean C variable
+           (or at least an integerish type that can be used as a boolean).
+           At runtime, if the value of that C variable(/parameter/slot)
+           is true, marshal using true_inl; otherwise use false_inl.  */
+        pres_c_inline_index     index;
+        pres_c_inline           true_inl;
+        pres_c_inline           false_inl;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_MESSAGE\_ATTRIBUTE} Type}
+
+This inline allows an ``attribute'' to be embedded in the tree, describing a
+semantic entity that is entirely left up to the back end to decide how to
+implement.  There is no associated \CAST{} or \MINT{} for this inline.
+
+\begin{verbatim}
+enum pres_c_message_attribute_kind
+{
+        /* sets some attribute flags */
+        PRES_C_MESSAGE_ATTRIBUTE_FLAGS = 0,
+
+        /* how long to wait for reply */
+        PRES_C_MESSAGE_ATTRIBUTE_TIMEOUT = 1,
+
+        /* index of when received */
+        PRES_C_MESSAGE_ATTRIBUTE_SEQUENCE_RECEIVED = 2,
+
+        /* client reference */
+        PRES_C_MESSAGE_ATTRIBUTE_CLIENT_REFERENCE = 3,
+
+        /* flag indicating work function should make its own copy of
+           the data if it wants to keep it */
+        PRES_C_MESSAGE_ATTRIBUTE_SERVERCOPY = 4
+
+        /* maybe in the future, SID will be moved here */
+};
+
+struct pres_c_inline_message_attribute
+{
+        pres_c_message_attribute_kind   kind;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_HANDLER\_FUNC} Type}
+
+This inline describes a function to be called to handle the \PRESC{} tree that
+normally would be rooted in this location.  In the decomposed presentation
+style, this replaces the \ctype{pres_c_inline_func_params_struct}.  The
+slots all represent parameters associated with the presentation, such as the
+object reference, marshaled message, environment, etc.
+
+\begin{verbatim}
+struct pres_c_inline_handler_func
+{
+        /*
+         * One element for each parameter to the handler function.
+         * These are all ``special'' presentation-only parameters.
+         */
+        pres_c_inline_struct_slot slots<>;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_TEMPORARY} Type}
+
+This inline introduces a new (temporary) variable into the scope for the given
+mapping, rather than selecting a member of the inline state (a parameter or
+data member).  This allows one to marshal/unmarshal data that isn't explicitly
+presented (e.g., a string's length or an exceptional reply when there is no
+environment parameter).  In some cases, this may even be a constant that needs
+to be ``hardcoded'' into the \PRESC{} file (in which case it is optimized to be
+a constant instead of a temporary variable).  This is common in allocation
+contexts where important pieces of the context are known, such as the length of
+a fixed array.
+
+\begin{verbatim}
+enum pres_c_temporary_type
+{
+        TEMP_TYPE_PRESENTED,
+        TEMP_TYPE_ENCODED
+};
+struct pres_c_temporary
+{
+        pres_c_mapping          map;    /* The mapping for the data */
+        
+        string                  name<>; /* A hint used in naming the temp */
+        cast_type               ctype;  /* The type of the temporary */
+        cast_expr               init;   /* Initialization expression */
+        pres_c_temporary_type   type;   /* How this temporary is used */
+        
+        /*
+         * `is_const' is TRUE (non-zero) if `init' evaluates to some constant
+         * expression.  This is used to avoid creating a temporary variable for
+         * constant values.  The initialization expr is simply passed down
+         * instead of a temporary variable name.  If this flag is set, you are
+         * asserting that the resulting expr will NEVER be used as an lvalue.
+         */
+        int             is_const;
+        
+        /*
+         * Handlers indicate to the back end what this temporary is used for so
+         * it can resolve the mismatch.  For example, it may simply be mapped
+         * to a macro that has parameters for the original variable and the
+         * temporary.  We define both pre- and post-handlers, so that different
+         * processing can be done both before encode and after decode.
+         */
+        string          prehandler<>;   
+        string          posthandler<>;  
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_INLINE\_ILLEGAL} Type}
+
+This is really a slot-holder that tells the code generator to emit an
+unconditional error.  This is useful when an inline is required to exist, but
+it can't (or shouldn't) happen in practice.  For example, the \PRESC{}
+structure is such that a reply \emph{must} consist of a union of the normal
+reply case, a system exception case, and a user exception case.  In the case of
+Flick's decomposed stubs presentation, there is a special marshaling function
+to encode an exceptional reply.  Since it makes no sense for one to encode an
+exceptional reply when there is no exception, the normal reply case is given as
+a \texttt{PRES\_C\_INLINE\_ILLEGAL}.  Thus, if the generated function is ever
+called with no exception, an error is returned.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Mapping Types}
+\label{subsec:PRESC:Mapping Types}
+
+\PRESC{} mappings serve to specify exactly how a \MINT{} type is to be
+translated to the corresponding \CAST{} type.  This combined with the inline
+information completely specifies stub generation.
+
+While inline structures can map \MINT{} types to more than one parameter in a
+function, mappings control one and only parameter.  So, inline types which
+present more than one parameter will have more than one mapping type.
+
+\begin{verbatim}
+union pres_c_mapping_u
+switch (pres_c_mapping_kind kind)
+{
+        case PRES_C_MAPPING_DIRECT:
+                void;
+        case PRES_C_MAPPING_STUB:
+                pres_c_mapping_stub                     mapping_stub;
+        case PRES_C_MAPPING_POINTER:
+                pres_c_mapping_pointer                  pointer;
+        case PRES_C_MAPPING_INTERNAL_ARRAY:
+                pres_c_mapping_internal_array           internal_array;
+        case PRES_C_MAPPING_STRUCT:
+                pres_c_mapping_struct                   struct_i;
+        case PRES_C_MAPPING_FLAT_UNION:
+                pres_c_mapping_flat_union               flat_union;
+        case PRES_C_MAPPING_SPECIAL:
+                pres_c_mapping_special                  special;
+        case PRES_C_MAPPING_XLATE:
+                pres_c_mapping_xlate                    xlate;
+        case PRES_C_MAPPING_REFERENCE:
+                pres_c_mapping_reference                ref;
+        case PRES_C_MAPPING_TYPE_TAG:
+                void;
+        case PRES_C_MAPPING_TYPED:
+                void;
+        case PRES_C_MAPPING_OPTIONAL_POINTER:
+                pres_c_mapping_optional_pointer         optional_pointer;
+        case PRES_C_MAPPING_IGNORE:
+                void;
+        case PRES_C_MAPPING_SYSTEM_EXCEPTION:
+                void;
+        case PRES_C_MAPPING_DIRECTION:
+                pres_c_mapping_direction                direction;
+        case PRES_C_MAPPING_SID:
+                pres_c_mapping_sid                      sid;
+        case PRES_C_MAPPING_ARGUMENT:
+                pres_c_mapping_argument                 argument;
+        case PRES_C_MAPPING_MESSAGE_ATTRIBUTE:
+                pres_c_mapping_message_attribute        message_attribute;
+        case PRES_C_MAPPING_INITIALIZE:
+                pres_c_mapping_initialize               initialize;
+        case PRES_C_MAPPING_ILLEGAL:
+                void;
+        case PRES_C_MAPPING_VAR_REFERENCE:      
+                pres_c_mapping_var_reference            var_ref;
+        case PRES_C_MAPPING_PARAM_ROOT:
+                pres_c_mapping_param_root               param_root;
+        case PRES_C_MAPPING_ELSEWHERE:
+                void;
+        case PRES_C_MAPPING_SELECTOR:
+                pres_c_mapping_selector                 selector;
+        case PRES_C_MAPPING_TEMPORARY:
+                pres_c_temporary                        temp;
+        case PRES_C_MAPPING_SINGLETON:
+                pres_c_mapping_singleton                singleton;
+};
+\end{verbatim}
+
+Let us look at each mapping type in more detail.
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_DIRECT} Type}
+
+This mapping directly maps simple types together.  A \MINT{} integer to a C
+integer is a direct mapping.  No additional information is needed.
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_STUB} Type}
+
+The C parameter must be a named type.  The appropriate stub will then be called
+to marshal/unmarshal this parameter.  No additional information is needed.
+Note that Flick aggressively inlines the stub's code into the generated code,
+so only in rare cases will a call to a marshal/unmarshal stub actually be
+emitted (e.g., a recursive data structure).
+
+\begin{verbatim}
+struct pres_c_mapping_stub
+{
+        int     mapping_stub_index;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_DIRECTION} Type}
+
+This mapping provides context to mappings that hang under this node.  This
+mapping represents the direction of the parameter we are currently handling.
+
+\begin{verbatim}
+enum pres_c_direction
+{
+        PRES_C_DIRECTION_UNKNOWN = 0,
+        PRES_C_DIRECTION_IN = 1,
+        PRES_C_DIRECTION_OUT = 2,
+        PRES_C_DIRECTION_INOUT = 3,
+        PRES_C_DIRECTION_RETURN = 4
+};
+
+struct pres_c_mapping_direction
+{
+        pres_c_direction dir;
+        pres_c_mapping   mapping;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_POINTER} Type}
+
+This mapping inserts a level of pointer indirection on top of the target
+mapping.  The \cidentifier{arglist_name} identifies the allocation context 
+associated with the pointer.
+
+\begin{verbatim}
+struct pres_c_mapping_pointer
+{
+        string                  arglist_name<>;
+        pres_c_mapping          target;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_VAR\_REFERENCE} Type}
+
+This mapping allows the conversion from a reference type to an actual type.
+
+\begin{verbatim}
+struct pres_c_mapping_var_reference
+{
+        pres_c_mapping          target;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_OPTIONAL\_POINTER} Type}
+
+This is similar to the standard pointer mapping in that it adds a level of
+pointer indirection onto the target mapping.  However, the value of the pointer
+has a semantic meaning in that it determines the presence or absence of data.
+
+\begin{verbatim}
+struct pres_c_mapping_pointer
+{
+        string                  arglist_name<>;
+        pres_c_mapping          target;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_STRUCT} Type}
+
+A struct mapping maps elements of the interface type into a compatible C type.
+The mapping of each element is specified by the \cidentifier{struct_i} inline
+type parameter.  Note that this returns the \PRESC{} walker to inline mode; we
+map a single entity (a structure) into multiple parts (its fields).
+
+\begin{verbatim}
+typedef pres_c_inline pres_c_mapping_struct;
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_INTERNAL\_ARRAY} Type}
+
+This node is associated with the data buffer of an array.  When processing this
+mapping, other pieces of the array must also be known, such as the length,
+maximum length, etc.  These are provided by the allocation context identified
+by \cidentifier{arglist_name}.
+
+\begin{verbatim}
+struct pres_c_mapping_internal_array
+{
+        string          arglist_name<>;
+        pres_c_mapping  element_mapping;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_FLAT\_UNION} Type}
+
+This node maps a \MINT{} union onto a ``flat'' C union.  The first case is an
+integerish discriminator, with each subsequent case a structure starting with
+the discriminator in the first slot.
+
+\begin{verbatim}
+struct pres_c_mapping_flat_union
+{
+        pres_c_mapping  discrim;
+        pres_c_mapping  cases<>;
+        pres_c_mapping  dfault;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_SPECIAL} Type}
+
+This mapping maps an arbitrary \MINT{} type onto an arbitrary C type by
+specifying a marshaling function to be invoked by the stub to marshal/unmarshal
+this \MINT{} type.  This mechanism allows us to handle specialized
+presentations.
+
+\begin{verbatim}
+struct pres_c_mapping_special
+{
+        string marshaler_name<>;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_XLATE} Type}
+
+This is almost identical to its inline counterpart.  It transforms the current
+\CAST{} type into a known, fixed type.
+
+\begin{verbatim}
+struct pres_c_mapping_xlate
+{
+        cast_type               internal_ctype;
+        pres_c_mapping          internal_mapping;
+
+        string                  translator<>;
+        string                  destructor<>;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_REFERENCE} Type}
+
+This mapping is for object references.  Each back end must define this to allow
+the conversion between on-the-wire and in-memory representations for object
+references.
+
+\begin{verbatim}
+enum pres_c_reference_kind
+{
+        PRES_C_REFERENCE_COPY             = 0,  /* send a copy      */
+        PRES_C_REFERENCE_MOVE             = 1,  /* send my instance */
+        PRES_C_REFERENCE_COPY_AND_CONVERT = 2   /* send a converted copy.
+                                                 * This corresponds to 
+                                                 * MIG's MAKE, since the OS
+                                                 * converts a RECV right
+                                                 * to a SEND right
+                                                 */
+};
+
+struct pres_c_mapping_reference
+{
+        /* 
+         * `kind' refers to the semantic: either copy, move, or MIG's
+         * copy_and_convert (make).  `ref_count' is how many references we
+         * are working with (currently it's always 1).
+         */             
+        pres_c_reference_kind kind; 
+        int ref_count;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_SID} Type}
+
+This mapping identifies the current parameter as a security identifier.
+
+\begin{verbatim}
+enum pres_c_sid_kind
+{
+        PRES_C_SID_CLIENT       = 0,    /* effective SID of the client */
+        PRES_C_SID_SERVER       = 1     /* required SID of the server  */
+};
+
+struct pres_c_mapping_sid
+{
+        pres_c_sid_kind kind;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_MESSAGE\_ATTRIBUTE} Type}
+
+Similar to its inline counterpart, an ``attribute'' is embedded in the tree
+describing a semantic entity.  The difference is that there is \MINT{} and
+\CAST{} for this mapping, allowing a run-time parameter to convey special
+instructions to the stub or runtime.
+
+\begin{verbatim}
+struct pres_c_mapping_message_attribute
+{
+        pres_c_message_attribute_kind kind;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_ARGUMENT} Type}
+
+Arguments are the method by which we can allow other branches of the \PRESC{}
+tree to see the parameter or data of the current branch.  The best example is
+an array.  The length is one piece of data on the wire, while the contents of
+the array elements is another.  It is obvious, however, that they are related,
+and the array's length is necessary to process the array's data.  The mechanism
+Flick uses for this is to save the length as an argument to some higher node
+(the allocation context), and when the array is processed, the length can be
+retrieved from the list of arguments.  The \CAST{} type and expression are
+saved in the argument list when this node is reached.
+
+\begin{verbatim}
+struct pres_c_mapping_argument
+{
+        string          arglist_name<>; /* Name of the arglist itself. */
+        string          arg_name<>;     /* Name of argument in the list. */
+        pres_c_mapping  map;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_INITIALIZE} Type}
+
+This node allows the current parameter or data item to be initialized to some
+specified \CAST{} expression.
+
+\begin{verbatim}
+struct pres_c_mapping_initialize
+{
+        cast_expr       value;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_SELECTOR} Type}
+
+This is a special node for handling ``presented structures'', structures that
+exist in the presentation, but not in the \MINT{}\@.  It selects a member of
+the current \CAST{} scope, and then maps only that entity.  This is
+particularly useful for directly handling the \CORBA{} environment
+discriminator.
+
+\begin{verbatim}
+struct pres_c_mapping_selector
+{
+        int             index;
+        pres_c_mapping  mapping;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_PARAM\_ROOT} Type}
+
+This node indicates that the current \CAST{} expression and type describe a
+formal parameter to a client stub or server work function.  On both the client
+and server, \cidentifier{ctype} may describe the internal (actual) type of the
+parameter, if different from the formal type.  On the server side, the type may
+be further transformed, such as changing array types into pointer-to-element
+types (to facilitate proper allocation and ease unmarshaling).
+
+\begin{verbatim}
+struct pres_c_mapping_param_root
+{
+        cast_type               ctype;
+        cast_init               init;
+        pres_c_mapping          map;
+};
+\end{verbatim}
+
+\subsubsection{\texttt{PRES\_C\_MAPPING\_SINGLETON} Type}
+
+This node has the sole purpose of returning to inline mode, so we can treat the
+current entity as more than a single entity.  This is primarily used for
+interjecting an allocation context when we only have a mapping available.  The
+required pieces of the allocation context can be temporaries, with the pointer
+finally being mapped with the original \CAST{} and \MINT{} from this singleton
+node.
+
+\begin{verbatim}
+struct pres_c_mapping_singleton
+{
+        pres_c_inline inl;
+};
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Allocation Types}
+\label{subsec:PRESC:Allocation Types}
+
+Allocation types specify what function provides space for a buffer to be
+marshaled/unmarshaled and when that function is to be invoked.  The events for
+allocation are specified by flags.  The function which does the allocation is
+specified by name; the function must have a certain prototype (specified by the
+back end).
+
+The allocation structure is rather complex because of the many different
+allocation semantics that can and need to be expressed.  At the highest level,
+there is a list of allocation cases, one for each possible parameter direction
+(since each direction may need to be handled differently).  Each of these cases
+can either allow or disallow allocation for that particular direction.  If
+allowed, the allocation semantics are expressed by a set of flags and an
+allocator.  The allocator can be either a specific name, a special type of
+allocator (such as static or out-of-line), or an arbitrary allocator
+(essentially one that doesn't matter, allowing the code generator to choose an
+optimal one, such as stack).
+
+The complete set of allocation flags and structures follow.
+
+\begin{verbatim}
+const PRES_C_ALLOC_NEVER                = 0x00000000;
+const PRES_C_ALLOC_IF_NULL              = 0x00000001;
+const PRES_C_ALLOC_IF_TOO_SMALL         = 0x00000002;
+const PRES_C_ALLOC_IF_TOO_LARGE         = 0x00000004;
+const PRES_C_ALLOC_ALWAYS               = 0x00000008;
+const PRES_C_ALLOC_EVER                 = 0x0000000f;
+const PRES_C_ALLOC_CLEAR                = 0x00000010;
+const PRES_C_REALLOC_IF_TOO_SMALL       = 0x00000200;
+const PRES_C_REALLOC_IF_TOO_LARGE       = 0x00000400;
+const PRES_C_REALLOC_ALWAYS             = 0x00000800;
+const PRES_C_REALLOC_EVER               = 0x00000f00;
+const PRES_C_REALLOC_CLEAR              = 0x00001000;
+const PRES_C_FAIL_IF_TOO_SMALL          = 0x00002000;
+const PRES_C_DEALLOC_NEVER              = 0x00000000;
+const PRES_C_DEALLOC_ALWAYS             = 0x00080000;
+const PRES_C_DEALLOC_EVER               = 0x000f0000;
+const PRES_C_DEALLOC_NULLIFY            = 0x00100000;
+const PRES_C_DEALLOC_ON_FAIL            = 0x00200000;
+const PRES_C_RUN_CTOR                   = 0x01000000;
+const PRES_C_RUN_DTOR                   = 0x02000000;
+
+enum pres_c_allocator_kind
+{
+        PRES_C_ALLOCATOR_DONTCARE,
+        PRES_C_ALLOCATOR_STATIC,
+        PRES_C_ALLOCATOR_OUTOFLINE,
+        PRES_C_ALLOCATOR_NAME
+};
+
+union pres_c_allocator
+switch (pres_c_allocator_kind kind)
+{
+        case PRES_C_ALLOCATOR_DONTCARE:         void;
+        case PRES_C_ALLOCATOR_STATIC:           void;
+        case PRES_C_ALLOCATOR_OUTOFLINE:        string ool_name<>;
+        case PRES_C_ALLOCATOR_NAME:             string name<>;
+};
+
+struct pres_c_allocation_case
+{
+        pres_c_alloc_flags      flags;
+        pres_c_allocator        allocator;
+        cast_init               alloc_init;
+};
+
+enum pres_c_allocation_allow
+{
+        PRES_C_ALLOCATION_INVALID = 0,
+        PRES_C_ALLOCATION_ALLOW = 1
+};
+
+union pres_c_allocation_u
+switch (pres_c_allocation_allow allow)
+{
+        case PRES_C_ALLOCATION_ALLOW:   pres_c_allocation_case  val;
+        case PRES_C_ALLOCATION_INVALID: void;
+};
+
+struct pres_c_allocation
+{
+        pres_c_allocation_u cases[PRES_C_DIRECTIONS];
+};
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{The PRES\_C Library}
+\label{sec:PRESC:The PRESC Library}
+
+\begin{cprototypelist}
+  \item[void pres_c_1_init(pres_c_1 *pres)] Initializes the base
+  structure of \cidentifier{pres}.
+
+  \item[void pres_c_1_check(pres_c_1 *pres)] Checks the validity
+  of the structure and data in \cidentifier{pres}.
+
+  \item[void pres_c_1_readfh(pres_c_1 *dest, FILE *fh)] Uses \XDR{}
+  to read the contents of the file into \cidentifier{dest} from the file
+  \cidentifier{fh}.
+
+  \item[void pres_c_1_writefh(pres_c_1 *src, FILE *fh)] Uses \XDR{}
+  to write the contents of \cidentifier{src} to the file \cidentifier{fh}.
+
+  \item[pres_c_inline pres_c_new_inline(pres_c_inline_kind kind)]
+  Creates a new, empty \PRESC{} inline structure of the given type
+  \cidentifier{kind}.
+
+  There are also the following related functions to create specific \PRESC{}
+  inlines, allowing the initialization of important data fields.  They should
+  all be self-explanatory, based on the descriptions given above.
+
+  \begin{cprototypelist}
+    \item[pres_c_inline pres_c_new_inline_struct(int slots)]
+
+    \item[pres_c_inline pres_c_new_inline_func_params_struct(int
+    slots)]
+
+    \item[pres_c_inline pres_c_new_inline_struct_union(int
+    mappings)]
+
+    \item[pres_c_inline pres_c_new_inline_virtual_union(int
+    mappings)]
+
+    \item[pres_c_inline pres_c_new_inline_expanded_union(int
+    mappings)]
+
+    \item[pres_c_inline pres_c_new_inline_void_union(int mappings)]
+  \end{cprototypelist}
+
+  \item[pres_c_mapping pres_c_new_mapping(pres_c_mapping_kind
+  kind)] Creates a new, empty \PRESC{} mapping structure of the given type
+  \cidentifier{kind}.
+
+  \item[pres_c_inline pres_c_set_inline_tags(pres_c_inline_kind
+  kind, pres_c_inline_inl, int tag, ...)] This is a tag based constructor
+  for many of the \PRESC{} inline types.
+
+  \begin{cidentifierlist}
+    \item[PIA_Index] \tagtype{\ctype{pres_c_inline_index}} The index for
+    a \ctype{pres_c_inline_atom}.
+
+    \item[PIA_Mapping] \tagtype{\ctype{pres_c_mapping}} Specifies a
+    \ctype{pres_c_mapping}.
+
+    \item[PIA_Slot] \tagtype{\ctype{int} and \ctype{pres_c_inline}} Adds a
+    slot to an inline struct or function parameters struct.
+
+    \item[PIA_Flags] \tagtype{\ctype{pres_c_*_flags}} Specifies any
+    \PRESC{} flags.
+
+    \item[PIA_Return] \tagtype{\ctype{int} and \ctype{pres_c_inline}} The
+    return inline for a \ctype{pres_c_func_params_struct}.
+
+    \item[PIA_Discrim] \tagtype{\emph{depends on the type of union}} The
+    discriminator for a union.  The attribute values depend on the type of
+    union you are specifying, so just match them up with the union structure.
+
+    \item[PIA_Default] \tagtype{\emph{depends on the type of union}} The
+    default case for a union.  The attribute values depend on the type of
+    union you are specifying, so just match them up with the union structure.
+
+    \item[PIA_Case] \tagtype{\emph{depends on the type of union}} A
+    (non-default) case for a union.  The attribute values depend on the type of
+    union you are specifying, so just match them up with the union structure.
+
+    \item[PIA_DiscrimVal] \tagtype{\ctype{mint_const}} The discriminator
+    value for a discriminated union.
+
+    \item[PIA_SelectedCase] \tagtype{\ctype{pres_c_inline}} The selected
+    case for a collapsed discriminated union.
+
+    \item[PIA_Tag] \tagtype{\ctype{pres_c_inline}} The tag for a
+    \ctype{pres_c_inline_typed}.
+
+    \item[PIA_Inl] \tagtype{\ctype{pres_c_inline}} The inline for a
+    \ctype{pres_c_inline_typed}.
+
+    \item[PIA_Offset] \tagtype{\ctype{pres_c_inline}} The offset inline
+    of an allocation context describing the numerical offset of the first data
+    item (e.g., an array that starts at 5 instead of 0).  This is currently not
+    used or fully supported.
+
+    \item[PIA_Len] \tagtype{\ctype{pres_c_inline}} The (actual) length
+    inline of an allocation context describing the length of the data.
+
+    \item[PIA_MinLen] \tagtype{\ctype{pres_c_inline}} The minimum length
+    inline of an allocation context describing the minimum allowable length for
+    the data (e.g., a fixed array cannot be smaller than its specified length).
+
+    \item[PIA_MaxLen] \tagtype{\ctype{pres_c_inline}} The maximum length
+    inline of an allocation context describing the maximum allowable length for
+    the data (e.g., a fixed or bounded array).
+
+    \item[PIA_AllocLen] \tagtype{\ctype{pres_c_inline}} The (actual)
+    allocated length inline of an allocation context describing the allocated
+    buffer length in which the data is or should be placed.
+
+    \item[PIA_MinAllocLen] \tagtype{\ctype{pres_c_inline}} The minimum
+    allocated length inline of an allocation context describing the minimum
+    allowable buffer length that can be allocated for the data (e.g., \CORBA{}
+    requires that a bounded sequence be allocated to the maximum bound,
+    regardless of the actual amount of data the sequence holds).
+
+    \item[PIA_MaxAllocLen] \tagtype{\ctype{pres_c_inline}} The maximum
+    allocated length inline of an allocation context describing the maximum
+    allowable buffer length that can be allocated for the data.  This is not
+    currently used or fully supported.  A specific problem arises when the
+    maximum allocated length is smaller than the actual or maximum length of
+    the data.
+
+    \item[PIA_Release] \tagtype{\ctype{pres_c_inline}} The release inline
+    of an allocation context describing whether the buffer is wholly owned (not
+    reference by anything other than the array or sequence (e.g., a \CORBA{}
+    sequence's release flag).
+
+    \item[PIA_Terminator] \tagtype{\ctype{pres_c_inline}} The terminator
+    inline of an allocation context, representing the terminating element of a
+    terminated array.  Typically, this is only used for strings, and the
+    terminator is thus the nil character.
+
+    \item[PIA_MustCopy] \tagtype{\ctype{pres_c_inline}} The inline of an
+    allocation context indicating whether the data must be copied to keep a
+    reference to it.  Currently, this is under experimental use in the
+    Mach3/\MIG{} back end to help implement the ``servercopy'' feature of
+    \MIG{}\@.
+
+    \item[PIA_Alloc] \tagtype{\ctype{pres_c_allocation}} The allocation
+    semantics of an allocation context.
+
+    \item[PIA_Overwrite] \tagtype{\ctype{int}} A flag in an allocation
+    context indicating that the buffer can be overwritten rather than freshly
+    allocated.  This is not currently used or fully supported.
+
+    \item[PIA_Owner] \tagtype{\ctype{allocation_owner}} The owning entity
+    of a the data or buffer of an allocation context.  This is not currently
+    used or fully supported.
+
+    \item[PIA_Ptr] \tagtype{\ctype{pres_c_inline_atom}} The main
+    (pointer) inline of an allocation context.
+
+    \item[PIA_ArgList] \tagtype{\ctype{char *}} The name of the
+    associated argument list.
+
+    \item[PIA_Name] \tagtype{\ctype{char *}} The name of a temporary
+    variable.
+
+    \item[PIA_CType] \tagtype{\ctype{cast_type}} The \CAST{} type of a
+    temporary variable.
+
+    \item[PIA_Value] \tagtype{\ctype{cast_expr}} The initializer (or
+    initial value) for a temporary variable.  It is not necessarily that this
+    be a constant expression.
+
+    \item[PIA_PreHandler] \tagtype{\ctype{char *}} The name of a run-time
+    handler function that must be executed prior to marshaling or unmarshaling
+    the temporary variable.
+
+    \item[PIA_PostHandler] \tagtype{\ctype{char *}} The name of a
+    run-time handler function that must be executed after marshaling or
+    unmarshaling the temporary variable.
+
+    \item[PIA_IsConst] \tagtype{\ctype{int}} The flag indicating whether
+    the temporary's initialization is constant.
+
+    \item[PIA_TempType] \tagtype{\ctype{pres_c_temporary_type}} The type
+    of temporary (associated with the presentation or the encoding).
+  \end{cidentifierlist}
+
+  \item[pres_c_mapping pres_c_set_mapping_tags(pres_c_mapping_kind kind,
+  pres_c_mapping map, int tag, ...)]  Set the values of \cidentifier{map}
+  according to the given list of tags and values.  If \cidentifier{map} is
+  null, a new \ctype{pres_c_mapping} node of kind \cidentifier{kind} is
+  created and filled in according to the tags.  The modified mapping is
+  returned.  The list of available tags is:
+
+  \begin{cidentifierlist}
+    \item[PMA_Index] \tagtype{\ctype{int}} The index for a mapping stub.
+
+    \item[PMA_Mapping] \tagtype{\ctype{pres_c_mapping}} A
+    \ctype{pres_c_mapping}.
+
+    \item[PMA_Dir] \tagtype{\ctype{pres_c_direction}} The parameter
+    direction for a mapping direction.
+
+    \item[PMA_Target] \tagtype{\ctype{pres_c_mapping}, or \ctype{pres_c_inline}
+    for a STRUCT mapping} The target mapping for another mapping (e.g., mapping
+    pointer, optional pointer, \ldots{}).
+
+    \item[PMA_ElementMapping] \tagtype{\ctype{pres_c_mapping}} The
+    element mapping for an internal array.
+
+    \item[PMA_Kind] \tagtype{\ctype{pres_c_reference_kind}} The kind for
+    a mapping reference.
+
+    \item[PMA_RefCount] \tagtype{\ctype{int}} The reference count for a
+    mapping reference.
+
+    \item[PMA_Value] \tagtype{\ctype{cast_expr}} The value for a mapping
+    initialize.
+
+    \item[PMA_CType] \tagtype{\ctype{cast_type}} The ctype for a
+    parameter root mapping or temporary variable.
+
+    \item[PMA_Name] \tagtype{\ctype{char *}} The name of a temporary
+    variable.
+
+    \item[PMA_PreHandler] \tagtype{\ctype{char *}} The name of a run-time
+    handler function that must be executed prior to marshaling or unmarshaling
+    the temporary variable.
+
+    \item[PMA_PostHandler] \tagtype{\ctype{char *}} The name of a
+    run-time handler function that must be executed after marshaling or
+    unmarshaling the temporary variable.
+
+    \item[PMA_IsConst] \tagtype{\ctype{int}} The flag indicating whether
+    the temporary's initialization is constant.
+
+    \item[PMA_TempType] \tagtype{\ctype{pres_c_temporary_type}} The type
+    of temporary (associated with the presentation or the encoding).
+
+    \item[PMA_ArgList] \tagtype{\ctype{char *}} The name of the
+    associated argument list.
+
+    \item[PMA_InternalCType] \tagtype{\ctype{cast_type}} The internal
+    type (as viewed by the generated stubs) specified by a
+    \cidentifier{PRES_C_MAPPING_XLATE} node.
+
+    \item[PMA_InternalMapping] \tagtype{\ctype{pres_c_mapping}} The
+    mapping of the internal type for a \cidentifier{PRES_C_MAPPING_XLATE} node.
+
+    \item[PMA_Translator] \tagtype{\ctype{char *}} The translator used to
+    convert between the presented and internal types in a
+    \cidentifier{PRES_C_MAPPING_XLATE} node.
+
+    \item[PMA_Destructor] \tagtype{\ctype{char *}} The destructor of the
+    internal type, if any, of a \cidentifier{PRES_C_MAPPING_XLATE} node.
+  \end{cidentifierlist}
+
+  \item[int pres_c_add_inline_struct_slot(pres_c_inline inl)] Add
+  a new structure slot to the given \cidentifier{inl} (must be an inline struct
+  of some kind).
+
+  \item[int pres_c_add_inline_union_case(pres_c_inline inl)] Add a
+  new union case to the given \cidentifier{inl} (must be an inline union of
+  some kind).
+
+  \item[char *mint_to_ctype_name(mint_1 *mint, mint_ref itype)]
+  Given a simple mint type this will return a name corresponding to the C type.
+
+  \item[cast_type mint_to_ctype(mint_1 *mint, mint_ref itype)]
+  This will create a \ctype{cast_type} capable of holding a value of the simple
+  mint type.
+
+  \item[void descend_collapsed_union(pres_c_1 *pres, mint_ref
+  *itypep, pres_c_inline *inlp)] Given an initial \cidentifier{itype} which
+  must be a \cidentifier{MINT_UNION} and a pres_c_inline which must be a
+  \cidentifier{PRES_C_INLINE_COLLAPSED_UNION}, find the appropriate case in the
+  union selected by the presentation and return the new \cidentifier{itype} and
+  pres_c_inline corresponding to it.  Note that `itypep' and `inlp' are in-out
+  parameters.
+
+  \item[int pres_c_find_mu_stub(pres_c_1 *pres, mint_ref itype,
+  cast_type ctype, pres_c_mapping map, pres_c_stub_kind stub_kind)] Upon
+  encountering a \cidentifier{PRES_C_MAPPING_STUB} node while descending a
+  mapping tree, this routine finds a stub that can marshal/unmarshal between
+  the \cidentifier{itype} and the \cidentifier{ctype}.  Returns -1 if none
+  found.
+
+  \item[void pres_descend_mapping_stub(pres_c_1 *pres, mint_ref
+  itype, cast_type *ctype, pres_c_mapping *map)] Given an \cidentifier{itype},
+  \cidentifier{ctype}, and a \cidentifier{PRES_C_MAPPING_STUB}, this routine
+  finds a stub that can marshal/unmarshal between the \cidentifier{itype} and
+  \cidentifier{ctype}, and bumps the \cidentifier{map} and \cidentifier{ctype}
+  pointers to point into the stub's mapping and type, essentially
+  dereferencing through the level of indirection.  Note that this shouldn't be
+  done blindly and unconditionally, because there can be recursion through stub
+  mappings.
+
+  \item[void pres_c_interpose_pointer(cast_type *inout_ctype,
+  pres_c_mapping *inout_mapping, const char *arglist_name)] Given a
+  \cidentifier{ctype} and \cidentifier{map}, return a new type and mapping
+  which is identical except that it imposes one additional level of pointer
+  indirection.
+
+  \item[void pres_c_interpose_indirection_pointer(cast_type
+  *inout_ctype, pres_c_mapping *inout_mapping, pres_c_allocation ptr_alloc)]
+  This is like `pres_c_interpose_pointer', except that the mapping for the
+  imposed pointer is an entire allocation context (through a singleton
+  mapping), instead of just a pointer mapping.  This is most useful for
+  constructing simple pointer indirection without going through the mundane
+  process of creating a specialized allocation context for it.
+
+  \item[void pres_c_interpose_internal_array(cast_type
+  *inout_ctype, pres_c_mapping *inout_mapping, const char *arglist_name)] This
+  is like `pres_c_interpose_pointer', except that the mapping for the imposed
+  pointer is \cidentifier{PRES_C_MAPPING_INTERNAL_ARRAY}, not
+  \cidentifier{PRES_C_MAPPING_POINTER}.  The special
+  \cidentifier{INTERNAL_ARRAY} mapping is used to identify it as an array
+  instead of a simple pointer.
+
+  \item[void pres_c_interpose_var_reference(cast_type *inout_ctype,
+  pres_c_mapping *inout_mapping)] This is like
+  \cfunction{pres_c_interpose_pointer} except that it interposes a C++ style
+  reference.
+
+  \item[void pres_c_interpose_direction(pres_c_mapping
+  *inout_maping, aoi_direction aoi_dir)] Given a mapping, return a new
+  mapping that encapsulates the original mapping but which tells the back end
+  what kind of parameter the mapping corresponds to: `in', `out', etc.
+
+  \item[void pres_c_interpose_param_root(pres_c_mapping
+  *inout_mapping, cast_type ctype, cast_init init)] Given a mapping, return a
+  new mapping that encapsulates the original mapping but which tells the back
+  end that this PRES_C tree point corresponds to the ``root'' of a client stub
+  or server work function formal parameter.  This lets the back end take
+  special processing steps, e.g., allocating a local variable to serve as the
+  actual parameter in a call to a server work function.
+
+  \item[void pres_c_interpose_argument(pres_c_mapping
+  *inout_mapping, const char *arglist, const char *name)] Given a mapping,
+  return a new mapping that encapsulates the original mapping but which tells
+  the back end to save information about the \CAST{} expression and type being
+  processed.  This information is then used by some parent of the PRES_C
+  mapping node.
+
+  \item[void pres_c_interpose_temporary(cast_type type, const char
+  *name, cast_expr init, const char *prehandler, const char *posthandler, int
+  is_const, pres_c_tempoarary_type temp_type, pres_c_mapping *inout_mapping)]
+  Given a mapping, return a new mapping that encapsulates the original so that
+  all operations are done on a temporary variable with the given hints.  This
+  is useful for C++ or any other situations where the data being
+  marshaled/unmarshaled doesn't exactly match the structures/control flow of
+  the mapping.
+
+  \item[void pres_c_add_unpresented_channel(pres_c_1 *pres,
+  data_channel_mask dcm)] Adds a new, unpresented channel.
+
+  \item[char *pres_c_make_arglist_name(const char *hint)] Creates
+  a unique new string (based on the given string `hint') to be used for an
+  argument list name.
+
+  \item[const char *pres_c_dir_name(pres_c_direction dir)] Returns
+  the string name of the given \PRESC{} direction.
+
+  \item[tag_list *create_tag_list(int list_size)] This will
+  allocate a \ctype{tag_list} of the given size.
+
+  \item[void delete_tag_list(tag_list *tl)] This will free the
+  \ctype{tag_list} and all of its tags.
+
+  \item[tag_list *copy_tag_list(tag_list *tl)] This will do a
+  deep copy of the given \ctype{tag_list}.
+
+  \item[void concat_tag_list(tag_list *tl1, tag_list *tl2)] This
+  will move any tags from \cidentifier{tl2} to \cidentifier{tl1} and then
+  delete \cidentifier{tl2}.
+
+  \item[void relink_tag_list(tag_list *tl_root)] This function
+  will set all of the \cidentifier{parent} pointers in \ctype{tag_list}s to
+  their proper parents.  This is usually run after a \PRESC{} file has been
+  read in because the \cidentifier{parent}s are always null because the cycles
+  have to be broken before writing.
+
+  \item[tag_item *create_tag_item(const char *tag, tag_data
+  *data)] This will allocate a \ctype{tag_item} and initialize it with the
+  arguments.
+
+  \item[void delete_tag_item(tag_item *ti)] This will free a
+  \ctype{tag_item}.
+
+  \item[tag_item *add_tag(tag_list *tl, const char *tag,
+  tag_data_kind kind, ...)] This will add a tag to a \ctype{tag_list}
+  with the given arguments.  The last argument is the data to be put into the
+  tag, its C type is determined by the \ctype{tag_data_kind}.
+
+  \item[void rem_tag(tag_list *tl, const char *tag)] This will
+  remove the tag from the \ctype{tag_list}.
+
+  \item[tag_item *find_tag(tag_list *tl, const char *tag)] Finds
+  a tag matching the given name in the \ctype{tag_list}.
+
+  \item[tag_item copy_tag_item(tag_item *ti)] Deep copies a
+  \ctype{tag_item}.
+
+  \item[tag_data create_tag_data(tag_data_kind kind, int length)]
+  Initializes and allocates any memory for the \ctype{tag_data}.
+
+  \item[void delete_tag_data(tag_data *td)] Frees any memory
+  allocated for the \ctype{tag_data}.
+
+  \item[tag_data copy_tag_data(tag_data *td)] Deep copies the
+  given \ctype{tag_data}.
+
+  \item[void set_tag_data(tag_data *td, int index, union tag_data_u
+  data)] Sets a \ctype{tag_data} to the given value.  If the \ctype{tag_data}
+  is an array, then \cidentifier{index} specifies which slot to set.
+
+  \item[union tag_data_u get_tag_data(tag_data *td, unsigned int
+  index)] Returns the value of the \ctype{tag_data}, if its an array then
+  \cidentifier{index} specifies the slot in the array.
+
+  \item[unsigned int tag_data_length(tag_data *td)] Returns one
+  if the \ctype{tag_data} isn't an array, otherwise, it returns the length of
+  the array.
+
+  \item[int append_tag_data(tag_data *td, union tag_data_u data)]
+  Appends a value to a \ctype{tag_data} array.
+
+  \item[tag_data_kind get_base_tag_data_kind(tag_data_kind kind)]
+  Returns the type, or element type, of a \ctype{tag_data}.
+
+  \item[int tag_data_kind_size(tag_data_kind kind)] Returns the
+  size of the \ctype{tag_data} type, or element type.
+
+  \item[char *ptr_to_tag_ref(const char *type, void *ptr)]
+  Converts a pointer and type string into a string usable by a
+  \cidentifier{TAG_REF}.
+
+  \item[void *tag_ref_to_ptr(const char *type, const char *ref)]
+  Converts a \cidentifier{TAG_REF} string into a pointer, if the
+  \cidentifier{ref} string doesn't match the given type, it will return null.
+
+  \item[int cmp_tag_ref_class(char *ref_class, char *ref)]
+  Compare the class of a \cidentifier{TAG_REF} string against the given one.
+
+  \item[void print_tag_data(int indent, tag_data_kind kind,
+  union_tag_data_u data)] Prints tag values.
+
+  \item[void print_tag(int indent, tag_item *ti)] Prints a
+  \ctype{tag_item} at a certain indentation.  The format is
+  `$<$tag_name$>$:$<$tag_type$>=<$tag_value$>$'.
+
+  \item[int pres_function(pres_c_1 *out_pres, tag_list *parent_tl,
+  cast_scoped_name current_scope_name, cast_scoped_name fname, int tag,
+  ...), int vpres_function(pres_c_1 *out_pres, tag_list
+  *parent_tl, cast_scoped_name current_scope_name, cast_scoped_name fname, int
+  tag, va_list arg_addr)] This function is used to create presentation only
+  functions.  These `presentation only' functions are simple functions that
+  exist solely for the sake of the presentation and don't need to be optimized,
+  processed or whatever.  So, to make it easier to produce these functions,
+  this tag based function was created that will take care of most of the grunt
+  work.  \cfunction{pres_function} basically takes a description of the
+  presentation for the function through the tags and then creates the
+  appropriate \CAST{}, and adds a number of tags to the \cidentifier{parent_tl}
+  \ctype{tag_list} describing the function.  These tags are then used by the
+  back end to actually produce the function body.
+
+  \begin{cidentifierlist}
+    \item[PFA_TAG_DONE] \tagtypenull{} The terminator.
+
+    \item[PFA_Scope] \tagtype{\ctype{cast_scope}} Specifies the scope the
+    function should be declared in.
+
+    \item[PFA_ReturnType] \tagtype{\ctype{cast_type}} The return type of
+    the function.
+
+    \item[PFA_Spec] \tagtype{\ctype{int}} The spec for the parameter.
+
+    \item[PFA_Parameter] \tagtype{\ctype{cast_type}, \ctype{char *}, and
+    \ctype{cast_init}} Adds a parameter to the function with the given
+    attributes.
+
+    \item[PFA_StorageClass] \tagtype{\ctype{cast_storage_class}} The
+    storage class for the declaration.
+
+    \item[PFA_Template] \tagtypenull{} Specifies that this function should be
+    in a template.
+
+    \item[PFA_TemplateParameter] \tagtype{\ctype{cast_template_arg_kind},
+    \ctype{char *}, and \ctype{cast_template_arg}} Adds a parameter to the
+    template.
+
+    \item[PFA_FunctionKind] \tagtype{\ctype{char *}} The description of
+    what this function is supposed to do.  Its just a semantically loaded name
+    that will get matched up to something in the back end.
+
+    \item[PFA_Constructor] \tagtypenull{} Specifies that this function is some
+    form of a C++ constructor.
+
+    \item[PFA_Included] \tagtype{\ctype{inclusion}} The inclusion state
+    for the function declaration.
+
+    \item[PFA_Tag] \tagtype{\ctype{char *}, \ctype{tag_data_kind}, and
+    \ctype{union tag_data_u}} Adds an arbitrary tag to the function's tag
+    list.
+
+    \item[PFA_Model] \tagtypenull{} Indicates that the function is not
+    explicitly defined, but, rather follows some model definition.  For
+    example, a getter or setter in a union is a model, while a constructor
+    isn't.
+
+    \item[PFA_Protection] \tagtype{\ctype{cast_def_protection}} The
+    protection for the function declaration.
+
+    \item[PFA_GlobalFunction] \tagtypenull{} Indicates that the function is not
+    a method in a C++ class.  This causes any references to this function to be
+    fully scoped rather than implicitly scoped due it being in a class.
+  \end{cidentifierlist}
+\end{cprototypelist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{\presd{}, the PRES\_C Printing Utility}
+\label{sec:PRESC:presd, the PRESC Printing Utility}
+
+The \presd{} program is a simple pretty-printer that takes \PRESC{} input from
+a file or standard input and outputs a human-readable, ASCII translation.  If
+the \PRESC{} input comes from a file, the output is a corresponding
+`\filename{.prd}' (\PRESC{} dump) file.  Otherwise, if the \PRESC{} input comes
+from \cidentifier{stdin}, the human-readable output is sent to
+\cidentifier{stdout}.  Note that as the \PRESC{} format changes, this program
+must also be changed to support any new constructs, or modifications to
+existing ones.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% \section{Summary and Comments}
+% \label{sec:PRESC:Summary and Comments}
+%
+% \PRESC{} is the semantic glue that connects \MINT{} and \CAST{}\ldots{}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

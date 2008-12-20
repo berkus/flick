@@ -1,0 +1,130 @@
+-*- mode: Text -*-
+
+		      Flick --- Flexible IDL Compiler Kit
+
+		     Eric Eide, James Simister, Tim Stack,
+		      Kevin Frei, Eric Pabst, Bryan Ford,
+			  Jay Lepreau, Gary Lindstrom
+
+			       flick@cs.utah.edu
+
+		     The Flux Project, University of Utah
+			 http://www.cs.utah.edu/flux/
+				+1-801-585-3271
+
+				 November 1999
+
+
+This is Flick version 2.1, an interface definition language (IDL) compiler
+(``stub generator'') that generates optimized code and supports a variety of
+IDLs and message transport mechanisms.  The Flick compiler is distributed under
+the GNU General Public License; see the file named `COPYING' for details.  The
+Flick runtime headers and libraries are distributed under a separate license
+(BSD-style without the advertising clause); see the file `runtime/COPYING' for
+details.  Additional support files, if needed (in the `support' directory), are
+distributed under various licenses; see the file `COPYRIGHT' for details.
+
+The text of the Flick 2.1 announcement is in the file `doc/announce.text'; see
+that file for additional details such as the list of tested platforms.  For
+help building Flick, see the `INSTALL' file.  The `doc/usersguide/user.ps' file
+is the Flick user's manual, complete with code examples.  The `doc/BUGS' file
+describes known defects and as-yet-unimplemented features.
+
+For an introduction to Flick's overall design and internals, please read our
+PLDI '97 paper, ``Flick: A Flexible, Optimizing IDL Compiler,'' available from
+the Flick Web pages at <http://www.cs.utah.edu/flux/flick/>.  To learn about
+Flick's internals in gory detail, refer to the `doc/guts/guts.ps' manual.
+
+We welcome comments, technical discussion, and collaborators.  If you start
+using Flick, please let us know; send mail to <flick-users-request@cs.utah.edu>
+with the message body containing the line
+
+	subscribe flick-users
+
+to get on the mailing list.  Send bugs and fixes to <flick-bugs@cs.utah.edu>.
+
+
+			    CHANGES SINCE FLICK 2.0
+
+Flick 2.1 incorporates several new features, bug fixes, and a major new
+document on Flick's internals.  Most notably:
+
+  + Flick now generates optimized C++ stubs that work with TAO version 1.0, the
+    real-time, open source ORB from Washington University in St. Louis.  (The
+    previous release of Flick supported TAO 0.3.23.)  You will need to acquire
+    a copy of TAO 1.0 in order to make use of Flick's C++ stubs.  For
+    information about TAO, see <http://www.cs.wustl.edu/~schmidt/TAO.html>.
+
+  + Flick's generated C and C++ files are now smaller --- often much smaller!
+    Flick now eliminates unnecessary functions (internal marshal and unmarshal
+    functions) from generated code.
+
+  + The Flick Programmer's Manual (a.k.a. ``The Guts Manual'') has been
+    completely rewritten and expanded.  This manual is essential reading for
+    anyone who wants to hack on Flick or create new Flick compiler components.
+
+  + Lots and lots of miscellaneous bug fixes.
+
+
+				    STATUS
+
+Flick 2.1 is quite robust, but this is not to say that it is bug-free.  Current
+and past projects that use Flick include:
+
+  + QuOIN, the Quorum Distributed Object Integration Project, led by BBN.  This
+    DARPA-funded project is combining technology from many researchers in order
+    to create a unified, flexible, and quality-of-service aware framework for
+    distributed object computing.
+
+  + The Fluke Operating System.  Flick is the IDL compiler for Fluke, a new
+    operating system being developed by the Flux Project at the University of
+    Utah.  See <http://www.cs.utah.edu/flux/> for information about Fluke (and
+    Flick, too).
+
+  + L4.  The Dresden Real-Time Operating Systems Project (DROPS) extended Flick
+    to generate optimized stubs based on the L4 microkernel API.  For more
+    information, see <http://os.inf.tu-dresden.de/drops/>.
+
+  + Porcupine 1.  Porcupine is a scalable SMTP/IMAP server designed for
+    high-volume mail exchange --- up to one billion messages per day.  See
+    <http://porcupine.cs.washington.edu/porc1/index.html> for more information.
+
+  + The CS 453 `TICS' Group.  A group of students in our Department's senior
+    software lab used Flick to implement RPC for distributed robot control
+    systems.  Flick itself is run on a Unix machine, and the generated IIOP
+    stubs are compiled for both Unix and Windows NT, enabling cross-platform
+    communication and development.
+
+A list of known bugs and caveats can be found in `doc/BUGS'.  In brief:
+
+  + There are some minor shortcomings with Flick's CORBA components (e.g., no
+    `wchar' or `wstring' types, missing support for `any's in the C language
+    IIOP runtime, etc.).
+
+  + There are still some dependencies between the front ends and the
+    presentation generators.  This means that one cannot ``mix and match'' IDLs
+    and presentation generators.  For example, you can't start with a Sun RPC
+    (a.k.a. ONC RPC) IDL file and get CORBA-like stubs.
+
+  + In principle one can ``mix and match'' different presentations and back
+    ends, e.g., Sun IDL and presentation could talk IIOP to a similarly
+    specified system.  However, the only unusual combinations that have been
+    tested recently are CORBA-on-Mach, CORBA-on-Trapeze, and ONC-on-Trapeze.
+    Other unusual combinations are unlikely to work.
+
+
+		       TESTING FLICK / EXAMPLE PROGRAMS
+
+Flick comes with a set of test inputs and example programs in the `test'
+subdirectory of the distribution.  See the `test/README' file for instructions.
+Note that, *except* for the `test/examples/phone' application, the example
+programs in `test/examples' are not up to date and may not compile.
+
+You will need 100--200MB of free disk space in order to run the Flick tests.
+
+Refer to the user's manual and the `test/examples/phone' sample application to
+learn how to use Flick's IIOP and ONC RPC runtime libraries in your own
+programs.
+
+## End of file.
+

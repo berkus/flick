@@ -1,0 +1,281 @@
+dnl
+dnl Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999 The University of Utah and
+dnl the Computer Systems Laboratory at the University of Utah (CSL).
+dnl
+dnl This file is part of Flick, the Flexible IDL Compiler Kit.
+dnl
+dnl Flick is free software; you can redistribute it and/or modify
+dnl it under the terms of the GNU General Public License as published by
+dnl the Free Software Foundation; either version 2 of the License, or
+dnl (at your option) any later version.
+dnl
+dnl Flick is distributed in the hope that it will be useful,
+dnl but WITHOUT ANY WARRANTY; without even the implied warranty of
+dnl MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+dnl GNU General Public License for more details.
+dnl
+dnl You should have received a copy of the GNU General Public License
+dnl along with Flick; see the file COPYING.  If not, write to
+dnl the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+dnl
+
+AC_INIT(mom/pres_c.x)
+
+# Find the build, host, and target machines.
+AC_CANONICAL_SYSTEM
+
+# If the user specified `--enable-debug', add `-DDEBUG=1' to the `DEFS' line.
+AC_ARG_ENABLE(debug,
+	[  --enable-debug          enable internal debugging features and sanity checks],
+	[AC_DEFINE(DEBUG)])
+
+# If `--program-prefix' or `--program-suffix' was not specifed on the command
+# line to `configure', then the corresponding shell variable will be "NONE".
+# If this is the case, nullify the variable.
+test "$program_prefix" = "NONE" && program_prefix=
+AC_SUBST(program_prefix)
+test "$program_suffix" = "NONE" && program_suffix=
+AC_SUBST(program_suffix)
+
+# On Cygwin systems, set the default prefix from the location of Cygwin.
+cross_dir=$host_cpu-$host_os
+case "$host_os" in
+  *cygwin*)
+	IFS="${IFS= 	}"; ac_save_IFS="$IFS"; IFS="${IFS}:"
+	for ac_dir in $PATH; do
+	  case "$ac_dir/" in
+	    *[[Cc]][[Yy]][[Gg]][[Ww]][[Ii]][[Nn]]*)
+	      ac_default_prefix=`dirname $ac_dir`
+	      # Because Cygwin isn't completely normal with regards to where
+	      # it's standard include directory is located, we have to find it.
+	      # Here we look through the directories in the default prefix
+	      # directory for one that contains an `include' directory with a
+	      # `stdio.h' file available.  This is most likely the right place.
+	      for crossdir in `ls $ac_default_prefix/`; do
+		if test -e $ac_default_prefix/$crossdir/include/stdio.h; then
+		  cross_dir=$crossdir
+		  break 3
+		fi
+	      done
+	      cross_dir=
+	      break 2;;
+	  esac
+	done
+	IFS="$ac_save_IFS";;
+  *)
+	;;
+esac
+AC_SUBST(cross_dir)
+
+# If `CFLAGS' is set (and not null) in the environment, and `CXXFLAGS' is unset
+# (or null), assume that the `CFLAGS' are really common options for both C and
+# C++ compilation.
+#
+# This makes common configurations much simpler --- you need to specify only
+# one variable instead of two.  Plus, this behavior is ``backwards compatible''
+# with previous Flick build schemes, in which we expected `CC' to grok both C
+# and C++ code.
+if test "${CFLAGS+set}" = "set"; then
+  if test "${CXXFLAGS-unset}" = "unset"; then
+    CXXFLAGS="$CFLAGS"
+  fi
+fi
+
+# Find the build tools we'll be using.
+AC_PROG_CC
+AC_PROG_CXX
+AC_PROG_CPP
+AC_PROG_CXXCPP
+AC_CHECK_TOOL(LD, ld)
+AC_CHECK_TOOL(AR, ar)
+AC_PROG_RANLIB
+AC_PROG_LEX
+AC_PROG_YACC
+AC_PROG_INSTALL
+
+# Determine the filename extension for programs on this OS.
+# This is done by invoking the C compiler, so do this after `AC_PROG_CC'!
+AC_EXEEXT
+
+# Set output variables `using_gcc' and `using_gxx' to indicate whether or not
+# we are using GNU C and C++ compilers.  We use these variables to decide how
+# Flick's front ends will invoke the C/C++ preprocessors on IDL files; see the
+# file `libcompiler/call_cpp.c'.
+AC_SUBST(using_gcc)
+AC_SUBST(using_gxx)
+if test "$GCC" = ""; then
+  using_gcc=no
+else
+  using_gcc="$GCC"
+fi
+if test "$GXX" = ""; then
+  using_gxx=no
+else
+  using_gxx="$GXX"
+fi
+
+# If we're using GCC, add `-Wall' to `CFLAGS'.  Maybe we shouldn't do this if
+# `CFLAGS' was specified by the user, or if `CFLAGS' already contains `-Wall'.
+if test "$GCC" = yes; then
+  CFLAGS="$CFLAGS -Wall"
+fi
+
+# If we're using G++, add `-Wall' to `CXXFLAGS'.
+if test "$GXX" = yes; then
+  CXXFLAGS="$CXXFLAGS -Wall"
+fi
+
+# Get configure-time additions to `CFLAGS' and `CXXFLAGS' for the host and
+# target platforms.
+host_cflags="$HOST_CFLAGS"
+AC_SUBST(host_cflags)
+target_cflags="$TARGET_CFLAGS"
+AC_SUBST(target_cflags)
+host_cxxflags="$HOST_CXXFLAGS"
+AC_SUBST(host_cxxflags)
+target_cxxflags="$TARGET_CXXFLAGS"
+AC_SUBST(target_cxxflags)
+
+# Check the endianness of the host architecture; this information needs to be
+# known by various runtime files.  XXX --- We really need to determine the
+# endianness of the target architecture, not that of the current host!
+AC_C_BYTE_ORDER
+
+# Determine how to get `alloca', which may be used in Flick-generated stubs.
+# XXX --- We really need to determine this for the target compiler, not for the
+# host compiler!
+FLICK_FUNC_ALLOCA
+# `ALLOCA' is set only if the built-in `alloca' doesn't work.
+if test "${ALLOCA+set}" = "set"; then
+  AC_MSG_WARN([Flick-generated stubs require a working version of alloca])
+fi
+
+# Check for `strerror', which is used by the MIG front end.
+AC_SUBST(has_strerror)
+AC_CHECK_FUNC(strerror, [ has_strerror=yes ], [ has_strerror=no ])
+
+# Check for `vsnprintf', which was introduced in BSD 4.4.
+AC_SUBST(has_vsnprintf)
+AC_CHECK_FUNC(vsnprintf, [ has_vsnprintf=yes ], [ has_vsnprintf=no ])
+
+# Check for a declaration of `gethostname' in <unistd.h>.  If it's not there
+# (e.g., as is the case in Solaris 2.5), we'll have to declare it ourselves.
+AC_SUBST(has_gethostname_decl)
+AC_EGREP_HEADER(gethostname, unistd.h,
+  [ has_gethostname_decl=yes ],
+  [ has_gethostname_decl=no  ])
+
+# Check for <rpc/rpc.h>, which is used by `rpcgen'-generated code.  Flick uses
+# `rpcgen'-generated code to read and write its intermediate files.
+AC_CHECK_HEADER(rpc/rpc.h, [ ],
+[
+  echo "*** Your platform does not have <rpc/rpc.h>, a standard Sun RPC"
+  echo "*** header file, which is required in order to compile Flick."
+  echo "***"
+  case "$host_os" in
+    *cygwin*)
+      echo "*** Flick comes with <rpc/*.h> files and a libnsl library that you"
+      echo "*** can add to your Cygwin installation.  The support files are"
+      echo "*** located in the support/cygwin32 directory of the Flick source"
+      echo "*** tree; refer to the README file in that directory for help."
+      echo "***"
+      echo "*** After you have added the necessary RPC support files to your"
+      echo "*** Cygwin installation, you should be able to configure and"
+      echo "*** compile Flick."
+      ;;
+    *)
+      echo "*** You must install the <rpc/*.h> files and the standard Sun RPC"
+      echo "*** library routines on your system before you can compile Flick."
+      echo "*** You can get the necessary files from many places on the World"
+      echo "*** Wide Web.  For instance, the GNU C library contains Sun RPC"
+      echo "*** support.  Get the GNU C library from <http://www.gnu.org/>."
+      ;;
+  esac
+  echo "***"
+  echo "*** Configuration aborted."
+  exit 1
+])
+
+# Check for <sys/select.h>, which may be used by the runtime libraries.
+AC_SUBST(has_sysselect)
+AC_CHECK_HEADER(sys/select.h, [ has_sysselect=yes ], [ has_sysselect=no ])
+
+# Check for the "nsl" library (e.g., as required for Solaris 2.3).
+AC_CHECK_LIB(nsl, main, [ LIBS="-lnsl $LIBS" ])
+# Check for the "socket" libary (Solaris again).
+AC_CHECK_LIB(socket, main, [ LIBS="-lsocket $LIBS" ])
+# Check for the "posix4" libary (for `clock_gettime', used by the ONC/TCP
+# runtime when POSIX timers are available, e.g., on Solaris and HP-UX 10).
+# Solaris puts `clock_gettime' in `libposix4'; HP-UX puts it in `libc'.
+AC_CHECK_LIB(posix4, main, [ LIBS="-lposix4 $LIBS" ])
+
+# Check if we need `-lstdc++' (gcc 2.7.2) or `-liostream' (gcc 2.5.8).
+AC_SUBST(corba_cfe_io_libs)
+AC_LANG_SAVE
+AC_LANG_CPLUSPLUS
+AC_CHECK_STDCPLUSPLUS_LIB(stdc++, main,
+			  [corba_cfe_io_libs=-lstdc++],
+			  [corba_cfe_io_libs=-liostream])
+AC_LANG_RESTORE
+
+# Check for key header files that indicate which of the runtime libraries we
+# can build.
+#
+# XXX --- Should we ``freeze'' the values of the environment variables that are
+# used to find various other packages?  Or would this confuse the user?
+
+AC_SUBST(build_iiop_lib)
+AC_SUBST(build_suntcp_lib)
+AC_CHECK_TARGET_HEADER(sys/socket.h,
+		[ build_iiop_lib=yes
+		  build_suntcp_lib=yes ],
+		[ build_iiop_lib=no
+		  build_suntcp_lib=no  ])
+
+AC_SUBST(build_mach3mig_lib)
+AC_CHECK_TARGET_HEADER(mach/mach_types.h,
+		[ build_mach3mig_lib=yes ],
+		[ build_mach3mig_lib=no  ])
+
+AC_SUBST(build_trapeze_lib)
+AC_CHECK_TARGET_HEADER_USING_ENV(tpz_api.h, TPZ_HOME, ${TPZ_HOME}/include,
+			  [ build_trapeze_lib=yes ],
+			  [ build_trapeze_lib=no  ])
+
+AC_SUBST(build_khazana_lib)
+AC_CHECK_TARGET_HEADER_USING_ENV(gm.h, KHAZANA_ROOT, ${KHAZANA_ROOT}/src,
+			  [ build_khazana_lib=yes ],
+			  [ build_khazana_lib=no  ])
+
+dnl Here are the old `--with-corba=' macros.
+dnl
+dnl If the user specified --with-corba=
+dnl AC_MSG_CHECKING(for OMG CORBA IDL compiler frontend)
+dnl AC_SUBST(enable_corba_fe)
+dnl AC_SUBST_PATH(with_corba_fe)
+dnl AC_ARG_WITH(corba-fe,
+dnl 	[  --with-corba-fe=DIR     support CORBA IDL using the OMG IDL compiler frontend (CFE)],
+dnl 	[enable_corba_fe=yes; AC_MSG_RESULT($with_corba_fe)],
+dnl 	[enable_corba_fe=no; AC_MSG_RESULT(none (CORBA IDL support disabled))])
+
+# Find the set of directories that have `GNUmakefile.in's in them.  The value
+# of `flick_subdirs' is used by Flick's root `GNUmakefile'.
+#
+flick_makefiles=`cd $srcdir; find * -name GNUmakefile.in -print|sort|sed 's%.in$%%g'`
+flick_subdirs=`echo $flick_makefiles|sed 's%/*GNUmakefile%%g'`
+AC_SUBST(flick_subdirs)
+
+# List the other `.in' files and the directories in which they reside.
+#
+flick_other_conffiles='runtime/headers/flick/encode/endian.h runtime/headers/flick/link/alloca.h' 
+flick_other_subdirs='runtime/headers/flick/encode runtime/headers/flick/link'
+
+# Create the subdirectories first, because Autoconf can't create more than
+# directory level for each generated makefile.
+#
+mkdir -p $flick_subdirs $flick_other_subdirs
+
+AC_OUTPUT($flick_makefiles $flick_other_conffiles GNUmakeconf)
+
+## End of file.
+

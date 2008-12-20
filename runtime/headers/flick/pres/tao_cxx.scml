@@ -1,0 +1,461 @@
+<!--
+ === Copyright (c) 1999 The University of Utah and
+ === the Computer Systems Laboratory at the University of Utah (CSL).
+ === All rights reserved.
+ ===
+ === Permission to use, copy, modify and distribute this software is hereby
+ === granted provided that (1) source code retains these copyright, permission,
+ === and disclaimer notices, and (2) redistributions including binaries
+ === reproduce the notices in supporting documentation.
+ ===
+ === THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ === IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ === ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS
+ === SOFTWARE.
+ ===
+ === CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ === improvements that they make and grant CSL redistribution rights.
+ -->
+
+<!-- This is the presentation implementation file for TAO's CORBA C++ -->
+
+<include file="std_defines.scml">
+<include file="flick_defs.scml">
+<define name="presentation_implementation_name" kind="static-variable"
+        value="tao_cxx">
+
+<!-- Local definitions for some hacky tags -->
+<define name="print_cast_func" kind="tag" value="c-print-cast-func-handler"
+        rparams={def:int} oparams={unused:int[0]}>
+
+<define name="cast_init_expr" kind="tag" value="c-cast-init-expr-handler"
+        rparams={name:string expr:string type:string}>
+
+
+<!-- File template (re)definitions -->
+<scope name="header_file_defs">
+  <rename name="epilogue" to="flick_epilogue">
+  <macro name="epilogue">
+  <ifdef name="inline_file">
+  <pre>#if defined (__ACE_INLINE__)
+  #include "<(inline_file.path)>"
+  #endif /* defined INLINE */
+  
+  </pre>
+  </ifdef>
+  <flick_epilogue>
+  </macro>
+</scope>
+
+<scope name="stubs_file_defs">
+  <rename name="prologue" to="flick_prologue">
+  <macro name="prologue">
+  <flick_prologue>
+  <ifdef name="inline_file">
+  <pre>#if !defined (__ACE_INLINE__)
+  #include "<(inline_file.path)>"
+  #endif /* !defined INLINE */
+  
+  </pre>
+  </ifdef>
+  </macro>
+</scope>
+
+<scope name="inline_file_defs">
+  <macro name="prologue">
+  <pre>/* -*- C++ -*- */
+  
+  </pre>
+  <version_info ifile=input_file ofile=inline_file>
+  </macro>
+  
+  <macro name="epilogue">
+  </macro>
+</scope>
+
+<!-- Macros for in other parts of the code -->
+
+<!-- Get the length of an array -->
+<macro name="array_len" rparams={array:any out:tag_list}>
+<ignore out.length = 0>
+<for each="array" iter="lpc"><ignore out.length = out.length + 1></for>
+</macro>
+
+<!-- Indent by 'count' spaces -->
+<macro name="do_indent" rparams={count:int}>
+<for iter="lpc" length=count><pre> </pre></for>
+</macro>
+
+<!-- deep_copy will produce the code to copy 'arg' -->
+<macro name="deep_copy" rparams={ptype:tag_list arg:string}
+       oparams={ptr:bool=true}>
+<if ptype.size=="variable" ||
+    ptype.idl_type=="array" ||
+    ptype.idl_type=="union">
+  <scope name=ptype.idl_type>
+    <scope name="main">
+      <do_copy ptype=ptype ptr=ptr arg=arg>
+    </scope>
+  </scope>
+<else>
+<(arg)>
+</if>
+</macro>
+
+<!-- free will produce the code to free 'arg' -->
+<macro name="free" rparams={ptype:tag_list arg:string}>
+<if ptype.size=="variable" ||
+    ptype.idl_type=="array" ||
+    ptype.idl_type=="union">
+  <scope name=ptype.idl_type>
+    <scope name="main">
+      <do_free ptype=ptype arg=arg>
+    </scope>
+  </scope>
+</if>
+</macro>
+
+<macro name="union_access"
+       rparams={ptype:tag_list alloc_flag:string slot:string}>
+<if ptype.size=="variable" || ptype.idl_type =="array">
+  <scope name=ptype.idl_type>
+    <scope name="main">
+      <do_access ptype=ptype alloc_flag=alloc_flag slot=slot>
+    </scope>
+  </scope>
+<else>
+  return &amp;<(slot)>;
+</if>
+</macro>
+
+<!-- Print the CAST function and handle any inline stuff if needed -->
+<macro name="print_func" rparams={def:int}
+       oparams={unused:int[0] inline:bool=false}>
+<if inline && (system_info.flags.inline!="")>
+  <retarget output=inline_file.stream>
+  <pre indented=false>
+  ACE_INLINE
+  </pre>
+<else>
+  <pre indented=false>
+  </pre>
+</if>
+<print_cast_func def=def unused=unused>
+</macro>
+
+<!-- These are used to define the implementation functions for an specific -->
+<!-- presentation type (e.g. _var/_out/etc..) for an idl type              -->
+<!-- (e.g. struct/union/etc...)                                            -->
+<macro name="idl" close=true rparams={type:string}>
+
+  <scope name=type>
+  
+  <macro name="cxx_def" close=true rparams={kind:string}>
+  
+    <macro name=kind oparams={sub_contents:scml=contents}>
+      <pre indented=false><(sub_contents)></pre>
+    </macro>
+    
+  </macro>
+  
+  <macro name="pres" close=true rparams={type:string}>
+  
+    <scope name=type>
+    
+    <macro name="func" close=true
+     rparams={kind:string} oparams={inline:bool=false unused:int[0]}>
+    
+      <macro name=kind oparams={sub_contents:scml=contents
+                                inline:bool=inline
+				unused:int[0]=unused}>
+        <print_func def=c_func unused=unused inline=inline>
+	<pre indented=false><(sub_contents)></pre>
+	<retarget output=stubs_file.stream>
+      </macro>
+      
+    </macro>
+    
+    <macro name="simple_func" close=true
+     rparams={kind:string} oparams={inline:bool=false}>
+    
+      <macro name=kind oparams={sub_contents:scml=contents inline:bool=inline}>
+      <(sub_contents)>
+      <retarget output=stubs_file.stream>
+      </macro>
+      
+    </macro>
+    
+    <(contents)>
+    
+    </scope>
+    
+  </macro>
+  
+  <(contents)>
+  
+  </scope>
+
+</macro>
+
+<!-- Profiling macros -->
+
+<!--
+<define name="runtime_profiling" kind="static-variable" value=true>
+<define name="rusage_profiling" kind="static-variable" value=true>
+<define name="cycle_profiling" kind="static-variable" value=true>
+<define name="gtod_profiling" kind="static-variable" value=true>
+-->
+
+<!-- getrusage profiling code -->
+<scope name="ru">
+  <macro name="start" rparams={name:string}>
+  <ifdef name="rusage_profiling">
+  <pre indented=false>
+  #ifdef FLICK_RU_PROF_<(name)></pre>
+  <pre>
+  struct rusage start_rusage, end_rusage;
+  double real_u_time, real_s_time;
+  static double min_u_time = 1000000, min_s_time = 1000000;
+  getrusage(RUSAGE_SELF, &amp;start_rusage);</pre>
+  <pre indented=false>
+  #endif</pre>
+  </ifdef>
+  </macro>
+
+  <macro name="stop" rparams={name:string}>
+  <ifdef name="rusage_profiling">
+  <pre indented=false>
+  #ifdef FLICK_RU_PROF_<(name)></pre>
+  <pre>
+  getrusage(RUSAGE_SELF, &amp;end_rusage);
+  struct timeval udiff_tv, sdiff_tv;
+  timersub(&amp;end_rusage.ru_utime, &amp;start_rusage.ru_utime,
+           &amp;udiff_tv);
+  timersub(&amp;end_rusage.ru_stime, &amp;start_rusage.ru_stime,
+           &amp;sdiff_tv);
+  real_u_time = udiff_tv.tv_sec +
+    ((double) udiff_tv.tv_usec) / ACE_ONE_SECOND_IN_USECS;
+  real_s_time = sdiff_tv.tv_sec +
+    ((double) sdiff_tv.tv_usec) / ACE_ONE_SECOND_IN_USECS;
+  if( (min_u_time > real_u_time) &amp;&amp; (real_u_time > 0) )
+    min_u_time = real_u_time;
+  if( (min_s_time > real_s_time) &amp;&amp; (real_s_time > 0) )
+    min_s_time = real_s_time;
+  printf("<(name)> times U: %0.06f S: %0.06f   mU: %0.06f mS: %0.06f\n",
+         real_u_time < 0.0 ? 0.0 : real_u_time * ACE_ONE_SECOND_IN_MSECS,
+         real_s_time < 0.0 ? 0.0 : real_s_time * ACE_ONE_SECOND_IN_MSECS,
+         min_u_time < 0.0 ? 0.0 : min_u_time * ACE_ONE_SECOND_IN_MSECS,
+         min_s_time < 0.0 ? 0.0 : min_s_time * ACE_ONE_SECOND_IN_MSECS
+         );</pre>
+  <pre indented=false>
+  #endif</pre>
+  </ifdef>
+  </macro>
+</scope>
+
+<!-- Profiling for the TAO runtime sections -->
+<scope name="rt">
+  <macro name="decl" rparams={name:string}>
+  <ifdef name="runtime_profiling">
+  <pre indented=false>
+  #ifdef FLICK_RT_PROF_<(name)></pre>
+  <pre>
+  ACE_Profile_Timer rt_timer;
+  ACE_Profile_Timer::ACE_Elapsed_Time rt_time;
+  ACE_Profile_Timer::ACE_Elapsed_Time rt_time_total;
+  static ACE_Profile_Timer::ACE_Elapsed_Time min_rt_time = {1000000, 0, 0};
+  rt_timer_total.real_time = 0;</pre>
+  <pre indented=false>
+  #endif</pre>
+  </ifdef>
+  </macro>
+
+  <macro name="start" rparams={name:string}>
+  <ifdef name="runtime_profiling">
+  <pre indented=false>
+  #ifdef FLICK_RT_PROF_<(name)></pre>
+  <pre>
+  rt_timer.start();</pre>
+  <pre indented=false>
+  #endif</pre>
+  </ifdef>
+  </macro>
+
+  <macro name="stop" rparams={name:string}>
+  <ifdef name="runtime_profiling">
+  <pre indented=false>
+  #ifdef FLICK_RT_PROF_<(name)></pre>
+  <pre>
+  rt_timer.stop();
+  rt_timer.elapsed_time(rt_time);
+  rt_timer_total.real_time += rt_time.real_time;</pre>
+  <pre indented=false>
+  #endif</pre>
+  </ifdef>
+  </macro>
+
+  <macro name="print" rparams={name:string}>
+  <ifdef name="runtime_profiling">
+  <pre indented=false>
+  #ifdef FLICK_RT_PROF_<(name)>
+  # ifdef ACE_LACKS_FLOATING_POINT</pre>
+  <pre>
+  printf("<(name)> rt time: %u\n", rt_time_total.real_time / 1000u);</pre>
+  <pre indented=false>
+  # else</pre>
+  <pre>
+  if( min_rt_time.real_time > rt_time_total.real_time )
+    min_rt_time = rt_time_total;
+  printf("<(name)> rt time: %0.06f mRT: %0.06f ms\n",
+         rt_time_total.real_time < 0.0 ? 0.0
+         : rt_time_total.real_time * ACE_ONE_SECOND_IN_MSECS
+         min_rt_time.real_time < 0.0 ? 0.0
+         : min_rt_time.real_time * ACE_ONE_SECOND_IN_MSECS
+         );</pre>
+  <pre indented=false>
+  # endif
+  #endif</pre>
+  </ifdef>
+  </macro>
+</scope>
+
+<!-- Cycle based profiling for stub code -->
+<scope name="cycle">
+  <macro name="decl" rparams={name:string sections:any}>
+  <ifdef name="cycle_profiling">
+  <pre indented=false>
+  #ifdef FLICK_I_PROF_<(name)></pre>
+  <pre>
+  unsigned long before, after;<for each="sections" iter="lpc">
+  unsigned long <(sections[lpc])>_total;
+  static unsigned long min_i_<(sections[lpc])>_time = 1000000;</for></pre>
+  <pre indented=false>
+  #endif</pre>
+  </ifdef>
+  </macro>
+
+  <macro name="start" rparams={name:string}>
+  <ifdef name="cycle_profiling">
+  <pre indented=false>
+  #ifdef FLICK_I_PROF_<(name)></pre>
+  <pre>
+  before = readitmr();</pre>
+  <pre indented=false>
+  #endif</pre>
+  </ifdef>
+  </macro>
+
+  <macro name="stop" rparams={name:string section:string}>
+  <ifdef name="cycle_profiling">
+  <pre indented=false>
+  #ifdef FLICK_I_PROF_<(name)></pre>
+  <pre>
+  after = readitmr();
+  <(section)>_total = after - before;</pre>
+  <pre indented=false>
+  #endif</pre>
+  </ifdef>
+  </macro>
+
+  <macro name="print" rparams={name:string sections:any}>
+  <ifdef name="cycle_profiling">
+  <pre indented=false>
+  #ifdef FLICK_I_PROF_<(name)></pre>
+  <pre><for each="sections" iter="lpc">
+  if( min_i_<(sections[lpc])>_time > <(sections[lpc])>_total )
+    min_i_<(sections[lpc])>_time = <(sections[lpc])>_total;</for>
+  printf("<(name)> times"<for each="sections" iter="lpc">
+         " <(sections[lpc])>: %.2f"</for><for each="sections" iter="lpc">
+         " m(<(sections[lpc])>): %.2f"</for>
+	 " us\n"<for each="sections" iter="lpc">
+	 , ((double) <(sections[lpc])>_total) / CYCLESPERUSEC</for><for each="sections" iter="lpc">
+         , ((double) min_i_<(sections[lpc])>_time) / CYCLESPERUSEC</for>
+         );</pre>
+  <pre indented=false>
+  #endif</pre>
+  </ifdef>
+  </macro>
+</scope>
+
+<!-- gettimeofday based profiling for the stubs -->
+<scope name="gtod">
+  <macro name="decl" rparams={name:string sections:any}>
+  <ifdef name="gtod_profiling">
+  <pre indented=false>
+  #ifdef FLICK_PROF_<(name)></pre>
+  <pre>
+  ACE_Profile_Timer timer;<for each="sections" iter="lpc">
+  ACE_Profile_Timer::ACE_Elapsed_Time <(sections[lpc])>_elapsed_time;
+  static ACE_Profile_Timer::ACE_Elapsed_Time min_<(sections[lpc])>_time = {1000000, 0, 0};</for></pre>
+  <pre indented=false>
+  #endif</pre>
+  </ifdef>
+  </macro>
+
+  <macro name="start" rparams={name:string}>
+  <ifdef name="gtod_profiling">
+  <pre indented=false>
+  #ifdef FLICK_PROF_<(name)></pre>
+  <pre>
+  timer.start();</pre>
+  <pre indented=false>
+  #endif</pre>
+  </ifdef>
+  </macro>
+
+  <macro name="stop" rparams={name:string section:string}>
+  <ifdef name="gtod_profiling">
+  <pre indented=false>
+  #ifdef FLICK_PROF_<(name)></pre>
+  <pre>
+  timer.stop();
+  timer.elapsed_time(<(section)>_elapsed_time);</pre>
+  <pre indented=false>
+  #endif</pre>
+  </ifdef>
+  </macro>
+
+  <macro name="print" rparams={name:string sections:any}>
+  <ifdef name="gtod_profiling">
+  <pre indented=false>
+  #ifdef FLICK_PROF_<(name)>
+  # ifdef ACE_LACKS_FLOATING_POINT</pre>
+  <pre>
+  printf("<(name)> times M:%u U:%u ms\n",
+         m_elapsed_time.real_time / 1000u,
+         u_elapsed_time.real_time / 1000u);</pre>
+  <pre indented=false>
+  # else</pre>
+  <pre>
+  <for each="sections" iter="lpc">
+  if( min_<(sections[lpc])>_time.real_time > <(sections[lpc])>_elapsed_time.real_time )
+    min_<(sections[lpc])>_time = <(sections[lpc])>_elapsed_time;</for>
+  printf("<(name)> times "<for each="sections" iter="lpc">
+         " <(sections[lpc])>: %0.06f"</for><for each="sections" iter="lpc">
+         " m(<(sections[lpc])>): %0.06f"</for>
+         " %s\n", <for each="sections" iter="lpc">
+         <(sections[lpc])>_elapsed_time.real_time < 0.0 ? 0.0
+         : <(sections[lpc])>_elapsed_time.real_time * ACE_ONE_SECOND_IN_MSECS,</for><for each="sections" iter="lpc">
+         min_<(sections[lpc])>_time.real_time < 0.0 ? 0.0
+         : min_<(sections[lpc])>_time.real_time * ACE_ONE_SECOND_IN_MSECS,</for>
+         "ms");</pre>
+  <pre indented=false>
+  # endif
+  #endif</pre>
+  </ifdef>
+  </macro>
+</scope>
+
+
+<!-- These files have all the implementation code -->
+<include file="tao_stubs.scml">
+<include file="tao_base.scml">
+<include file="tao_struct.scml">
+<include file="tao_union.scml">
+<include file="tao_sequence.scml">
+<include file="tao_array.scml">
+<include file="tao_interface.scml">
+<include file="tao_exception.scml">
+
+<!-- End of file. -->
+

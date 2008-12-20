@@ -1,0 +1,962 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1996, 1999 The University of Utah and the Computer Systems
+%% Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{Presentation Generators}
+\label{cha:PG}
+
+Presentation generation is an intermediate stage of the Flick \IDL{} compiler
+process.  Presentation generator modules (typically) take as input an \AOI{}
+interface representation, and output an interface representation that is
+specific to a programming language.  The output also specifies a default
+presentation (see Section~\ref{sec:PG:Presentation of an Interface}) for stubs
+and data types.  This chapter explains the Flick presentation generation system
+in detail for the C and C++ languages.
+
+The translation from \AOI{} to \PRESC{} moves the interface representation
+toward stub code generation by introducing a message format (\MINT{}) and a
+language-specific representation (\CAST{}) of data types and functions in the
+interface.  As described in Chapter~\ref{cha:PRESC}, \PRESC{} structures
+contain \MINT{} and \CAST{} structures.  Utilizing these \MINT{} and \CAST{}
+structures is a third part of \PRESC{}, an array of stub definitions.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Presentation of an Interface}
+\label{sec:PG:Presentation of an Interface}
+
+The \emph{presentation} of an interface encompasses everything the application
+programmer must know to program to and implement the interface.  This includes
+the stub signatures, data type names and structure (if transparent), and
+specialized support functions directly related to the interface.  This also
+includes any semantics that may be associated with passing values in the system
+(by reference or value), runtime routines for initialization/destruction of the
+data types, and when/where/how allocation and deallocation is expected to take
+place.  The presentation generator is responsible for completely describing
+these requirements without dictating an implementation for them.  The
+implementation is left to the back end which takes into account the message
+encoding, link-layer details, and the target runtime's API\@.
+
+\subsection{Standard RPC Presentation}
+\label{subsec:PG:Standard RPC Presentation}
+
+The typical \RPC{} presentation follows a general pattern, regardless of the
+specific presentation.  This pattern is a set of automatically-generated stubs
+that execute communication between a client program and a server program.  Each
+operation includes a request, or message sent by the client to the server with
+any data to be acted upon, and a reply, or message sent by the server back to
+the client with any data that resulted from the action performed.  There is
+almost always some sort of object model, where the operations belong to a
+specific object (or server entity), and they are invoked as methods on an
+object instance (via a reference to the object instance).  These object
+references contain the information necessary for the runtime to direct messages
+to the appropriate object for invocation.
+
+In general, there are four major types of parameters that may be a part of the
+request or reply messages.  Note that not all presentation use all of these
+major parameter types.  The following list briefly describes each type.
+
+\begin{itemize}
+  \item IN - Describes a parameter that is sent in the request message from the
+  client to the server for processing.
+
+  \item OUT - Describes a parameter that is sent in the reply message from the
+  server to the client as a result of processing.
+
+  \item INOUT - Describes a single parameter whose data is sent in the request
+  to the server, and whose data is overwritten with data from the reply message
+  from the server.
+
+  \item RETURN - Describes the return value of an operation, sent in the reply
+  message from the server.  This is similar to an OUT parameter, except for the
+  semantic distinction: it is the return value of the operation rather than a
+  formal parameter.
+\end{itemize}
+
+In addition to the major types of parameters, there are a set of communication
+stubs produced for every function declared in the input \IDL{} file.  These
+include:
+
+\begin{itemize}
+  \item \emph{Client stubs} to marshal the request, send it to the target
+  object, wait for a reply, and unmarshal into the out parameters and return
+  value.
+
+  \item \emph{Server skeletons} to demultiplex a message on the server side,
+  unmarshal the request, dispatch to the work function, and marshal and send
+  the reply to the client.
+
+  \item \emph{Marshaling stubs} to marshal specific data types into the message
+  stream.  These are only generated and called from client stubs and server
+  skeletons if the code cannot be directly inlined (e.g., a recursive data
+  type).
+
+  \item \emph{Unmarshaling stubs} to unmarshal specific data types from a
+  message stream.  Again, these are only generated and called when their code
+  cannot be inlined directly.
+\end{itemize}
+
+In addition to these generated functions, there are prototypes generated for
+the \emph{work functions} that implement the operations defined in the
+\IDL{}\@.
+
+\subsection{Decomposed Stubs Presentation}
+\label{subsec:PG:Decomposed Stubs Presentation}
+
+Some work has been done on specializing Flick to generate non-traditional
+communication stubs for a specific class of distributed applications.  These
+stubs reflect a message-passing methodology rather than \RPC{} or \RMI{},
+however they still have notions of requests and replies.  We call them
+``decomposed'' because we have split apart the separate main tasks of a typical
+\RPC{} stub into their own stubs, namely marshaling, unmarshaling, sending, and
+receiving.  Note that while the presentation of these stubs is significantly
+different, the definition of the interfaces and operations (e.g., \CORBA{}
+\IDL{}) has not been modified.  We can produce either regular \RPC{} stubs or
+our decomposed stubs from a single \filename{.IDL} file.
+
+By decomposing the separate tasks of an \RPC{} call, we gain finer grain
+control over when and how the system creates and exchanges messages.  For
+example, one could construct a single message and send it to multiple servers
+without paying for the marshaling cost multiple times.  Further, when a message
+is sent, it is not necessary to idly wait for its reply (thus allowing for
+asynchronous communications).  Messages can be forwarded (by resending them) to
+another server without paying the cost of decoding and reencoding the message
+contents.  Finally, the handling of a received message (on either side) can be
+postponed until a later time (e.g., if other data is not yet available).
+
+The decomposed stubs presentation generates the following types of
+communication stubs:
+
+\begin{itemize}
+  \item \emph{Message marshaling stubs} to marshal an entire message for an
+  operation.  Two are generated: one to marshal the request, and one to marshal
+  the reply.  They take the operations parameters and return an opaque
+  marshaled message that can later be sent.
+
+  \item \emph{Message unmarshaling stubs} to unmarshal an entire message for an
+  operation.  Two are generated: one to unmarshal the request, and one to
+  unmarshal the reply.  These take a marshaled message as a parameter, and
+  unmarshal it into the appropriate parameter set defined by the operation.
+
+  \item \emph{Send stubs} to send a message to an appropriate destination.  Two
+  are generated: one to send the request message to a server, and one to send
+  the reply message to the client.  Both take the target reference, a marshaled
+  message to be sent, an invocation identifier, and the client reference.
+
+  \item \emph{Continuation stubs} to postpone computation for a received
+  message.  Two are generated: one to setup a request to be continued, and one
+  to setup a reply to be continued.  One can think of these as a type of
+  send-to-self stub, except that the application has control over when the
+  system ``notices'' it has been ``received'' (again).  These stubs also allow
+  the application to save arbitrary state with the continuation.  The
+  parameters are the same as those for a send stub, with the addition of a
+  \ctype{void *} pointer to the state to save.
+
+  \item \emph{Marshaling stubs} and \emph{unmarshaling stubs} are generated as
+  in the standard presentation.
+\end{itemize}
+
+As in the default presentation, there are prototypes generated for the
+\emph{work functions} that implement the operations described in the \IDL{}\@.
+The prototypes are significantly different, however, in that they take a
+marshaled message rather than the unmarshaled parameters.  This allows the
+application control over when (or even if) the message is unmarshaled.  Another
+difference is that work function prototypes are generated for \emph{replies}
+(on the client side) in addition to the expected ones for requests (on the
+server side).  This completes the symmetric handling of requests and replies on
+each side of communication (thus the relation to message-passing versus
+standard \RPC{}) and allows for complete asynchronous
+communication.\footnote{Although the presentation allows for complete
+asynchrony, the runtime system thus far developed only supports a polling
+interface for handling operation replies.  To gain full asynchrony, it would be
+necessary to have a separate thread waiting for replies to be received (much as
+the server waits for requests), or at least sufficiently frequent hooks into
+the runtime to allow for prompt detection and dispatch of reply messages.}
+
+The decomposed stub presentation is currently only supported in the
+\CORBA{} C presentation generator and the \IIOP{} back end and runtime.  The
+Khazana runtime, when finished, will fully support the decomposed presentation
+as well.  Support exists (in fact, much is implemented) in the main
+presentation generator library, but the presentation itself was a modification
+of the C mapping for \CORBA{}, and thus was not carried into other
+presentations.  To try them out, issue the command-line option ``-a'' (for
+asynchronous) to the presentation generator.
+
+Finally, it was intended that the resulting stubs for the decomposed stubs
+presentation be compatible and interchangeable with the standard \CORBA{}
+presentation stubs.  Unfortunately, our goal could not be fully met, as the
+decomposed stubs required some additional information be sent in both request
+and reply messages, and the communication model is slightly different (the
+server contacts the client to send the reply message, rather than replying on
+the communication socket initiated by the client.  A sufficiently intelligent
+runtime system would iron out the details and allow a standard/decomposed stub
+mismatch between client and server.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{AOI to PRES\_C Translation}
+\label{sec:PG:AOI to PRESC Translation}
+
+The process of translating \AOI{} to \PRESC{} involves the generation of
+\MINT{}, \CAST{} and stub definitions.  This section discusses these data
+translation steps in more detail.  For detailed information regarding the
+structure of the internal representations themselves, see their respective
+chapters in this guide.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Overview of the Translation Algorithm}
+\label{subsec:PG:Overview of the Translation Algorithm}
+
+Translation of \AOI{} to \PRESC{} involves the translation of each element of
+\cidentifier{aoi.defs<>}, the sequence of \AOI{} definitions.  This is
+accomplished in two main stages.  The first stage is building the \MINT{}\@.
+The PG starts by creating a list of ``primitive'' \MINT{} definitions,
+corresponding to the primitive types supported by the presentation (those that
+are expected to exist without being defined, such as ``int'' or ``float'').  It
+then makes an optional initial ``preprocess'' of the \AOI{}, possibly
+translating or modifying information to make the \PRESC{} conversion easier or
+more straightforward.  For example, \CORBA{}'s interface attributes are
+presented as accessor functions, so the preprocess phase in the \CORBA{} PGs
+translate these attributes into operations, so the second stage can do the
+obvious translation on an operation.  Finally, it traverses the entire \AOI{}
+tree making a one-to-one translation of the \AOI{} definitions into their
+\MINT{} counterparts.
+
+The second stage requires building the necessary \CAST{} and linking it to the
+\MINT{} through the \PRESC{} structures.  This is (broadly) the function of
+\cfunction{pg_state::gen}.  First, the \CAST{} is initialized similar to
+\MINT{} with the primitive definitions that are expected to exist by default in
+the presentation.  Second, the \AOI{} definitions are walked, building the
+\PRESC{} definitions hierarchically.
+
+The \PRESC{} definitions generated are specific to either the client or server
+side of the communication, based on parameters given to the presentation
+generator.  Currently the infrastructure is not sufficient to generate both the
+client and server presentations at the same time.  Perhaps this is a future
+direction that can be explored.
+
+Other parameters that can provide information, direction, and guidance to a PG
+belong to the \ctype{pg_flags} class, which is shared by all presentation
+generators.  These include the flags to choose client or server presentation
+(as described above), those for inhibiting generation of inherited operations
+(for when they are generated separately), one to enable the use of security
+identifiers, and finally one to enable the ``decomposed'' stub presentation
+style.  In addition to the \ctype{pg_flags}, there is a large set of options
+that can modify the naming conversion between the \IDL{} and the generated
+code.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Naming}
+\label{subsec:PG:Naming}
+
+One of the differences between presentations is the names assigned to data
+types and operations defined in the \IDL{}\@.  There is typically a well
+defined pattern which can be used to determine the name of an operation or data
+type one can use in the implementation from that described in the \IDL{}
+specification.  For example, the \CORBA{} C mapping dictates that a data type
+\ctype{bar} inside of an interface \ctype{foo} can be used by the
+implementation as \ctype{foo_bar}.  Under the \CORBA{} C++ mapping, this
+becomes \ctype{foo::bar}.  Flick has a relatively simple method of describing
+and handling these name conversions, very similar to C's
+\cfunction{printf}: \cfunction{calc_name}.
+
+For more information on how to redefine or define new \cfunction{calc_name}
+mappings, see the code documentation available in \filename{mom/c/pfe.hh} and
+\filename{c/pfe/lib/p_calc_name.cc}.  The default set of name mappings can be
+found in \filename{c/pfe/lib/pg_state.cc} (and likewise the sets of mappings
+for each presentation can be found in the presentation's \filename{.cc} file).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Operations}
+\label{subsec:PG:Operations}
+
+Another common difference between presentations is the mapping from the
+IDL-defined operations to the actual functions that are created for use by the
+\IDL{} compiler.  In general, there is a one-to-one correspondence between the
+two sets; however that need not be the case (e.g., the decomposed stubs
+presentation).  In addition, there are often ``special'' parameters that need
+to be added before and/or after the normal parameters given in the \IDL{}
+(e.g., \CORBA{}'s object reference and environment parameters).  These
+differences cannot be expressed solely by name translation.
+
+There are high-level generation functions that allow one to control the stubs
+or skeletons that are generated.  \cfunction{p_client_stubs} handles all of
+the client-side stubs that are to be generated.  For the decomposed stubs, this
+is modified to produce a request marshaler and reply unmarshaler for every
+operation, rather than just a single client stub.  \cfunction{p_skel} is
+the counterpart that produces a skeleton, or dispatch routine, again modified
+for the decomposed stubs to also produce request unmarshalers and reply
+marshalers for every operation on the server side.  The decomposed presentation
+also uses \cfunction{p_skel} to generate the client-side dispatch routine
+for replies.
+
+Other high-level generation function include \cfunction{p_marshal_stub} and
+\cfunction{p_unmarshal_stub} to generate marshal and unmarshal functions
+for a specific data type, and \cfunction{p_server_func} to generate the
+prototype for a server work function.  More exist that are currently specific
+to the decomposed presentation, including \cfunction{p_continue_stub},
+\cfunction{p_send_stub}, and \cfunction{p_receive_func}.
+
+Each of the high-level functions are similar in that they create a new stub
+description in the \CAST{} and \PRESC{} (simultaneously) and establish the link
+between the the description and the \MINT{}\@.  As part of creating the
+function description, one of the \cfunction{process_*_params} functions is
+used to create and handle each parameter of the function, including special
+parameters (ones that must exist for the presentation but do not appear
+explicitly in the \IDL{}) such as the object reference or the \CORBA{}
+environment.  From there, parameters are handled individually by
+\cfunction{p_param}, and dispatched to a specific data type presentation
+via \cfunction{p_type}.
+
+Most parameters are explicit, meaning they appear in the presentation.
+However, there are some cases where a parameter is implicit, meaning it may be
+constant or exist at the global level, but it isn't a formal parameter to the
+stub.  An example of this is \cidentifier{errno} in the \ONCRPC{} presentation:
+it is a global error property that must be set within the stub, but from the
+standpoint of the stubs, it can be viewed as an implicit parameter.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Data Types and Type Collections}
+\label{subsec:PG:Data Types and Type Collections}
+
+Data types are generated by the \cfunction{p_*_type} family of functions,
+some of which may recursively call each other to construct more complex types.
+Each operates on a \emph{type collection} that potentially holds more than a
+single (default) \CAST{} and \PRESC{} mapping tree for the type.  This is
+particularly necessary for the \CORBA{} C++ presentation that yields multiple
+presentation types from a single \IDL{} type.  In general, however, only the
+default type is used.  
+
+Following are brief descriptions of the \ctype{p_type_collection} and related
+interfaces.
+
+\subsubsection{p_type_collection}
+
+\begin{cprototypelist}
+  \item[void set_id(const char *id), const char *get_id()] Set/get
+  the identifier for this \IDL{} type.  Also adds the ``id'' tag to the tag
+  list.
+
+  \item[void set_included(inclusion included), inclusion
+  get_included()]  Set/get the inclusion for this collection, this is then
+  passed down to be used as the default for other inclusions.
+
+  \item[void set_protection(cast_def_protection protection),
+  cast_def_protection get_protection()] Set/get the \CAST{} protection for this
+  collection, this is then passed down to be used as the default for other
+  protections.
+
+  \item[void set_ref(aoi_ref ref), aoi_ref get_ref()] Set/get the
+  \AOI{} reference from which this collection was created.
+
+  \item[void set_attr_index(int idx), int get_attr_index()] Set/get
+  the index used to find the \ctype{tag_list} in the presentation attributes.
+
+  \item[void set_name(const char *name), const char *get_name()]
+  Set/get the name of the type.
+
+  \item[void set_tag_list(tag_list *tl), tag_list *get_tag_list()]
+  Set/get the \ctype{tag_list} used to store any type information.
+
+  \item[void set_collection_ref(struct p_type_collection *ptc),
+  struct p_type_collection *get_collection_ref()] Set/get the collection
+  reference for this type.
+
+  \item[void define_types()] Define all of the types in the
+  collection.
+
+  \item[struct p_type_node *find_type(const char *name)] Find a
+  type with the given name.
+
+  \item[struct p_scope_node *find_scope(const char *name)] Find a
+  scope with the given name.
+
+  \item[struct p_type_node *add_type(const char *name, struct
+  p_type_node *ptn, int add_to_tail = 1, int add_to_ref = 1)] Add a type to the
+  collection in the scope given by \cidentifier{name}.  The
+  \cidentifier{add_to_tail} flag indicates whether the type should be added to
+  the head or tail of the list of types, which allows you to add definitions
+  before the other rest will be defined.  The \cidentifier{add_to_ref} flag
+  indicates whether the type should also be added to the referenced collection,
+  which allows you to add types that are only to be defined in the referencer
+  collection.
+
+  \item[void add_scope(struct p_scope_node *psn)] Add a scope to
+  the collection.
+
+  \item[static p_type_collection *find_collection(struct dl_list
+  *list, aoi_ref ref), static p_type_collection *find_collection(struct dl_list
+  *list, const char *name, cast_scope *scope)] Find a collection in a linked
+  list based on its \AOI{} reference or by matching the name of the collection
+  and the default \CAST{} scope.
+\end{cprototypelist}
+
+\subsubsection{p_scope_node}
+
+The \ctype{p_scope_node} class is used with the \ctype{p_type_collection} class
+to allow type declarations to be separated into separate C++ scopes.  The scope
+node holds a reference to the \ctype{cast_scope} and the list of types in this
+scope.
+
+\begin{cprototypelist}
+  \item[void set_collection(p_type_collection *ptc),
+  p_type_collection *get_collection()] Set/get the collection that holds this
+  scope node.
+
+  \item[void set_name(const char *name), const char *get_name()]
+  Set/get the semantic name of this scope.
+
+  \item[void set_prefix(const char *prefix), const char
+  *get_prefix()] Set/get the prefix string.  This string is prepended to the
+  formatted name of any types if this is the root scope.  Otherwise, the prefix
+  is assumed to already be a part of the scoped name.
+
+  \item[void set_scope_name(cast_scoped_name name),
+  cast_scoped_name get_scope_name()] Set/get the actual C/C++ name of this
+  scope.
+
+  \item[void set_scope(cast_scope *scope), cast_scope *get_scope()]
+  Set/get the \CAST{} scope.
+
+  \item[void add_type(struct p_type_node *ptn)] Add a type to the
+  scope.
+
+  \item[struct p_type_node *find(const char *name)] Find a type in
+  the scope with the given name.
+
+  \item[void ref_types(struct p_scope_node *psn)] Add references to
+  this scope node to the types in the given scope node.
+
+  \item[void add_defs()] Add definitions of the types to the scope.
+
+  \item[void set_included(inclusion the_included), inclusion
+  get_included()] Set/get the inclusion for this scope.
+\end{cprototypelist}
+
+\subsubsection{p_type_node}
+
+The \ctype{p_type_node} class is used to hold any information about a type in
+the presentation generator.  The types it represents can be real (i.e., they
+end up defined in \CAST{}) or just a different version of another type (i.e.,
+it has a different interpretation than the standard version).
+
+\begin{cprototypelist}
+  \item[void set_flags(unsigned int flags), unsigned int
+  get_flags()] Set/get the flags for this type:
+
+  \begin{cidentifierlist}
+    \item[PTF_NAME_REF] Forces the name in any reference to just
+    be a plain name rather than one with struct/union/etc.
+
+    \item[PTF_REF_ONLY] This flag is set when a type is added to a
+    collection without adding it to its referenced collection.  It signifies
+    that the type is defined only for the referencer collection and should be
+    defined alongside the referenced types.
+
+    \item[PTF_NO_REF] This flag is also usually set when a type is
+    added only to a referencer collection and signifies that it shouldn't be
+    referenced when the collection is referenced.
+  \end{cidentifierlist}
+
+  \item[void set_name(const char *name), const char *get_name()]
+  Set/get the semantic name of the type.
+
+  \item[void set_format(const char *name), const char
+  *get_format()] Set/get the format of the type name.
+
+  \item[void set_type(cast_type type), cast_type get_type()]
+  Set/get the \CAST{} type.
+
+  \item[void set_mapping(pres_c_mapping map), pres_c_mapping
+  get_mapping()] Set/get the mapping for the type.
+
+  \item[void set_included(inclusion included), inclusion
+  get_included()] Set/get the inclusion for the type.
+
+  \item[const char *format_name(struct p_scope_node *psn)] Format
+  the name of the type as it will be in the given scope.
+
+  \item[void add_def(struct p_scope_node *psn)] Define the type in
+  the given scope.
+
+  \item[struct p_type_node *ref_type(struct p_scope_node *psn)]
+  Return a new type that references this type.
+
+  \item[void remove(struct p_scope_node *psn)] Remove this type
+  from the given scope.
+\end{cprototypelist}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Metadata Associations}
+\label{subsec:PG:Metadata Associations}
+
+% Should this be in here?  The metadata chapter probably describes this well
+% enough and we could just leave off this subsection.
+
+An additional aspect of presentation generation is the semantic relationship
+between the entities of the presentation (at least as far as organization).
+For example, an \IDL{} file may include other \IDL{} files for definitions of
+common data types or interfaces from which to inherit.  Because they are
+defined, the presentation generator creates the necessary \PRESC{} for them.
+However, it may be useful to know the origin of these inherited operations or
+included data structures, especially if they are compiled separately and should
+not be included with the native interfaces.
+
+For this purpose, the \emph{metadata} provided in the \AOI{} is copied into the
+\PRESC{}, and associations between \AOI{} entities and the metadata are
+preserved when generating corresponding \PRESC{} entities.  Further,
+presentation-only entities (necessary constructions that are not based on the
+input) can be linked appropriately to the metadata structures by the
+presentation generator.  For more information on metadata, see
+Chapter~\ref{cha:META}.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Flick Presentation Generator Architecture}
+\label{sec:PG:Flick Presentation Generator Architecture}
+
+Presentation generation programs in Flick are built using a base library
+containing the main procedure for the program and a C++ class,
+\ctype{pg_state}, which maintains the presentation generation state
+information.  The top-level member function in \ctype{pg_state} is
+\cfunction{gen}, which starts presentation generation for the \AOI{} stored
+in the class member \cidentifier{in_aoi} (input \AOI{} data structure).
+
+IDL-specific presentation generation functionality is achieved through
+inheritance of \ctype{pg_state} and overriding some or all of its virtual
+functions as needed.  Two additional libraries exist that have specialized the
+base presentation generator library to the standard \CORBA{} C and C++
+mappings, providing a starting ground for generators that implement or extend
+these \CORBA{} standards.  These are named \ctype{pg_corba} and
+\ctype{pg_corbaxx}, respectively.
+
+Presentation generation code can make use of library routines in the
+\filename{libaoi}, \filename{libmeta}, \filename{libmint},
+\filename{libcompiler}, \filename{c/libcast}, and \filename{c/libpres_c}
+directories.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Base Presentation Generator Library}
+\label{subsec:PG:Base Presentation Generator Library}
+
+The base Presentation Generator Library for the C language is in the directory
+\filename{c/pfe/lib}, and the class declaration can be found in
+\filename{mom/c/pfe.hh}.  To extend the base library, one must inherit from the
+\ctype{pg_state} and write a simple \cfunction{getGenerator} function to
+return an instance of the new class.  By overriding the \cfunction{p_*}
+methods, one can change the structure of the generated \PRESC{}\@.  The other
+methods are higher-level and either create or return additional state
+information or guide the \PRESC{} generation at a higher level
+(e.g., \cfunction{process_client_params} guides the generation of all the
+parameters of a client stub).
+
+In general, this base library and other presentation generators are specific to
+the C language (the exception being the \CORBA{} C++ PG library).  Typically,
+support for a language other than C will require the development of a
+language-specific abstract syntax tree (analogous to \CAST{}) and presentation
+structure (analogous to \PRESC{}).  Since C++ is not far distant (structurally)
+from C, it was possible to extend parts of \CAST{} and \PRESC{} to include the
+necessary information to describe and generate C++ code.  However, it is not in
+harmony with the original intention of either \CAST{} or \PRESC{} to be
+extended in this way.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{CORBA C Presentation Generator}
+\label{subsec:PG:CORBA C Presentation Generator}
+
+The \CORBA{} C PG implements the standard \CORBA{} mapping for the C language.
+
+\subsubsection{CORBA C PG Organization}
+
+As mentioned above, the \CORBA{} C mapping is implemented as a library and can
+be found in \filename{c/pfe/libcorba}.  The class declaration is in
+\filename{mom/c/pg_corba.hh}.  The \CORBA{} C PG implements the
+\ctype{pg_corba} class.
+
+\subsubsection{Notes}
+
+%% The following paragraph was adapted from doc/BUGS:
+
+\CORBA{}-style typed allocators are not yet implemented in the \CORBA{} C
+language presentation.  The \CORBA{} C language presentation generator creates
+presentations in which heap memory is allocated with the type-independent
+functions \cfunction{CORBA_flick_alloc} and \cfunction{CORBA_flick_free}.
+(\cfunction{CORBA_alloc} and \cfunction{CORBA_free} are aliases for these
+functions.)  To release an object reference, one must explicitly call
+\cfunction{CORBA_object_release}.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{CORBA C++ Presentation Generator}
+\label{subsec:PG:CORBA C++ Presentation Generator}
+
+The \CORBA{} C++ PG implements the standard \CORBA{} mapping for the C++
+language.  It should be noted that exception handling is performed as in the
+\CORBA{} C mapping, rather than using C++ exceptions.  Since the C-style
+mapping for \CORBA{} exceptions is permitted by the \CORBA{} C++ mapping
+specification, it was decided to reuse the current infrastructure rather than
+spend the time developing new infrastructure to perform C++ exception handling.
+
+\subsubsection{CORBA C++ PG Organization}
+
+Like the \CORBA{} C mapping, the C++ mapping is also implemented as a library
+in \filename{c/pfe/libcorbaxx}.  The class declaration is in
+\filename{mom/c/pg_corbaxx.hh}.  The \CORBA{} C++ PG implements the
+\ctype{pg_corbaxx} class, and is currently the only generator that handles C++.
+At a high level, this PG modifies the base library in much the same way that
+the \CORBA{} C PG does, since the two presentations are closely related.  The
+specific details, however, are different for C++, and are thus reflected in the
+specific \CAST{} and \PRESC{} generated.
+
+\subsubsection{Notes}
+
+Ideally, a presentation generator should not be specific to or customized for
+any particular runtime; that's the job of the back end.  However, there may be
+a few things we have overlooked that are specific to the TAO runtime, since we
+support no other C++ runtime.
+
+As mentioned above, C++ exception handling cannot currently be expressed in
+Flick.  Adding this infrastructure is not trivial, but may simplify some of the
+other code generation, such as handling communication or allocation errors.  It
+would be nice, in the future, to make use of C++ exceptions, not only for the
+presentation, but in the stub and runtime layers as well.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{ONC RPC (\texttt{rpcgen}) Presentation Generator}
+\label{subsec:PG:ONC RPC Presentation Generator}
+
+\subsubsection{ONC RPC PG Organization}
+
+The \ONCRPC{} presentation is provided by \ctype{pg_sun} that specializes
+\ctype{pg_state}.  The class declaration is in \filename{c/pfe/sun}.  This is a
+relatively simple PG in that all operations take at most one ``in'' parameter,
+and return at most one value.  The only errors possible are those defined by
+the system and allocation and deallocation are straightforward.  
+
+\subsubsection{Notes}
+
+The \ONCRPC{} presentation generator does not produce \rpcgen{}-like marshal
+and unmarshal stubs (\XDR{} translation routines).  It would likely not be hard
+to implement such stubs, but it has not been a priority for the development
+team.\footnote{It has been noted that if Flick could produce such stubs, we
+could then use Flick instead of \rpcgen{} to build the storage routines for
+Flick's IRs.}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Fluke Presentation Generator}
+\label{subsec:PG:Fluke Presentation Generator}
+
+Fluke is the operating system being developed by the Flux project at the
+University of Utah.  All of Fluke's communication stubs are produced by Flick.
+
+\subsubsection{Fluke PG Organization}
+
+The class declaration for the Fluke presentation generator is in
+\filename{c/pfe/fluke/pg_fluke.hh}.  The Fluke PG specializes the
+\ctype{pg_corba} class to produce \ctype{pg_fluke}).
+
+\subsubsection{Notes}
+
+%% The following paragraph was adapted from doc/BUGS:
+
+The Fluke (MOM) presentation generator may produce bad code for recursive data
+types.  This is because all references are ``unqualified''; for example, we
+always refer to \ctype{struct foo} as \ctype{foo}, never \ctype{struct foo}.
+We do this for esoteric reasons.  Eventually, we can fix self-referential data
+types by changing the PG library to separate the name definition from the
+structure definition:
+
+\begin{verbatim}
+  typedef struct foo foo;
+  struct foo {
+    ...
+  };
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{MIG Presentation Generator}
+\label{subsec:PG:MIG Presentation Generator}
+
+The Mach Interface Generator (\MIG{}) for the Mach OS provides a special
+presentation that is closely related to the input \IDL{}\@.  Or rather, the
+\IDL{} allows the user some control over the presentation in addition to
+defining interfaces.  As such, it is not possible to simulate \MIG{}'s behavior
+through the normal function of the presentation generator.  For this reason,
+Flick's \MIG{} PG is implemented as a combined front-end and presentation
+generator to enable the presentation control the \MIG{} \IDL{} allows.  Rather
+than cluttering our \AOI{} representation with hints and hacks to allow for
+\MIG{}, the \MIG{} PG directly translates a representation of the input \IDL{}
+(\filename{.defs}) file to a \PRESC{} file.  The \MIG{} presentation generator
+can be found in \filename{fe/mig}.
+
+\subsubsection{MIG PG Organization}
+
+The \MIG{} PG is based on \MIG{}'s \program{lex}- and \program{yacc} based
+parser that converts \MIG{} \IDL{} into an internal parse tree.  The
+Flick-specific ``back end'' then walks over this parse tree in order to produce
+the appropriate \MINT{} representations of the messages and \PRESC{}
+representations of the to-be-generated client stubs and server skeletons.  The
+Flick-specific code is contained in the following files:
+
+\begin{filenamelist}
+  \item[main.c]
+  %
+  Contains the \cfunction{main} function that one would expect: parse the
+  command line, invoke the \program{yacc}-generated parser, invoke the
+  \cfunction{translate} function to produce \PRESC{}, and then output the
+  \PRESC{} file.
+
+  \item[xlate.c]
+  %
+  Contains the \cfunction{translate} function, which sets up the standard
+  \MINT{} definitions and then invokes \cfunction{translate_routines}.  That
+  function, also contained in this file, is the top-level iterator over the
+  parsed \MIG{} \IDL{} statements.
+
+  \item[xlate_pres.c]
+  %
+  Contains the functions that process specific \MIG{} \IDL{} constructs.  This
+  is by far the largest file in Flick's \MIG{} front end.  The general
+  organization and design of these functions is described below.
+
+  \item[xlate_util.c]
+  %
+  Contains a few utility functions to aid in the translation process, such as
+  one to emit a \cidentifier{#include} statement, one to build up the initial
+  \CAST{}, and a debugging \cfunction{printf} that indicates the filename
+  and line number (used for error reporting).
+
+  \item[iheader.c]
+  %
+  Contains a function to produce a header file redefining the routine names to
+  \cfunction{\emph{routine}_external}.
+
+  \item[mom_routines.c]
+  %
+  Contains small utility functions for accessing and generating \MINT{}\@.
+
+  \item[gen_error_mappings.c]
+  %
+  Contains the mapping of Flick's error codes to the named constants expected
+  in the \MIG{} presentation.  This is analogous to the file of the same name
+  in the other presentation generator directories.
+
+  % \item[cpu.sym]
+  % This file is obsolete and should be removed.
+\end{filenamelist}
+
+\subsubsection{Translation from MIG IDL to PRES\_C}
+
+Presentation generation for \MIG{} is organized differently from the other
+presentation generators, although the algorithm is the similar.  The main
+difference is that we generate \PRESC{} and \MINT{} simultaneously from the
+special \MIG{} \IDL{} parse tree, rather than separately from an \AOI{} tree.
+The bulk of this translation is coded in \filename{xlate_pres.c}.
+
+The guiding function is \cfunction{make_routine} which handles the creation
+of the \MINT{} and \PRESC{} for exactly one \RPC{} routine.  It fills in
+several ``out'' data structures that are used by the higher-level
+\cfunction{translate_routines} to create a \ctype{pres_c_stub}.
+
+The high-level \MINT{} and \PRESC{} is constructed by
+\cfunction{make_top_inlines}, which produces everything from the union of
+all \IDL{}'s (the top-most \MINT{} union) down to the union of the operation's
+request and reply, and returns the necessary hooks to produce the request or
+reply parameters for the operation.  The \PRESC{} for each parameter is then
+processed by \cfunction{make_arg_inlines}, which is in charge of expanding
+a single \IDL{} argument into multiple presented arguments if needed, e.g., an
+array and its length.  Note that these multiple presented arguments are still
+contained within a single inline because they are related in some fashion.  The
+\MIG{} presentation is unique in this regard, where \IDL{} entities are
+expressed through multiple arguments (as opposed to \CORBA{} or \ONCRPC{} where
+they are encapsulated within a single C structure).  Finally,
+\cfunction{make_arg} guides the specific \PRESC{} construction for a single
+presented parameter.
+
+There are three routines which make the lowest-level \ctype{pres_c_mapping} for
+a particular parameter type, as follows:
+
+\begin{cprototypelist}
+  \item[make_ref_arg()]
+  %
+  Creates the appropriate mapping for a port reference (similar to a \CORBA{}
+  object reference).
+
+  \item[make_string_arg()]
+  %
+  Creates the appropriate mapping for a string parameter.
+
+  \item[make_simple_arg()]
+  %
+  Creates the appropriate mapping for a simple, native data type (e.g., an
+  integer, floating point, char, or boolean).
+\end{cprototypelist}
+
+If the parameter type is an array, the element type will be created, and an
+array will be ``interposed'' on top of the element's mapping.  Other things may
+be interposed on the mapping, such as the parameter direction, translation
+(between user-defined and compatible native types), allocation semantics, and
+the parameter's root tag.  These functions are named \cfunction{interpose_*}
+or \cfunction{pres_c_interpose_*}, depending on whether or not they belong to
+the \PRESC{} library.
+
+Two important functions regarding allocation and deallocation are
+\cfunction{make_arg_server_dealloc_in} (to deallocate ``in'' parameters on
+the server side) and \cfunction{make_arg_server_alloc_out} (to allocate
+``out'' parameters on the server side).  The latter corresponds directly to
+\cfunction{pg_state::p_param_server_alloc_out} from the PG library.  There
+should be a corresponding \cfunction{pg_state::p_param_server_dealloc_in},
+however most other presentations rely on stack-based allocation of ``in''
+parameters on the server side and thus require no explicit deallocation.
+\MIG{} however has the capability to send data \emph{out-of-line}, and such
+data will be allocated automatically by the system in the receiving process's
+address space.  In some cases the \RPC{} system determines whether data should
+be sent inline or out-of-line, but must properly deallocate it to preserve a
+consistent presentation.  There are also a few \cfunction{get_*_allocation}
+functions to return the common \ctype{pres_c_allocation} structures describing
+\MIG{}'s allocation semantics.
+
+\subsubsection{Notes}
+
+Flick's \MIG{} PG still cannot handle everything \MIG{} itself supports.  Most
+of the unsupported features, however, shouldn't take long to implement; it
+simply hasn't been a high priority for the development team.  Following is a
+list of unsupported \MIG{}isms, and a brief description of how Flick might be
+extended to implement them.  Note that many of the unsupported features will
+likely require modification to both the \MIG{} PG and the Mach3/\MIG{} back
+end.  This list is also contained (briefly) in the file \filename{doc/BUGS}.
+For more information regarding these concepts, refer to the MIG Server Writer's
+guide
+
+\begin{itemize}
+  \item \texttt{waittime} and \texttt{nowaittime} are properties at the global
+  level of the \IDL{} file, affecting all operations after their use (they can
+  be used multiple times).  It seems the easiest way to implement this is add
+  the property to the internal representation, and pick it out when generating
+  the operation.  For functions that do not have their own special
+  \texttt{waittime} parameter (which is currently supported), an ``implied''
+  parameter may be used for the same purpose.  The mapping would be similar to
+  the supported explicit \texttt{waittime} parameter: a
+  \cidentifier{PRES_C_MAPPING_MESSAGE_ATTRIBUTE} with the kind
+  \cidentifier{PRES_C_MESSAGE_ATTRIBUTE_TIMEOUT}.
+
+  \item \texttt{msgoption} is another global property affecting all operations
+  that can be implemented similar to \texttt{waittime} and \texttt{nowaittime}
+  above.  Again, the parameter option version of this is currently supported.
+
+  \item \texttt{serversecid} and \texttt{usersecid} indicate security
+  identifier parameters.  These can most likely be supported in the same manner
+  that security identifiers are supported in the \CORBA{} presentation.  See
+  \cfunction{process_params} from the base library and
+  \cfunction{p_client_stub_special_params} from the \CORBA{} PG for more
+  information.
+
+  \item \texttt{countinout} can be implemented by adding the array count
+  parameter to the request message \PRESC{} structure.  The catch is that the
+  array in the reply must be rejected if it exceeds the count passed into the
+  stub.  It may be possible to accomplish this in the allocation context
+  structure, but it may require more infrastructure to allow data to be passed
+  between the \ctype{mu_state}s of the request and reply in the back end.
+
+  \item \texttt{samecount} should be relatively straightforward; the previous
+  array's count parameter can be reused in the allocation context.
+
+  \item \texttt{physicalcopy} and \texttt{overwrite} would likely be handled as
+  a properties of the out-of-line allocator, or part of the allocation
+  semantics.
+
+  \item \texttt{retcode} probably would cause the associated parameter to be
+  ordered first in the list of parameters, regardless of its actual position.
+  Ideally, it would indicate that the message was actually a reply message
+  instead of a request, and place the return code in the proper location;
+  however, \MIG{}'s message formats for requests and replies are similar enough
+  it could be simulated by just a parameter reordering.
+
+  \item Asynchronous \RPC{} is possible using two \texttt{simpleroutine}s, one
+  with a \texttt{retcode} parameter, and appropriate numbering of the ``reply''
+  operation.  Once \texttt{retcode} is implemented, this should ``just work'',
+  but it has never been tested or thoroughly thought out.
+
+  \item \MIG{} allows one to pass in buffers for `out' parameters, so the data
+  may be copied directly into pre-allocated space (if the buffer isn't large
+  enough, it will be reallocated to an appropriate size).  Unfortunately, Flick
+  doesn't currently support this notion of buffer management.  A similar
+  situation arises in the \CORBA{} presentation with `inout' sequences, where
+  we deallocate the `in' version and allocate for the `out' version instead of
+  reusing the space or reallocating as needed.
+
+  \item Passing arrays of polymorphic types hasn't been tested much.  At one
+  point it was believed to work, so use at your own risk.
+\end{itemize}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Summary and Comments}
+\label{sec:PG:Summary and Comments}
+
+Presentation generation is only half of the story.  In many instances, a given
+presentation is \emph{almost} what the user wants, with the exception of only a
+few minor tweaks, such as name changes or slight variations on semantics.  For
+example, a \CORBA{}-like presentation might be desired, but with the allocation
+semantics such that a zero-copy environment is possible (e.g., out parameters
+are always preallocated by the caller on the client side, so the data can be
+placed exactly where it needs to be rather than in freshly allocated space).
+While it is relatively simple to implement this functionality by deriving a new
+class from the \CORBA{} PG library, it would be far easier and more useful to
+have a presentation \emph{modification} system, where (at least some) pieces of
+the presentation can be tweaked according to some description.  Ideally, even
+more complex presentations such as decomposed stubs could be expressible in a
+presentation modification language.
+
+At one time, Flick had such a utility, named \program{pdl}, which can be found
+in the \filename{c/pdl} directory.  It even served as a driving utility,
+invoking the other stages of Flick as needed to produce stubs in a single step.
+The code is severely out-of-date, however, and has been largely ignored as
+advancements in Flick have been made.  In the future, it is intended to
+resurrect this relic (or at least its intention) to provide a simple means
+whereby application writers may modify a presentation to their needs and
+liking, rather than limiting extension only to developers familiar with Flick's
+internal design.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

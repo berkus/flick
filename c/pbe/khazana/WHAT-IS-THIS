@@ -1,0 +1,4 @@
+This directory contains code for generating stubs for use within Khazana.
+Khazana is a distributed service exporting the abstraction of a distributed,
+secure, persistent, globally shared store that applications can use to store
+their data.  See http://www.cs.utah.edu/flux/ for more information.

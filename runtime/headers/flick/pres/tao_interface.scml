@@ -1,0 +1,623 @@
+<!--
+ === Copyright (c) 1999 The University of Utah and
+ === the Computer Systems Laboratory at the University of Utah (CSL).
+ === All rights reserved.
+ ===
+ === Permission to use, copy, modify and distribute this software is hereby
+ === granted provided that (1) source code retains these copyright, permission,
+ === and disclaimer notices, and (2) redistributions including binaries
+ === reproduce the notices in supporting documentation.
+ ===
+ === THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ === IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ === ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS
+ === SOFTWARE.
+ ===
+ === CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ === improvements that they make and grant CSL redistribution rights.
+ -->
+
+<!-- TAO CORBA C++ implementation for struct stuff -->
+
+<!-- mark_parents will walk the inheritance tree of a type and mark all -->
+<!-- of the parents.  Only useful if an operation needs to be done on   -->
+<!-- them all without doing multiply inherited types more than once.    -->
+<macro name="mark_parents" close=false
+       rparams={pres_type:tag_list[0] parents:int[0]
+                ptypes:bool[0]}>
+<for each="parents" iter="lpc">
+<ignore ptypes[parents[lpc]] = true>
+<mark_parents pres_type=pres_type ptypes=ptypes
+              parents=pres_type[parents[lpc]].parent_pres_index>
+</for>
+</macro>
+
+<idl type="interface">
+
+  <cxx_def kind="Object Field Template Instantiator">
+  #if defined (ACE_HAS_EXPLICIT_TEMPLATE_INSTANTIATION)
+    template class TAO_Object_Field_T&lt;<(_global_definition)>, <(smart_pointer)>&gt;;
+  #elif defined (ACE_HAS_TEMPLATE_INSTANTIATION_PRAGMA)
+  #  pragma instantiate TAO_Object_Field_T&lt;<(_global_definition)>, <(smart_pointer)>&gt;
+  #endif /* ACE_HAS_EXPLICIT_TEMPLATE_INSTANTIATION */
+  </cxx_def>
+
+  <cxx_def kind="Stub Factory function pointer">
+  <(pointer)> (*<(stub_factory_pointer)>)(CORBA::Object_ptr obj) = 0;
+  </cxx_def>
+  
+  <cxx_def kind="Stub Factory initializer">
+  static int _TAO_collocation_POA_<(name)>_Stub_Factory_Initializer_Scarecrow =
+    <(poa.'int stub_factory_initializer(long dummy)'.name)>(0);
+  </cxx_def>
+  
+  <pres type="main">
+  
+    <macro name="do_copy" rparams={ptype:tag_list ptr:bool arg:string}>
+    <(ptype.main.'_duplicate()'.name)>(<(arg)>)
+    </macro>
+    
+    <macro name="do_free" rparams={ptype:tag_list arg:string}>
+    CORBA::release(<(arg)>)
+    </macro>
+    
+    <macro name="do_access"
+           rparams={ptype:tag_list alloc_flag:string slot:string}>
+    return (CORBA::Object_ptr *)&amp;<(slot)>->inout();
+    </macro>
+    
+    <func kind="operator<<=(copy)">
+    {
+      CORBA::Object_ptr *_tao_obj_ptr = 0;
+      ACE_TRY_NEW_ENV
+      {
+        ACE_NEW(_tao_obj_ptr, CORBA::Object_ptr);
+	*_tao_obj_ptr = <(main.'_duplicate()'.name)>(<(parameter[1])>);
+	<(parameter[0])>.replace (<(tc_ref)>, _tao_obj_ptr, 1, ACE_TRY_ENV);
+	ACE_TRY_CHECK;
+      }
+      ACE_CATCHANY
+      {
+        delete _tao_obj_ptr;
+      }
+      ACE_ENDTRY;
+    }
+    </func>
+    
+    <func kind="bool operator>>=(any &, ptr &)">
+    {
+      CORBA::Object_ptr *tmp = 0;
+      ACE_TRY_NEW_ENV
+      {
+        <(parameter[1])> = <(main.'_nil()'.name)>();
+	CORBA::TypeCode_var type = <(parameter[0])>.type();
+	if (!type->equal (<(tc_ref)>, ACE_TRY_ENV)) return 0;
+	ACE_TRY_CHECK;
+	TAO_InputCDR stream (<(parameter[0])>._tao_get_cdr());
+	CORBA::Object_var _tao_obj_var;
+	ACE_NEW_RETURN (tmp, CORBA::Object_ptr, 0);
+	if (stream.decode(<(tc_ref)>, &amp;_tao_obj_var.out(), 0, ACE_TRY_ENV)
+	   == CORBA::TypeCode::TRAVERSE_CONTINUE)
+	{
+	  <(parameter[1])> = <(main.'_narrow()'.name)>(_tao_obj_var.in(), ACE_TRY_ENV);
+	  ACE_TRY_CHECK;
+	  *tmp = (CORBA::Object_ptr) <(parameter[1])>;
+	  ((CORBA::Any *)&amp;<(parameter[0])>)->replace(<(tc_ref)>, tmp, 1, ACE_TRY_ENV);
+	  ACE_TRY_CHECK;
+	  return 1;
+	}
+      }
+      ACE_CATCHANY
+      {
+        delete tmp;
+	return 0;
+      }
+      ACE_ENDTRY;
+      return 0;
+    }
+    </func>
+    
+    <func kind="T()" inline=true>
+    {}
+    </func>
+    
+    <func kind="T(TAO_Stub *, TAO_ServantBase *, bool)" inline=true>
+      : CORBA_Object(<(parameter[0])>, <(parameter[1])>, <(parameter[2])>)
+    {}
+    </func>
+    
+    <func kind="~T()" inline=true>
+    {}
+    </func>
+    
+    <func kind="_duplicate()">
+    {
+      if( !CORBA::is_nil(<(parameter[0])>) )
+        obj->_incr_refcnt();
+      return obj;
+    }
+    </func>
+    
+    <func kind="_narrow()">
+    {
+      if (CORBA::is_nil(<(parameter[0])>))
+        return <(main.'_nil()'.name)>();
+      CORBA::Boolean is_a = obj->_is_a ("<(id)>", <(parameter[1])>);
+      if (<(parameter[1])>.exception() != 0)
+        return <(main.'_nil()'.name)>();
+      if (is_a == 0)
+        return <(main.'_nil()'.name)>();
+      return <(main.'_unchecked_narrow()'.name)>(<(parameter[0])>, <(parameter[1])>);
+    }
+    </func>
+    
+    <func kind="_unchecked_narrow()" unused={1}>
+    {
+      if( CORBA::is_nil(<(parameter[0])>) )
+        return <(main.'_nil()'.name)>();
+      TAO_Stub *stub = <(parameter[0])>->_stubobj();
+      stub->_incr_refcnt();
+      if (<(parameter[0])>->_is_collocated () &amp;&amp; <(stub_factory_pointer)> != 0)
+        {
+	  <(pointer)> retv = <(stub_factory_pointer)>(<(parameter[0])>);
+	  if (retv != 0)
+	    return retv;
+	}
+      return new <(definition)>(stub);
+    }
+    </func>
+    
+    <func kind="_nil()">
+    {
+      return (<(pointer)>)NULL;
+    }
+    </func>
+    
+    <func kind="_interface_repository_id()">
+    {
+      return "<(id)>";
+    }
+    </func>
+    
+    <simple_func kind="_is_a()">
+    <defvar retval:tag_list={length:int}>
+    <array_len array=pres_type out=retval>
+    <defvar ptypes:bool[retval.length]>
+    <mark_parents pres_type=pres_type parents=parent_pres_index ptypes=ptypes>
+    <pre><print_func def=c_func>
+    {
+      if( <for each="ptypes" iter="lpc"><if ptypes[lpc]>(!ACE_OS::strcmp((char *)<(parameter[0])>, "<(pres_type[lpc].id)>")) ||
+          </if></for>(!ACE_OS::strcmp((char *)<(parameter[0])>, "<(id)>")) ||
+	  (!ACE_OS::strcmp((char *)<(parameter[0])>, CORBA::_tc_Object->id(<(parameter[1])>))) )
+        return 1;
+      else
+        return this->CORBA_Object::_is_a(<(parameter[0])>, <(parameter[1])>);
+    }
+    </pre>
+    </simple_func>
+    
+  </pres>
+  
+  <pres type="poa">
+  
+    <func kind="T_ptr stub_factory(CORBA::Object_ptr obj)">
+    {
+      TAO_Stub *stub = obj->_stubobj();
+
+      switch(stub->servant_orb_var()->orb_core()->get_collocation_strategy())
+      {
+      case TAO_ORB_Core::THRU_POA:
+        return new <(poa_collocated.name)>(stub);
+      case TAO_ORB_Core::DIRECT:
+        break;
+      default:
+        break;
+      }
+      return 0;
+    }
+    </func>
+    
+    <func kind="int stub_factory_initializer(long dummy)">
+    {
+      ACE_UNUSED_ARG(dummy);
+
+      <(stub_factory_pointer)> =
+        <('T_ptr stub_factory(CORBA::Object_ptr obj)'.name)>;
+
+      return 0;
+    }
+    </func>
+    
+    <func kind="POA_T()">
+    {}
+    </func>
+
+    <func kind="POA_T(POA_T &)">
+      : TAO_ServantBase(<(parameter[0])>)
+    {}
+    </func>
+
+    <func kind="~POA_T()">
+    {}
+    </func>
+
+    <func kind="_this()">
+    {
+      TAO_Stub *stub = this->_create_stub(<(parameter[0])>);
+      if (<(parameter[0])>.exception() != 0)
+        return 0;
+      if (stub->servant_orb_var ()->orb_core ()->optimize_collocation_objects())
+        {
+          switch (stub->servant_orb_var ()->orb_core ()->get_collocation_strategy ())
+	    {
+	    case TAO_ORB_Core::THRU_POA:
+	      return new <(poa_collocated.name)> (stub);
+	    case TAO_ORB_Core::DIRECT:
+	      <(parameter[0])>.exception(new CORBA::BAD_PARAM ());
+	      return 0;
+	    default:
+	      <(parameter[0])>.exception(new CORBA::BAD_PARAM ());
+	      return 0;
+	    }
+        }
+      else
+        {
+	  // stub->_incr_refcnt ();
+	  CORBA::Object_var obj = new CORBA::Object (stub);
+	  return <(main.'_unchecked_narrow()'.name)> (obj.in ());
+	}
+    }
+    </func>
+    
+    <simple_func kind="_downcast(const char *)">
+    <defvar retval:tag_list={length:int}>
+    <array_len array=pres_type out=retval>
+    <defvar ptypes:bool[retval.length]>
+    <mark_parents pres_type=pres_type parents=parent_pres_index ptypes=ptypes>
+    <pre><print_func def=c_func>
+    {
+      if(ACE_OS::strcmp(<(parameter[0])>, "<(id)>") == 0)
+        return ACE_static_cast(<(poa_pointer)>, this);
+      <for each="ptypes" iter="lpc"><if ptypes[lpc]>
+      if(ACE_OS::strcmp(<(parameter[0])>, "<(pres_type[lpc].id)>") == 0)
+        return ACE_reinterpret_cast(<(pres_type[lpc].poa_pointer)>, this);</if></for> 
+      if(ACE_OS::strcmp(<(parameter[0])>, "IDL:omg.org/CORBA/Object:1.0") == 0)
+        return ACE_static_cast(PortableServer::Servant, this);
+      return 0;
+    }
+    </pre>
+    </simple_func>
+    
+    <func kind="_interface_repository_id()">
+    {
+      return "<(id)>";
+    }
+    </func>
+    
+    <simple_func kind="_is_a()">
+    <defvar retval:tag_list={length:int}>
+    <array_len array=pres_type out=retval>
+    <defvar ptypes:bool[retval.length]>
+    <mark_parents pres_type=pres_type parents=parent_pres_index ptypes=ptypes>
+    <pre><print_func def=c_func>
+    {
+      if( <for each="ptypes" iter="lpc"><if ptypes[lpc]>(!ACE_OS::strcmp((char *)<(parameter[0])>, "<(pres_type[lpc].id)>")) ||
+          </if></for>(!ACE_OS::strcmp((char *)<(parameter[0])>, "<(id)>")) ||
+	  (!ACE_OS::strcmp((char *)<(parameter[0])>, CORBA::_tc_Object->id(<(parameter[1])>))) )
+        return 1;
+      else
+        return 0;
+    }
+    </pre>
+    </simple_func>
+    
+  </pres>
+  
+  <pres type="poa_collocated">
+  
+    <func kind="T(POA_ptr, obj)">
+      : <(main.name)>(),
+        CORBA_Object(<(parameter[0])>, 0, 1)
+    {
+    }
+    </func>
+    
+    <func kind="col_func">
+    {
+      <if return><(return_type)> _retval;</if>
+      TAO_Object_Adapter::Servant_Upcall servant_upcall (
+          *this->_stubobj()->servant_orb_var()->orb_core()->object_adapter()
+	);
+      servant_upcall.prepare_for_upcall (
+          this->_object_key(),
+	  "<(name)>",
+	  _ev
+	);
+      if (_ev.exception() != 0) {
+        <if return><cast_init_expr name="init_expr"
+				   expr="_retval"
+				   type="return_type"><(init_expr)>;</if>
+        return<if return> _retval</if>;
+      }
+      <if return>return </if>ACE_reinterpret_cast(
+          <(poa_pointer)>,
+	  servant_upcall.servant ()->_downcast (
+	      "<(id)>"
+	    )
+	)-><(name)> (<for each="parameter" iter="lpc"><if lpc >> 0>, </if><(parameter[lpc])></for>);
+    }
+    </func>
+    
+  </pres>
+
+  <pres type="poa_tie">
+
+    <func kind="T_tie(T &)">
+      : ptr_(&amp;<(parameter[0])>),
+        poa_(PortableServer::POA::_nil()),
+	rel_(0)
+    {}
+    </func>
+
+    <func kind="T_tie(T &, poa)">
+      : ptr_(&amp;<(parameter[0])>),
+        poa_(PortableServer::POA::_duplicate(<(parameter[1])>)),
+	rel_(0)
+    {}
+    </func>
+
+    <func kind="T_tie(T *, rel)">
+      : ptr_(&amp;<(parameter[0])>),
+        poa_(PortableServer::POA::_nil()),
+	rel_(<(parameter[1])>)
+    {}
+    </func>
+
+    <func kind="T_tie(T *, poa, rel)">
+      : ptr_(&amp;<(parameter[0])>),
+        poa_(PortableServer::POA::_duplicate(<(parameter[1])>)),
+	rel_(<(parameter[2])>)
+    {}
+    </func>
+
+    <func kind="~T_tie()">
+    {
+      if( this->rel_ ) delete this->ptr_;
+    }
+    </func>
+
+    <func kind="T *_tied_object()">
+    {
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="void _tied_object(T &obj)">
+    {
+      if( this->rel_ ) delete this->ptr_;
+      this->ptr_ = &amp;<(parameter[0])>;
+      this->rel_ = 0;
+    }
+    </func>
+
+    <func kind="void _tied_object(T *obj, rel)">
+    {
+      if( this->rel_ ) delete this->ptr_;
+      this->ptr_ = <(parameter[0])>;
+      this->rel_ = <(parameter[1])>;
+    }
+    </func>
+
+    <func kind="bool _is_owner()">
+    {
+      return this->rel_;
+    }
+    </func>
+
+    <func kind="_is_owner(bool)">
+    {
+      this->rel_ = <(parameter[0])>;
+    }
+    </func>
+
+    <func kind="poa _default_POA()">
+    {
+      if( !(CORBA::is_nil(this->poa_.in())) )
+        return PortableServer::POA::_duplicate(this->poa_.in());
+      else
+      {
+        TAO_POA *poa = TAO_ORB_Core_instance()->root_poa();
+	PortableServer::POA_var result = poa->_this(env);
+	if( env.exception() != 0 )
+	  return PortableServer::POA::_nil();
+	else
+	  return result._retn();
+      }
+    }
+    </func>
+
+    <func kind="T_tie(const T &)">
+    {}
+    </func>
+
+    <func kind="void operator=(const T_tie &)">
+    {}
+    </func>
+
+    <func kind="tie_func">
+    {
+      <if return>return </if>this->ptr_-><(name)> (<for each="parameter" iter="lpc"><if lpc >> 0>, </if><(parameter[lpc])></for>);
+    }
+    </func>
+
+  </pres>
+
+  <pres type="var">
+  
+    <func kind="T_var()" inline=true>
+      : ptr_(<(main.'_nil()'.name)>())
+    {}
+    </func>
+    
+    <func kind="T_var(T_ptr)" inline=true>
+      : ptr_(<(parameter[0])>)
+    {}
+    </func>
+    
+    <func kind="T_var(const T_var &)" inline=true>
+      : ptr_(<(main.'_duplicate()'.name)>(<(parameter[0])>.<(var.'ptr()'.name)>()))
+    {}
+    </func>
+    
+    <func kind="~T_var()" inline=true>
+    {
+      CORBA::release(this->ptr_);
+    }
+    </func>
+    
+    <func kind="T_var &operator=(T_ptr)" inline=true>
+    {
+      CORBA::release(this->ptr_);
+      this->ptr_ = <(parameter[0])>;
+      return *this;
+    }
+    </func>
+
+    <func kind="T_var &operator=(T_var &)" inline=true>
+    {
+      if( this != &amp;<(parameter[0])> )
+      {
+        CORBA::release(this->ptr_);
+	this->ptr_ = <(main.'_duplicate()'.name)>(<(parameter[0])>.<(var.'ptr()'.name)>());
+      }
+      return *this;
+    }
+    </func>
+
+    <func kind="T_ptr operator->()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+    
+    <func kind="operator const T_ptr &() const" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="operator T_ptr &()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="operator T_ptr &() const" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="in()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="inout()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="out()" inline=true>
+    {
+      CORBA::release(this->ptr_);
+      this->ptr_ = <(main.'_nil()'.name)>();
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="_retn()" inline=true>
+    {
+      <(pointer)> val = this->ptr_;
+      this->ptr_ = <(main.'_nil()'.name)>();
+      return val;
+    }
+    </func>
+
+    <func kind="ptr()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+  </pres>
+
+  <pres type="out">
+  
+    <func kind="T_out(T_ptr &)" inline=true>
+      : ptr_(<(parameter[0])>)
+    {
+      this->ptr_ = <(main.'_nil()'.name)>();
+    }
+    </func>
+    
+    <func kind="T_out(T_var &)" inline=true>
+      : ptr_(<(parameter[0])>.out())
+    {
+      CORBA::release(this->ptr_);
+      this->ptr_ = <(main.'_nil()'.name)>();
+    }
+    </func>
+    
+    <func kind="T_out(T_out &)" inline=true>
+      : ptr_(ACE_const_cast(<(out_pointer)>&amp;,<(parameter[0])>).ptr_)
+    {}
+    </func>
+
+    <func kind="T_out &operator=(const T_out &)" inline=true>
+    {
+      this->ptr_ = ACE_const_cast(<(out_pointer)>&amp;,<(parameter[0])>).ptr_;
+      return *this;
+    }
+    </func>
+
+    <func kind="T_out &operator=(const T_var &)" inline=true>
+    {
+      this->ptr_ = <(main.'_duplicate()'.name)>(<(parameter[0])>.ptr());
+      return *this;
+    }
+    </func>
+
+    <func kind="T_out &operator=(T *)" inline=true>
+    {
+      this->ptr_ = <(parameter[0])>;
+      return *this;
+    }
+    </func>
+
+    <func kind="operator T *&()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="ptr()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+    
+    <func kind="T *operator->()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+  </pres>
+
+</idl>
+
+<!-- End of file. -->
+

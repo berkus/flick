@@ -1,0 +1,73 @@
+#
+# Copyright (c) 1996 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+# the -lnls is for Solaris
+LDLIBS=-lnsl
+LIBS=$(LDLIBS) -L. -lyfs 
+CFLAGS=-Ilibyfs -DRPCGEN
+CC=gcc
+CPPFLAGS=-g
+CCC=g++
+
+SOBJS=yfs_svc.o yfs_xdr.o yfs_server.o
+COBJS=yfs_clnt.o yfs_xdr.o yfs_client.o readdir.o
+
+all: libyfs.a yfsformat yfsserver-sun tygrys-sun yfstest-sun
+
+libyfs.a:
+	(cd libyfs; make)
+
+yfsformat: format.o
+	g++ -o $@ format.o $(LIBS)
+
+yfsserver-sun: $(SOBJS) 
+	g++ -o $@ $(SOBJS) $(LIBS)
+
+tygrys-sun: $(COBJS) tygrys.o
+	g++ -o $@ $(COBJS) tygrys.o $(LDLIBS)
+
+tygdir: tygrys.cc 
+	g++ -o $@ -DDIRECT_LINK tygrys.cc $(LDLIBS)
+	
+yfstest-sun: $(COBJS) yfstest.o
+	g++ -o $@ $(COBJS) yfstest.o $(LDLIBS)
+
+yfs_xdr.c: yfs.x yfs.h
+	rm -f $@
+	rpcgen -c -o $@ yfs.x
+
+yfs.h: yfs.x
+	rm -f $@
+	rpcgen -h -o $@ yfs.x
+
+yfs_svc.c: yfs.x yfs.h
+	rm -f $@
+	rpcgen -s udp -o $@ yfs.x
+
+yfs_clnt.c: yfs.x yfs.h
+	rm -f $@
+	rpcgen -l -o $@ yfs.x
+
+clean:
+	rm -f $(SOBJS) $(COBJS) tygrys.o tygrys server yfstest
+	rm -f yfs_svc.c yfs_clnt.c yfs.h yfs_xdr.c core format.o
+	rm -f tygdir yfsformat
+

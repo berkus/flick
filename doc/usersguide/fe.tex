@@ -1,0 +1,149 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1997, 1998, 1999 The University of Utah and the Computer
+%% Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Front Ends}
+\label{sec:Front Ends}
+
+Flick's three front ends translate the CORBA, ONC~RPC, and MIG IDLs into
+intermediate formats used as input to later stages of the compiler.  The
+simplest way to use any of these front ends is to specify the IDL file on the
+command line:
+
+\begin{commandlist}
+  \item[flick-fe-newcorba \commandarg{foo.idl}] Process the CORBA IDL file
+  \commandarg{foo.idl} to produce \commandarg{foo.aoi}.  The output AOI file
+  can be input to the CORBA or Fluke presentation generators.
+
+  \item[flick-fe-sun \commandarg{foo.x}] Process the ONC~RPC IDL file
+  \commandarg{foo.x} to produce \commandarg{foo.aoi}.  The resultant AOI file
+  can be input to the ONC~RPC presentation generator.
+
+  \item[flick-c-fe-mig \commandarg{foo.defs}] Process the MIG IDL file
+  \commandarg{foo.defs} to produce \commandarg{foo.prc}.  The MIG front end is
+  special in that it produces a PRES\_C file, not an AOI file.
+\end{commandlist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Command Line Options}
+\label{subsec:FE:Command Line Options}
+
+In addition to the standard flags supported by all Flick programs, the CORBA
+and ONC~RPC front ends support the following two, mutually exclusive, flags:
+
+\begin{optionlist}
+  \item[-c~\optionarg{flags} \oroption{} --cppflags~\optionarg{flags}]
+  %
+  Pass \optionarg{flags} to the C preprocessor.  By default, all IDL files are
+  piped through the C preprocessor before being parsed.
+
+  \item[-n \oroption{} --nocpp]
+  %
+  Skip the C preprocessor and pass the IDL input directly to the front end.
+\end{optionlist}
+
+The MIG front end supports the following flags in addition to the standard
+flags listed in Section~\ref{subsec:Common Command Line Options}:
+
+\begin{optionlist}
+  \item[-I\optionarg{dir}]
+  Specify an include directory for the C preprocessor.
+
+  \item[-D\optionarg{sym}]
+  Pass \optionarg{sym} on to the C preprocessor.  A value may be specified,
+  e.g., \option{-DDEBUG=2}\@.  The default value for \optionarg{sym} is 1.
+
+  \item[-U\optionarg{sym}]
+  Undefine symbol \optionarg{sym} in the C preprocessor.
+
+  \item[-Xcpp \optionarg{opt}]
+  Pass the command line option \optionarg{opt} to the C preprocessor.
+
+  \item[-c \oroption{} --client]
+  Generate client stubs only.  The default is to generate both client stubs and
+  server skeletons.  This option cannot be combined with \option{-s}.
+
+  \item[-s \oroption{} --server]
+  Generate server skeletons only.  This option cannot be combined with
+  \option{-c}.
+\end{optionlist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Additional Comments}
+\label{subsec:FE:Additional Comments}
+
+\subsubsection{CORBA}
+\label{subsubsec:FE:CORBA}
+
+%% The CORBA parser is fairly CORBA 2.0 compliant, without any extensions or
+%% additions.  Many CORBA compilers base their parser on a piece of code made
+%% publicly available from SunSoft.  Initially, Flick used this, but there were
+%% some pieces missing that were necessary to be CORBA 2.0 compliant that
+%% weren't easily added to the SunSoft code.  So, we wrote our own.  It doesn't
+%% support arrays defined inline as parameters to methods (SunSoft's parser
+%% does support this).  It does, however, support ``reopening'' modules.  Thus
+%% you can define parts of a module, close the module, then reopen the module
+%% later to add more pieces to it.  It doesn't currently support CORBA's ANY
+%% data type, nor does it support contexts.  Any other features it doesn't
+%% support that are defined in the CORBA 2.0 IDL specification is a bug.
+
+The CORBA front end does not currently support certain CORBA data types
+(\idl{wchar}, \idl{wstring}, \idl{fixed}, and \idl{native} types) nor does it
+support CORBA contexts.  It does, however, support the 64-bit ``\idl{long
+long}'' and ``\idl{unsigned long long}'' types.
+
+\subsubsection{ONC RPC}
+\label{subsubsec:FE:ONC RPC}
+
+The ONC~RPC front end allows only one argument to be passed to each operation.
+This conforms to the older specification of the Sun~RPC language.  (RFC~1831,
+which defines the ``modern'' ONC~RPC IDL, allows for multiple arguments and
+in-argument-list type specifications.)  Further, Flick's ONC~RPC front end does
+not recognize the keywords \idl{hyper} and \idl{quadruple} that are described
+in RFC~1832.  Flick's ONC~RPC front end does not support the `\idl{%}'
+directive that is offered by Sun's \program{rpcgen} IDL compiler.
+
+\subsubsection{MIG}
+\label{subsubsec:FE:MIG}
+
+%% Be aware of the difference between the MIG front end, and the other two
+%% front ends.  Because of the extensive number of assumptions between MIG and
+%% the C language, there is no separate presentation generation phase.  This
+%% front end was the first written, then gave way to extensive bit-rot and has
+%% only recently be resurrected, so please be aware that there may be several
+%% bugs.
+
+The MIG front end/presentation generator is nearly complete but does not yet
+support all of the MIGisms you may love (or hate).  The list of
+not-yet-implemented features is contained in the \filename{doc/BUGS} file in
+the Flick source tree.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

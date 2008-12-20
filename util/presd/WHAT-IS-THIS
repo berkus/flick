@@ -1,0 +1,3 @@
+This directory contains `presd', a pretty-printer for PRES_C files.  As PRES_C
+changes, this program should be changed as well.  Given a `filename.prc', the
+`presd' program will create a human-readable `filename.prd' file.

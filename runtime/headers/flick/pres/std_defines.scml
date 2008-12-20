@@ -1,0 +1,53 @@
+<!--
+ === Copyright (c) 1999 The University of Utah and
+ === the Computer Systems Laboratory at the University of Utah (CSL).
+ === All rights reserved.
+ ===
+ === Permission to use, copy, modify and distribute this software is hereby
+ === granted provided that (1) source code retains these copyright, permission,
+ === and disclaimer notices, and (2) redistributions including binaries
+ === reproduce the notices in supporting documentation.
+ ===
+ === THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ === IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ === ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS
+ === SOFTWARE.
+ ===
+ === CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ === improvements that they make and grant CSL redistribution rights.
+ -->
+
+<ifndef name="STD_DEFINES_SCML">
+<define name="STD_DEFINES_SCML" kind="static-variable" value=true>
+
+<!-- These are the standard set of defines used in SCML -->
+
+<define name="scope" kind="bracket-tag" value="c-scope-handler"
+        rparams={name:string}>
+<define name="macro" kind="bracket-tag" value="c-macro-handler"
+        rparams={name:string} oparams={close:bool=false rparams:tag_list={}
+	                               oparams:tag_list={}}>
+<define name="if" kind="bracket-tag" value="c-if-handler">
+<define name="for" kind="bracket-tag" value="c-for-handler"
+        rparams={iter:string} oparams={each:string="" length:int=0}>
+<define name="ignore" kind="tag" value="c-ignore-handler">
+<define name="pre" kind="bracket-tag" value="c-pre-handler"
+        oparams={indented:bool=true}>
+<define name="defvar" kind="tag" value="c-defvar-handler">
+<define name="aliascmd" kind="tag" value="c-aliascmd-handler"
+        rparams={name:string handler:cmd}>
+<define name="create_stream" kind="tag" value="c-create-stream-handler"
+        rparams={name:string path:string}>
+<define name="retarget" kind="tag" value="c-retarget-handler"
+        rparams={output:stream}>
+
+<define name="amp" kind="escape" value="&">
+<define name="lt" kind="escape" value="<">
+<define name="gt" kind="escape" value=">">
+
+<create_stream name="null_stream" path="">
+
+</ifndef>
+
+<!-- End of file. -->
+

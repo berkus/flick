@@ -1,0 +1,489 @@
+<!--
+ === Copyright (c) 1999 The University of Utah and
+ === the Computer Systems Laboratory at the University of Utah (CSL).
+ === All rights reserved.
+ ===
+ === Permission to use, copy, modify and distribute this software is hereby
+ === granted provided that (1) source code retains these copyright, permission,
+ === and disclaimer notices, and (2) redistributions including binaries
+ === reproduce the notices in supporting documentation.
+ ===
+ === THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ === IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ === ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS
+ === SOFTWARE.
+ ===
+ === CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ === improvements that they make and grant CSL redistribution rights.
+ -->
+
+<!-- TAO CORBA C++ implementation for union stuff -->
+
+<idl type="union">
+
+  <macro name="member_copy" rparams={ptype:tag_list arg:string}
+         oparams={ptr:bool=true}>
+  <if ptype.size=="variable" ||
+      ptype.idl_type=="array" ||
+      ptype.idl_type=="union">
+    <scope name="">
+      <scope name=ptype.idl_type>
+        <scope name="main">
+	  <if ptype.idl_type=="interface" || ptype.idl_type=="TypeCode">
+	    new TAO_Object_Field_T&lt;<(ptype.definition)>, <(ptype.smart_pointer)>&gt;(<do_copy ptype=ptype ptr=ptr arg=arg + "->ptr()">)
+	  <else>
+	    <do_copy ptype=ptype ptr=ptr arg=arg>
+	  </if>
+        </scope>
+      </scope>
+    </scope>
+  <else>
+    <(arg)>
+  </if>
+  </macro>
+  
+  <macro name="member_free"
+         rparams={ptype:tag_list arg:string}
+         oparams={ptr:bool=true}>
+  <if ptype.idl_type=="interface" || ptype.idl_type=="TypeCode">
+    delete <(arg)>
+  <else>
+    <if ptype.size=="variable" ||
+        ptype.idl_type=="array" ||
+	ptype.idl_type=="union">
+      <scope name="">
+        <scope name=ptype.idl_type>
+          <scope name="main">
+            <do_free ptype=ptype arg=arg>
+          </scope>
+        </scope>
+      </scope>
+    </if>
+  </if>
+  </macro>
+  
+  <pres type="main">
+  
+<!--
+    <func kind="operator<<=(copy)">
+    {
+      <(definition)> *_any_val;
+      ACE_NEW(_any_val, <(definition)> (<(parameter[1])>));
+      if( !_any_val ) return;
+      ACE_TRY_NEW_ENV
+      {
+        TAO_OutputCDR stream;
+	stream << *<(parameter[0])>;
+	<(parameter[0])>._tao_replace (
+	  <(tc_ref)>,
+	  stream.begin()->clone(),
+	  1,
+	  <(parameter[0])>,
+	  ACE_TRY_ENV
+	);
+	ACE_TRY_CHECK;
+      }
+      ACE_CATCHANY
+      {
+        delete _any_val;
+      }
+      ACE_ENDTRY;
+    }
+    </func>
+    
+    <func kind="operator<<=(no-copy)">
+    {
+      ACE_TRY_NEW_ENV
+      {
+        TAO_OutputCDR stream;
+	stream << *<(parameter[1])>;
+	<(parameter[0])>._tao_replace (
+	  <(tc_ref)>,
+	  stream.begin()->clone(),
+	  1,
+	  <(parameter[0])>,
+	  ACE_TRY_ENV
+	);
+	ACE_TRY_CHECK;
+      }
+      ACE_CATCHANY {}
+      ACE_ENDTRY;
+    }
+    </func>
+    
+    <func kind="bool operator>>=(any &, ptr &)">
+    {
+      ACE_TRY_NEW_ENV
+      {
+        CORBA::TypeCode_var type = <(parameter[0])>.type();
+	if(!type->equal(<(tc_ref)>, ACE_TRY_ENV)) return 0;
+	ACE_TRY_CHECK;
+	if(<(parameter[0])>.any_owns_data())
+	{
+	  <(parameter[1])> = (<(definition)> *)<(parameter[0])>.value();
+	  return 1;
+	}
+	else
+	{
+	  ACE_NEW_RETURN(<(parameter[1])>, <(definition)>, 0);
+	  TAO_InputCDR stream (<(parameter[0])>._tao_get_cdr());
+	  stream >> *<(parameter[1])>;
+	  ((CORBA::Any *)&amp;<(parameter[0])>)->_tao_replace(
+	    <(tc_ref)>,
+	    1,
+	    ACE_static_cast(void *,<(parameter[1])>),
+	    ACE_TRY_ENV
+	  );
+	  ACE_TRY_CHECK;
+	  return 1;
+	}
+      }
+      ACE_CATCHANY
+      {
+        delete <(parameter[1])>;
+	return 0;
+      }
+      ACE_ENDTRY;
+      return 0;
+    }
+    </func>
+-->
+    
+    <aliascmd name="operator<<=(copy)" handler=base::main::'operator<<=(copy)'>
+    <aliascmd name="operator<<=(no-copy)"
+              handler=base::main::'operator<<=(no-copy)'>
+    <aliascmd name="bool operator>>=(any &, ptr &)"
+              handler=base::main::'bool operator>>=(any &, ptr &)'>
+    
+    <macro name="do_copy" rparams={ptype:tag_list ptr:bool arg:string}>
+    new <(ptype.definition)>(<if ptr>*</if><(arg)>)
+    </macro>
+    
+    <macro name="do_free" rparams={ptype:tag_list arg:string}>
+    delete <(arg)>
+    </macro>
+    
+    <macro name="do_access"
+           rparams={ptype:tag_list alloc_flag:string slot:string}>
+    <pre>
+    return <(slot)>;</pre>
+    </macro>
+    
+    <func kind="T()">
+      : TAO_Base_Union()
+    {
+      ACE_OS::memset(&amp;this-><(discrim)>, 0, sizeof(this-><(discrim)>));
+      ACE_OS::memset(&amp;this-><(union_name)>, 0, sizeof(this-><(union_name)>));
+    }
+    </func>
+
+    <func kind="T(T &)">
+      : TAO_Base_Union()
+    {
+      this-><(discrim)> = <(parameter[0])>.<(discrim)>;
+      switch( this-><(discrim)> )
+      {<for each="member" iter="lpc">
+      <if member[lpc].the_default>default:<else>case <(member[lpc].disc)>:</if>
+        {
+	  this-><(union_name)>.<(member[lpc].name)> = <member_copy
+	    ptype=pres_type[member[lpc].pres_index]
+	    arg=(parameter[0] + "." + union_name + "." + member[lpc].name)>;
+        }
+        break;</for>
+      }
+    }
+    </func>
+    
+    <func kind="~T()" inline=true>
+    {
+      this->_reset(this-><(discrim)>, 1);
+    }
+    </func>
+
+    <func kind="T &operator=(const T &)">
+    {
+      this->_reset(<(parameter[0])>.<(discrim)>, 0);
+      this-><(discrim)> = <(parameter[0])>.<(discrim)>;
+      switch( this-><(discrim)> )
+      {<for each="member" iter="lpc">
+      <if member[lpc].the_default>default:<else>case <(member[lpc].disc)>:</if>
+        {
+	  this-><(union_name)>.<(member[lpc].name)> = <member_copy
+	    ptype=pres_type[member[lpc].pres_index]
+	    arg=(parameter[0] + "." + union_name + "." + member[lpc].name)>;
+        }
+        break;</for>
+      }
+      return *this;
+    }
+    </func>
+
+    <func kind="_d(T)" inline=true>
+    {
+      this-><(discrim)> = <(parameter[0])>;
+    }
+    </func>
+
+    <func kind="T _d()" inline=true>
+    {
+      return this-><(discrim)>;
+    }
+    </func>
+
+    <simple_func kind="atomic_set" inline=true>
+    <pre><print_func def=c_func>
+    {
+      this->_reset(<(member[index].disc)>, 0);
+      this-><(discrim)> = (<(pres_type[discrim_pres_index].definition)>)<(member[index].disc)>;
+      this-><(union_name)>.<(member[index].name)> =</pre>
+    <defvar mem_type:tag_list=pres_type[member[index].pres_index]>
+    <if mem_type.idl_type=="interface" || mem_type.idl_type=="TypeCode">
+      new TAO_Object_Field_T&lt;<(mem_type.definition)>, <(mem_type.smart_pointer)>&gt;(<deep_copy ptype=mem_type arg=parameter[0]>);
+    <else>
+      <(parameter[0])>;
+    </if>
+    <pre>
+    }
+    </pre>
+    </simple_func>
+    
+    <simple_func kind="atomic_get" inline=true>
+    <if pres_type[member[index].pres_index].idl_type=="interface" ||
+        pres_type[member[index].pres_index].idl_type=="TypeCode">
+      <pre><print_func def=c_func>
+      {
+        return this-><(union_name)>.<(member[index].name)>->ptr();
+      }
+      </pre>
+    <else>
+      <pre><print_func def=c_func>
+      {
+        return this-><(union_name)>.<(member[index].name)>;
+      }
+      </pre>
+    </if>
+    </simple_func>
+    
+    <func kind="set" inline=true>
+    {
+      this->_reset(<(member[index].disc)>, 0);
+      this-><(discrim)> = (<(pres_type[discrim_pres_index].definition)>)<(member[index].disc)>;
+      this-><(union_name)>.<(member[index].name)> = <deep_copy
+	ptype=pres_type[member[index].pres_index] ptr=false
+	arg=parameter[0]>;
+    }
+    </func>
+
+    <func kind="ro_get" inline=true>
+    {
+      return <if (pres_type[member[index].pres_index].size=="variable" &&
+                  pres_type[member[index].pres_index].idl_type!="array") ||
+		  pres_type[member[index].pres_index].idl_type=="union">*</if>this-><(union_name)>.<(member[index].name)>;
+    }
+    </func>
+
+    <func kind="rw_get" inline=true>
+    {
+      return <if (pres_type[member[index].pres_index].size=="variable" &&
+                  pres_type[member[index].pres_index].idl_type!="array") ||
+		  pres_type[member[index].pres_index].idl_type=="union">*</if>this-><(union_name)>.<(member[index].name)>;
+    }
+    </func>
+
+    <func kind="char *set" inline=true>
+    {
+      this->_reset(<(member[index].disc)>, 0);
+      this-><(discrim)> = (<(pres_type[discrim_pres_index].definition)>)<(member[index].disc)>;
+      this-><(union_name)>.<(member[index].name)> = <(parameter[0])>;
+    }
+    </func>
+    
+    <func kind="const char *set" inline=true>
+    {
+      this->_reset(<(member[index].disc)>, 0);
+      this-><(discrim)> = (<(pres_type[discrim_pres_index].definition)>)<(member[index].disc)>;
+      this-><(union_name)>.<(member[index].name)> = CORBA::string_dup(<(parameter[0])>);
+    }
+    </func>
+    
+    <func kind="_var_set" inline=true>
+    {
+      this->_reset(<(member[index].disc)>, 0);
+      this-><(discrim)> = (<(pres_type[discrim_pres_index].definition)>)<(member[index].disc)>;
+      CORBA::String_var tmp_var = <(parameter[0])>;
+      this-><(union_name)>.<(member[index].name)> = tmp_var._retn();
+    }
+    </func>
+    
+    <func kind="string_get" inline=true>
+    {
+      return this-><(union_name)>.<(member[index].name)>;
+    }
+    </func>
+    
+    <func kind="_reset(long, bool)">
+    {
+      if( (this-><(discrim)> != <(parameter[0])>) || <(parameter[1])> )
+      {
+        switch( this-><(discrim)> )
+	{<for each="member" iter="lpc">
+	<if member[lpc].the_default>default:<else>case <(member[lpc].disc)>:</if>
+	  <member_free ptype=pres_type[member[lpc].pres_index]
+	        arg=("this->" + union_name + "." + member[lpc].name)>;
+	  break;</for>
+	}
+      }
+    }
+    </func>
+    
+    <func kind="_reset()" inline=true>
+    {
+      this->_reset(this-><(discrim)>, 1);
+    }
+    </func>
+    
+    <func kind="_discriminant()" inline=true>
+    {
+      return &amp;this-><(discrim)>;
+    }
+    </func>
+    
+    <func kind="_access()">
+    {
+      switch(this-><(discrim)>)
+      {<for each="member" iter="lpc">
+      <if member[lpc].the_default>default:<else>case <(member[lpc].disc)>:</if>
+        <union_access ptype=pres_type[member[lpc].pres_index]
+	              alloc_flag=parameter[0]
+		      slot=("this->" + union_name + "." + member[lpc].name)></for>
+      }
+      return 0;
+    }
+    </func>
+    
+  </pres>
+  
+  <pres type="var">
+  
+    <aliascmd name="T_var()" handler=base::var::'T_var()'>
+    <aliascmd name="T_var(T_ptr)" handler=base::var::'T_var(T_ptr)'>
+    <aliascmd name="T_var(const T_var &)"
+              handler=base::var::'T_var(const T_var &)'>
+    <aliascmd name="~T_var()" handler=base::var::'~T_var()'>
+    <aliascmd name="T_var &operator=(T_ptr)"
+              handler=base::var::'T_var &operator=(T_ptr)'>
+    <aliascmd name="T_var &operator=(T_var &)"
+              handler=base::var::'T_var &operator=(T_var &)'>
+    <aliascmd name="T_ptr operator->()"
+              handler=base::var::'T_ptr operator->()'>
+    <aliascmd name="const T_ptr operator->() const"
+              handler=base::var::'const T_ptr operator->() const'>
+    <aliascmd name="operator const T_ptr &() const"
+              handler=base::var::'operator const T_ptr &() const'>
+    <aliascmd name="operator T_ptr &()"
+              handler=base::var::'operator T_ptr &()'>
+    <aliascmd name="operator T_ptr &() const"
+              handler=base::var::'operator T_ptr &() const'>
+    <aliascmd name="in()" handler=base::var::'in()'>
+    <aliascmd name="inout()" handler=base::var::'inout()'>
+    
+    <simple_func kind="out()">
+    <if size=="variable">
+    <pre><print_func def=c_func inline=true>
+    {
+      delete this->ptr_;
+      this->ptr_ = 0;
+      return this->ptr_;
+    }
+    </pre>
+    <else>
+    <pre><print_func def=c_func inline=true>
+    {
+      return *this->ptr_;
+    }
+    </pre>
+    </if>
+    </simple_func>
+    
+    <simple_func kind="_retn()">
+    <if size=="variable">
+    <pre><print_func def=c_func inline=true>
+    {
+      <(definition)> *tmp = this->ptr_;
+      this->ptr_ = 0;
+      return tmp;
+    }
+    </pre>
+    <else>
+    <pre><print_func def=c_func inline=true>
+    {
+      return *this->ptr_;
+    }
+    </pre>
+    </if>
+    </simple_func>
+    
+    <aliascmd name="ptr()" handler=base::var::'ptr()'>
+    
+  </pres>
+  
+  <pres type="out">
+
+    <func kind="T_out(T_ptr &)" inline=true>
+      : ptr_(<(parameter[0])>)
+    {
+      this->ptr_ = 0;
+    }
+    </func>
+
+    <func kind="T_out(T_var &)" inline=true>
+      : ptr_(<(parameter[0])>.out())
+    {
+      delete this->ptr_;
+      this->ptr_ = 0;
+    }
+    </func>
+
+    <func kind="T_out(T_out &)" inline=true>
+      : ptr_(ACE_const_cast(<(out_pointer)>&amp;,<(parameter[0])>).ptr_)
+    {}
+    </func>
+
+    <func kind="T_out &operator=(const T_out &)" inline=true>
+    {
+      this->ptr_ = ACE_const_cast(<(out_pointer)>&amp;,<(parameter[0])>).ptr_;
+      return *this;
+    }
+    </func>
+
+    <func kind="T_out &operator=(T *)" inline=true>
+    {
+      this->ptr_ = <(parameter[0])>;
+      return *this;
+    }
+    </func>
+
+    <func kind="operator T *&()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="ptr()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="T *operator->()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+  </pres>
+  
+</idl>
+
+<!-- End of file. -->
+

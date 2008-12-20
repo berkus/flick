@@ -1,0 +1,397 @@
+<!--
+ === Copyright (c) 1999 The University of Utah and
+ === the Computer Systems Laboratory at the University of Utah (CSL).
+ === All rights reserved.
+ ===
+ === Permission to use, copy, modify and distribute this software is hereby
+ === granted provided that (1) source code retains these copyright, permission,
+ === and disclaimer notices, and (2) redistributions including binaries
+ === reproduce the notices in supporting documentation.
+ ===
+ === THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ === IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ === ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS
+ === SOFTWARE.
+ ===
+ === CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ === improvements that they make and grant CSL redistribution rights.
+ -->
+
+<!-- TAO CORBA C++ implementation for struct stuff -->
+
+<!-- This is used in generating the copy function for arrays -->
+<macro name="cxx_array_copy" rparams={tl:tag_list indent:int
+                                  index:int length:int}>
+  <if index << length>
+    <pre>
+    <do_indent count=indent>CORBA::ULong <("iter" + index)>;
+
+    <do_indent count=indent>for(<("iter" + index)> = 0; <("iter" + index)> < <(tl.len[index])>; <("iter" + index)>++) {
+    <do_indent count=indent>  <cxx_array_copy tl=tl indent=(indent + 2)
+				              index=index+1 length=length>
+    <do_indent count=indent>}</pre>
+  <else>
+     <(tl.parameter[0])><for length=length iter="lpc">[<("iter" + lpc)>]</for> = <(tl.parameter[1])><for length=length iter="lpc">[<("iter" + lpc)>]</for>;
+  </if>
+</macro>
+
+<idl type="array">
+
+  <pres type="main">
+  
+    <func kind="operator<<=(copy)">
+    {
+      ACE_TRY_NEW_ENV
+      {
+        if(<(parameter[1])>.nocopy())
+	  <(parameter[0])>.replace(<(tc_ref)>, <(parameter[1])>.in(), 1, ACE_TRY_ENV);
+        else
+          <(parameter[0])>.replace(<(tc_ref)>, <(main.'T_dup()'.name)>(<(parameter[1])>.in()), 1, ACE_TRY_ENV);
+        ACE_TRY_CHECK;
+      }
+      ACE_CATCHANY {}
+      ACE_ENDTRY;
+    }
+    </func>
+    
+    <func kind="bool operator>>=(any &, ptr &)">
+    {
+      ACE_TRY_NEW_ENV
+      {
+        CORBA::TypeCode_var type = <(parameter[0])>.type();
+	if(!type->equal(<(tc_ref)>, ACE_TRY_ENV)) return 0;
+	ACE_TRY_CHECK;
+	if(<(parameter[0])>.any_owns_data())
+	{
+	  <(parameter[1])> = (<(array_slice)> *)<(parameter[0])>.value();
+	  return 1;
+	}
+	else
+	{
+	  <(parameter[1])>.out() = <(main.'T_alloc()'.name)>();
+	  if(!<(parameter[1])>.in()) return 0;
+	  TAO_InputCDR stream (<(parameter[0])>._tao_get_cdr());
+	  if(stream.decode(<(tc_ref)>, <(parameter[1])>.inout(), 0, ACE_TRY_ENV)
+	    == CORBA::TypeCode::TRAVERSE_CONTINUE)
+	  {
+	    ((CORBA::Any *)&amp;<(parameter[0])>)->replace(<(tc_ref)>, <(parameter[1])>.inout(), 1, ACE_TRY_ENV);
+	    return 1;
+	  }
+	  ACE_TRY_CHECK;
+	}
+      }
+      ACE_CATCHANY
+      {
+        <(main.'T_free()'.name)>(<(parameter[1])>._retn());
+	return 0;
+      }
+      ACE_ENDTRY;
+      return 0;
+    }
+    </func>
+    
+    <macro name="do_copy" rparams={ptype:tag_list ptr:bool arg:string}>
+    <(ptype.main.'T_dup()'.name)>(<(arg)>)
+    </macro>
+    
+    <macro name="do_free" rparams={ptype:tag_list arg:string}>
+    <(ptype.main.'T_free()'.name)>(<(arg)>)
+    </macro>
+    
+    <macro name="do_access"
+           rparams={ptype:tag_list alloc_flag:string slot:string}>
+    <pre>
+    if( <(alloc_flag)> )
+      <(slot)> = <(ptype.main.'T_alloc()'.name)>();
+    return <(slot)>;</pre>
+    </macro>
+    
+    <func kind="T_alloc()">
+    {
+      return new <(array_slice)><for each="len" iter="lpc">[<(len[lpc])>]</for>;
+    }
+    </func>
+    
+    <func kind="T_dup()">
+    {
+      <(array_slice)> *_dup_array = <(main.'T_alloc()'.name)>();
+      if( !_dup_array ) return 0;
+      <(main.'T_copy()'.name)>(_dup_array, <(parameter[0])>);
+      return _dup_array;
+    }
+    </func>
+    
+    <simple_func kind="T_copy()">
+    <defvar retval:tag_list={length:int=0}>
+    <array_len array=len out=retval>
+    <pre><print_func def=c_func>
+    {<cxx_array_copy tl=main.'T_copy()' indent=0 index=0 length=retval.length>
+    }
+    </pre>
+    
+    </simple_func>
+    
+    <func kind="T_free()">
+    {
+      delete [] <(parameter[0])>;
+    }
+    </func>
+    
+  </pres>
+  
+  <pres type="var">
+  
+    <func kind="T_var()" inline=true>
+      : ptr_(0)
+    {}
+    </func>
+    
+    <func kind="T_var(T_ptr)" inline=true>
+     : ptr_(<(parameter[0])>)
+    {}
+    </func>
+    
+    <func kind="T_var(const T_var &)" inline=true>
+    {
+      this->ptr_ = <(main.'T_dup()'.name)>(<(parameter[0])>.ptr_);
+    }
+    </func>
+    
+    <func kind="~T_var()" inline=true>
+    {
+      <(main.'T_free()'.name)>(this->ptr_);
+    }
+    </func>
+    
+    <func kind="T_var &operator=(T_ptr)" inline=true>
+    {
+      if( this->ptr_ != <(parameter[0])> )
+      {
+        <(main.'T_free()'.name)>(this->ptr_);
+	this->ptr_ = <(parameter[0])>;
+      }
+      return *this;
+    }
+    </func>
+    
+    <func kind="T_var &operator=(T_var &)" inline=true>
+    {
+      if( this != &amp;<(parameter[0])> )
+      {
+        <(main.'T_free()'.name)>(this->ptr_);
+	this->ptr_ = <(main.'T_dup()'.name)>(<(parameter[0] + ".ptr_")>);
+      }
+      return *this;
+    }
+    </func>
+    
+    <func kind="T_slice operator[](ulong)" inline=true>
+    {
+      return this->ptr_[<(parameter[0])>];
+    }
+    </func>
+    
+    <func kind="const T_slice operator[](ulong) const" inline=true>
+    {
+      return this->ptr_[<(parameter[0])>];
+    }
+    </func>
+    
+    <func kind="operator const T_ptr &() const" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+    
+    <func kind="operator T_ptr &()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+    
+    <func kind="operator T_ptr &() const" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+    
+    <func kind="in()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+    
+    <func kind="inout()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+    
+    <func kind="out()" inline=true>
+    {
+      <(main.'T_free()'.name)>(this->ptr_);
+      this->ptr_ = (<(array_slice)> *)0;
+      return this->ptr_;
+    }
+    </func>
+    
+    <func kind="_retn()" inline=true>
+    {
+      <(array_slice)> *tmp = this->ptr_;
+      this->ptr_ = (<(array_slice)> *)0;
+      return tmp;
+    }
+    </func>
+    
+    <func kind="ptr()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+    
+  </pres>
+
+  <pres type="forany">
+  
+    <func kind="T_forany()" inline=true>
+      : ptr_(0),
+        nocopy_(0)
+    {}
+    </func>
+    
+    <func kind="T_forany(T_ptr, bool)" inline=true>
+      : ptr_(<(parameter[0])>),
+        nocopy_(<(parameter[1])>)
+    {}
+    </func>
+    
+    <func kind="T_forany(const T_forany &)" inline=true>
+    {
+      this->ptr_ = <(main.'T_dup()'.name)>(<(parameter[0])>.ptr_);
+      this->nocopy_ = <(parameter[0])>.nocopy_;
+    }
+    </func>
+    
+    <func kind="~T_forany()" inline=true>
+    {
+    }
+    </func>
+    
+    <aliascmd name="T_forany &operator=(T_ptr)"
+              handler=array::var::'T_var &operator=(T_ptr)'>
+    
+    <func kind="T_forany &operator=(T_forany &)" inline=true>
+    {
+      if( this != &amp;<(parameter[0])> )
+      {
+        <(main.'T_free()'.name)>(this->ptr_);
+	this->ptr_ = <(main.'T_dup()'.name)>(<(parameter[0])>.ptr_);
+	this->nocopy_ = <(parameter[0])>.nocopy_;
+      }
+      return *this;
+    }
+    </func>
+    
+    <aliascmd name="T_slice operator[](ulong)"
+              handler=array::var::'T_slice operator[](ulong)'>
+    <aliascmd name="const T_slice operator[](ulong) const"
+              handler=array::var::'const T_slice operator[](ulong) const'>
+    <aliascmd name="operator const T_ptr &() const"
+              handler=array::var::'operator const T_ptr &() const'>
+    <aliascmd name="operator T_ptr &()"
+              handler=array::var::'operator T_ptr &()'>
+    <aliascmd name="operator T_ptr &() const"
+              handler=array::var::'operator T_ptr &() const'>
+    <aliascmd name="in()" handler=array::var::'in()'>
+    <aliascmd name="inout()" handler=array::var::'inout()'>
+    <aliascmd name="out()" handler=array::var::'out()'>
+    <aliascmd name="_retn()" handler=array::var::'_retn()'>
+    <aliascmd name="ptr()" handler=array::var::'ptr()'>
+    
+    <func kind="nocopy()" inline=true>
+    {
+      return this->nocopy_;
+    }
+    </func>
+    
+  </pres>
+
+  <pres type="out">
+  
+    <func kind="T_out(T_ptr &)" inline=true>
+      : ptr_(<(parameter[0])>)
+    {
+      this->ptr_ = 0;
+    }
+    </func>
+
+    <func kind="T_out(T_var &)" inline=true>
+      : ptr_(<(parameter[0])>.out())
+    {
+      delete this->ptr_;
+      this->ptr_ = 0;
+    }
+    </func>
+
+    <func kind="T_out(T_out &)" inline=true>
+      : ptr_(ACE_const_cast(<(out_pointer)>&amp;,<(parameter[0])>).ptr_)
+    {}
+    </func>
+
+    <func kind="T_out &operator=(const T_out &)" inline=true>
+    {
+      this->ptr_ = ACE_const_cast(<(out_pointer)>&amp;,<(parameter[0])>).ptr_;
+      return *this;
+    }
+    </func>
+
+    <func kind="T_out &operator=(T *)" inline=true>
+    {
+      this->ptr_ = <(parameter[0])>;
+      return *this;
+    }
+    </func>
+
+    <func kind="operator T *&()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="ptr()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="T *operator->()" inline=true>
+    {
+      return this->ptr_;
+    }
+    </func>
+
+    <func kind="T_out &operator=(const T_var &)" inline=true>
+    {
+      this->ptr_ = <(main.'T_dup()'.name)>(<(parameter[0])>.<(var.'ptr()'.name)>());
+      return *this;
+    }
+    </func>
+    
+    <func kind="T_slice operator[](ulong)" inline=true>
+    {
+      return this->ptr_[<(parameter[0])>];
+    }
+    </func>
+    
+    <func kind="const T_slice operator[](ulong) const" inline=true>
+    {
+      return this->ptr_[<(parameter[0])>];
+    }
+    </func>
+    
+  </pres>
+    
+</idl>
+
+<!-- End of file. -->
+

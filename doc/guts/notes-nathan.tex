@@ -1,0 +1,847 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1996, 1999 The University of Utah and the Computer Systems
+%% Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%\documentclass{article}
+%\usepackage{fullpage}
+
+\addtolength{\parskip}{8pt}
+
+\newcommand{\mus}{\texttt{mu\_state}}
+\newcommand{\mmus}{\texttt{mem\_mu\_state}}
+\newcommand{\cpres}{\texttt{PRES\_C}}
+\newcommand{\cast}{\texttt{CAST}}
+\newcommand{\chunk}{\texttt{chunk}}
+\newcommand{\glob}{\texttt{glob}}
+
+\com{
+\begin{document}
+
+\begin{center}
+  {\Large\textbf{Notes on \texttt{C-PBE} Code Generation}}\\
+  {or, how to write a back end}\\
+  {\large\textbf{Nathan Dykman}\\
+  {\today}\\[0.5in]
+\end{center}
+}%com
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Introduction}
+
+This document serves as a overview of how the code generation stage is done in
+Flick.  Like most parts of Flick, a code generator for a certain platform is
+created by extending and completing a class which controls the generation
+process.
+
+Two base classes for code generation exist.  The first class, \mus{},
+represents the general case of navigation through the \cpres{} file.  The
+\mus{} class is abstract.  The second class, \mmus{}, deals with code
+generation which marshals data into variable sized arrays with variable sized
+alignments.  The unit of alignment is called a \chunk{} and a variable sized
+array in which data is placed is a \glob{}.  Like \mus{}, \mmus{} is abstract.
+
+These base classes make many assumptions about how code is to be generated for
+large scale objects, like arrays, structs, unions, etc.  While these default
+assumptions in most cases don't need to be changed, most of them can be
+overriden by replacing the virtual function in the derived
+class.\footnote{Currently, not all functions are virtual.  This can be a
+problem.  My suggest would be have virtual functions for all aspects of code
+generation, save for those functions which absolutely can't change at all.}
+
+The idea behind this is that the implementer of the code-generator need only
+worry about how to marshal simple data types, and the default classes take care
+of the rest of the code generation.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{\mus{}}
+
+Let us first look at the header file for \mus{}:
+
+\begin{verbatim}
+struct mu_state
+{
+        pres_c_1 *pres;
+
+        /* Operation to be performed by the stub.  */
+        mu_state_op op;
+
+        int assumptions;
+
+        /* List of pres_c_def's for which we are doing inline marshaling.
+           This is used as a stack to detect loops
+           that we have to break with calls to out-of-line recursive stubs.  */
+        /*...*/
+
+        /* XXX for starters, don't bother doing any inline marshaling
+        of pres_c_def's (only pres_c_decl's).  */
+
+        /* C marshal/unmarshal code block we're currently building,
+           null if none so far.  */
+
+        cast_stmt c_block;
+
+        /* When we're marshaling/unmarshaling the length of an array,
+           'array_def' points to the MINT array definition; otherwise
+           it's null.  'array_len_expr' is set in mu_mapping_direct to
+           be an expression referring to the array length variable,
+           and 'array_len_ctype' is its type.  */
+
+        mint_array_def *array_def;
+        cast_expr array_len_expr;
+        cast_type array_len_ctype;
+
+        mu_state(pres_c_1 *_pres, mu_state_op _op, int _assumptions);
+        mu_state(const mu_state &must);
+        virtual mu_state *clone() = 0;
+        virtual mu_state *another(mu_state_op _op) = 0;
+        virtual ~mu_state();
+
+        /* Get an ASCII string describing the current operation -
+           generally used when constructing magic symbol names
+           to spit out in generated code.  */
+
+        char *get_op_name()
+                {
+                        switch (op)
+                        {
+                        case MUST_ENCODE:
+                                return "encode";
+                        case MUST_DECODE:
+                                return "decode";
+                        case MUST_ALLOCATE:
+                                return "alloc";
+                        case MUST_DEALLOCATE:
+                                return "dealloc";
+                        }
+                        panic("Invalid operation!\n");
+                }
+
+        /* Returns the name of this back end,
+           for embedding in marshaling macro names and such.  */
+        virtual const char *get_be_name() = 0;
+
+        void add_var(char *name, cast_type type,
+                     cast_storage_class sc = CAST_SC_NONE);
+
+        void add_stmt(cast_stmt st);
+
+        /* Create a temporary variable of the given type in the current c_block,
+           and return an expression representing its lvalue.
+           'tag' is a short constant string mangled
+           into the name that doesn't actually matter;
+           it's only to make the generated code more understandable.  */
+
+        cast_expr add_temp_var(const char *tag,
+                               cast_type type,
+                               cast_storage_class sc = CAST_SC_NONE);
+
+        virtual void mu_mapping_simple(cast_expr expr,
+                                       cast_type ctype,
+                                       mint_ref itype) = 0;
+
+        virtual void mu_array_elem(cast_expr elem_expr,
+                                   cast_type elem_ctype,
+                                   mint_ref elem_itype,
+                                   pres_c_mapping elem_mapping,
+                                   mint_ref array_itype);
+
+        virtual void mu_array(cast_expr array_expr, cast_type elem_ctype,
+                              cast_expr len_expr, cast_type len_ctype,
+                              mint_ref array_itype,
+                              pres_c_mapping elem_map);
+
+        virtual void mu_union_case(functor *f, mint_ref union_itype,
+                                   mint_const discrim_val);
+
+        virtual void mu_union(functor *f, mint_ref union_itype);
+
+        virtual void mu_pointer_alloc(cast_expr expr,
+                                      cast_type target_type,
+                                      cast_expr count_expr,
+                                      pres_c_allocation *alloc);
+
+        virtual void mu_pointer_free(cast_expr expr,
+                                     cast_type target_type,
+                                     pres_c_allocation *alloc);
+
+        virtual void mu_mapping_direct(cast_expr expr, cast_type ctype,
+                                       mint_ref itype);
+
+        virtual void mu_mapping_fixed_array(cast_expr expr,
+                                            cast_type ctype,
+                                            mint_ref itype,
+                                            pres_c_mapping element_mapping);
+
+        virtual void mu_mapping_struct(cast_expr expr, cast_type ctype,
+                                       mint_ref itype, pres_c_inline inl);
+
+        virtual void mu_mapping_stub_inline(cast_expr expr,
+                                            cast_type ctype,
+                                            mint_ref itype,
+                                            pres_c_mapping map);
+
+        virtual void mu_mapping_stub_call(cast_expr expr, cast_type ctype,
+                                          mint_ref itype,
+                                          pres_c_mapping map);
+
+        virtual void mu_mapping_stub(cast_expr expr, cast_type ctype,
+                                     mint_ref itype, pres_c_mapping map);
+
+        virtual void mu_mapping_pointer(cast_expr expr, cast_type ctype,
+                                        mint_ref itype,
+                                        pres_c_mapping_pointer *pmap);
+
+        virtual void mu_mapping_xlate(cast_expr expr, cast_type ctype,
+                                      mint_ref itype,
+                                      pres_c_mapping_xlate *xmap);
+
+        virtual void mu_mapping_reference(cast_expr expr, cast_type ctype,
+                                          mint_ref itype,
+                                          pres_c_mapping_reference *rmap);
+
+        virtual void mu_mapping_terminated_array(cast_expr expr,
+                                                 cast_type ctype,
+                                                 mint_ref itype,
+                                     pres_c_mapping_terminated_array *tmap);
+
+        virtual void mu_mapping(cast_expr expr, cast_type ctype,
+                                mint_ref itype, pres_c_mapping map);
+
+
+        void mu_inline_collapsed_union(inline_state *ist,
+                                       mint_ref itypename,
+                                       pres_c_inline inl);
+
+        void mu_inline_counted_array(inline_state *ist,
+                                     mint_ref itypename,
+                                     pres_c_inline inl);
+
+        void mu_inline_terminated_array(inline_state *ist,
+                                        mint_ref itypename,
+                                        pres_c_inline inl);
+
+        void mu_inline_atom(inline_state *ist, mint_ref itype,
+                            pres_c_inline inl);
+
+        void mu_inline_struct(inline_state *ist, mint_ref itype,
+                              pres_c_inline inl);
+
+        void mu_inline_xlate(inline_state *ist, mint_ref itype,
+                             pres_c_inline inl);
+
+        void mu_inline_cond(inline_state *ist, mint_ref itype,
+                            pres_c_inline inl);
+
+        void mu_inline_assign(inline_state *ist, mint_ref itype,
+                              pres_c_inline inl);
+
+        void mu_inline(inline_state *ist, mint_ref itype,
+                       pres_c_inline inl);
+
+        void mu_func_params(cast_ref cfunc_idx, mint_ref itype,
+                            pres_c_inline inl);
+
+        virtual void mu_decode_const(mint_const *darray, int darray_len,
+                                     mint_ref n_r,
+                                     cast_expr cookie_var);
+
+        virtual void mu_encode_const(mint_const iconst, mint_ref itype);
+
+        virtual void mu_const(mint_const iconst, mint_ref itype);
+
+        virtual void mu_decode_switch(decode_case *darray,
+                                      int darray_len, mint_ref n_r);
+
+        virtual void mu_server_func_reply(pres_c_server_func *sfunc,
+                                          pres_c_server_skel *sskel);
+
+        virtual void mu_server_func(pres_c_inline inl, mint_ref tn_r,
+                                    pres_c_server_func *sfunc,
+                                    pres_c_server_skel *sskel);
+
+        virtual void mu_end();
+};
+\end{verbatim}
+
+Let us know look at each piece of this class.
+
+\noindent\verb|pres_c_1 *pres;|
+
+This is a pointer to the \cpres{} structure generated by the front end.  This
+is the structure that the \mus{} class iterates over.
+
+\noindent\verb|mu_state_op op;|
+
+This is the current operation that the \mus{} class is performing.  Four
+operations are currently supported:
+
+\begin{verbatim}
+MUST_ALLOCATE
+MUST_DEALLOCATE
+MUST_ENCODE
+MUST_DECODE
+\end{verbatim}
+
+The function of each operation in the \mus{} class changes depending on the
+operation setting.
+
+\noindent\verb|int assumptions;|
+
+A bit mask of the assumptions that the \mus{} class is operating under.
+Currently, this is not used.
+
+\noindent\verb|cast_stmt c_block;|
+
+The \cast{} structure that represents the code that we wish to generate.
+
+\begin{verbatim}
+mint_array_def *array_def;
+cast_expr array_len_expr;
+cast_type array_len_ctype;
+\end{verbatim}
+
+These members point to certain aspects of an array when we are marshaling an
+array.  This allows us to set up and marshal and unmarshal the length of an
+array before we marshal the array itself, for example.
+
+\begin{verbatim}
+mu_state(pres_c_1 *_pres, mu_state_op _op, int _assumptions);
+mu_state(const mu_state &must);
+virtual mu_state *clone() = 0;
+virtual mu_state *another(mu_state_op _op) = 0;
+virtual ~mu_state();
+\end{verbatim}
+
+These are the various means of creating new \mus{} objects.  The clone and
+another operations are implementation specific.  \texttt{clone} and
+\texttt{another} are used internally to create iterators over the \cpres{}
+structure which gather information to be used in the actual code generation
+phase.\footnote{This is akin to trace scheduling, where a compiler does an
+initial instruction schedule to gain information to optimize the final code
+generation.}  As such, \texttt{clone} and \texttt{another} may have to allow or
+disallow certain functionality.
+
+\noindent\verb|char *get_op_name();|
+
+Merely translates the current operating mode into a string that can be used in
+macro invocations.
+
+\noindent\verb|virtual const char *get_be_name() = 0;|
+
+Merely returns the back end name as a string.  Used to form macro invocations.
+
+\begin{verbatim}
+void add_var(char *name, cast_type type,
+             cast_storage_class sc = CAST_SC_NONE);
+
+void add_stmt(cast_stmt st);
+
+cast_expr add_temp_var(const char *tag,
+                       cast_type type,
+                       cast_storage_class sc = CAST_SC_NONE);
+\end{verbatim}
+
+These functions add statements and variables to the current scope.  Variable
+must be treated differently than statement, as C requires that variables be
+declared at the beginning of the scope.
+
+\begin{verbatim}
+virtual void mu_mapping_simple(cast_expr expr,
+                               cast_type ctype,
+                               mint_ref itype) = 0;
+\end{verbatim}
+
+This function handles simple datatypes like ints, chars, etc.  This function
+must be implemented by each back end, as this is the lowest level of the back
+end code, and is therefore implementation specific.  All higher level
+constructs (structs, unions, arrays, etc.)\ all have default behaviors that
+work, but are unoptimized.
+
+\begin{verbatim}
+virtual void mu_array_elem(cast_expr elem_expr,
+                           cast_type elem_ctype,
+                           mint_ref elem_itype,
+                           pres_c_mapping elem_mapping,
+                           mint_ref array_itype);
+\end{verbatim}
+
+This code handles the marshaling of individual elements of an array.  The
+default version just calls \texttt{mu\_mapping}.
+
+\begin{verbatim}
+virtual void mu_array(cast_expr array_expr, cast_type elem_ctype,
+                      cast_expr len_expr, cast_type len_ctype,
+                      mint_ref array_itype,
+                      pres_c_mapping elem_map);
+\end{verbatim}
+
+This is responsible for handling arrays.  The default code creates a for loop
+which walks through and calls \texttt{mu\_array\_elem} for each element.  The
+length of the array (which is part of the array), must have been dealt with
+already.  Optimized versions of \texttt{mu\_array} handle an array as one chunk
+of memory.
+
+\begin{verbatim}
+virtual void mu_union_case(functor *f, mint_ref union_itype,
+                           mint_const discrim_val);
+
+virtual void mu_union(functor *f, mint_ref union_itype);
+\end{verbatim}
+
+These functions deal with the creation of code that handles unions.  These
+functions have no default behavior.  The back end writer must override these
+functions to do the correct thing.  The functor is merely an object which
+bundles state which represents what to do to decode the union.\footnote{This
+part of the code still puzzles me a bit.}
+
+\begin{verbatim}
+void mu_inline_collapsed_union(inline_state *ist,
+                               mint_ref itypename,
+                               pres_c_inline inl);
+\end{verbatim}
+
+This creates code for a object which is a union with one case selected
+(collapsed).  Collapsed unions play and important role in Flick, as the form
+the means of navigating the \cpres{} structure and selecting a certain function
+or stub.
+
+This code can't be overriden.\footnote{Well, sort of.  A derived class is free
+to reimplement this function.  However, the function invoked is determined by
+how the object is viewed, and not how it is.  So, if a derived class is
+accessed by a base pointer, the base class function is called.}
+
+\begin{verbatim}
+void mu_inline_counted_array(inline_state *ist,
+                             mint_ref itypename,
+                             pres_c_inline inl);
+\end{verbatim}
+
+This code handles variable length arrays.  Usually, variable length arrays are
+represented by two parameters.  The first is a pointer to the array.  The
+second is the length of the array.  This code can't be overriden.
+
+\begin{verbatim}
+void mu_inline_terminated_array(inline_state *ist,
+                                mint_ref itypename,
+                                pres_c_inline inl);
+\end{verbatim}
+
+This code handles variable length arrays whose end is specified by a
+terminator.  The canonical example in C are strings, whose ends are marked by a
+null character.  This code can't be overriden.
+
+\begin{verbatim}
+void mu_inline_atom(inline_state *ist, mint_ref itype,
+                    pres_c_inline inl);
+\end{verbatim}
+
+This code handles an simple inline structure.  This code basically does some
+sanity checks and extracts the mapping and passes it to \texttt{mu\_mapping}.
+This code can't be overriden.
+
+\begin{verbatim}
+void mu_inline_struct(inline_state *ist, mint_ref itype,
+                      pres_c_inline inl);
+\end{verbatim}
+
+This code handles C structures.  Basically, it extracts the mapping for each
+slot of the structure, and builds code for each slot and then adds the
+appropriate code to handle the member access of the struct.
+
+\begin{verbatim}
+void mu_inline_xlate(inline_state *ist, mint_ref itype,
+                     pres_c_inline inl);
+
+void mu_inline_cond(inline_state *ist, mint_ref itype,
+                    pres_c_inline inl);
+
+void mu_inline_assign(inline_state *ist, mint_ref itype,
+                      pres_c_inline inl);
+\end{verbatim}
+
+These functions are special purpose functions added for Mach support.  They
+handled they creation of code that does transformations on a variable, code
+that checks a variable and produces true or false code (if statements), and
+code that assigns a value to an expression.  They may or may not be useful in
+other contexts.
+
+\begin{verbatim}
+void mu_inline(inline_state *ist, mint_ref itype,
+               pres_c_inline inl);
+\end{verbatim}
+
+This function merely demultiplexes on the inline type and calls the appropriate
+function.
+
+\begin{verbatim}
+void mu_func_params(cast_ref cfunc_idx, mint_ref itype,
+                    pres_c_inline inl);
+\end{verbatim}
+
+Creates an inline structure representing the function parameters and return
+value, and calls \texttt{mu\_inline}.  This function is the starting point for
+client stub generation.
+
+\begin{verbatim}
+virtual void mu_decode_const(mint_const *darray, int darray_len,
+                             mint_ref n_r,
+                             cast_expr cookie_var);
+
+virtual void mu_encode_const(mint_const iconst, mint_ref itype);
+
+virtual void mu_const(mint_const iconst, mint_ref itype);
+
+virtual void mu_decode_const(mint_const *darray, int darray_len,
+                             mint_ref n_r,
+                             cast_expr cookie_var);
+\end{verbatim}
+
+These functions handle constant values present in the \cpres{} structure.
+Constants usually appear on the server stubs, as a constant value, which is
+used to determine if the client is calling the right server.
+
+\begin{verbatim}
+virtual void mu_server_func_reply(pres_c_server_func *sfunc,
+                                  pres_c_server_skel *sskel);
+
+virtual void mu_server_func(pres_c_inline inl, mint_ref tn_r,
+                            pres_c_server_func *sfunc,
+                            pres_c_server_skel *sskel);
+\end{verbatim}
+
+These functions are responsible for creating the server stub.  For each client
+function, a case inside a switch statement is made.  Calls to the server stub
+include a parameter identifying which server function is to be called.  These
+functions create that code, and are the starting point for server stub
+generation.
+
+\noindent\verb|virtual void mu_end();|
+
+Provides a means of adding code at the end of the block to do various cleanup
+and other tasks.
+
+This class provides the basis for all back ends.  Each back end selectively
+overrides and completes this class to generate code.  The ideal model is that
+only the lowest level of code generation needs to be provided by the back end
+implementor.  However, practice shows that more of the functionality usually
+needs to be overriden to gain better performance or to conform with transport
+standards.
+
+Let us now turn to a specialization of the \mus{} class, \mmus{}.  This class
+implements array-based marshaling, where parameters are collected into aligned
+buffers, and these buffers are marshaled and unmarshaled.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{\mmus{}}
+
+Here's the header file:
+
+\begin{verbatim}
+struct mem_params
+{
+        int endian;     /* stream representation - see below */
+        int size;       /* stream size in bytes */
+        int align;      /* required alignments in bytes (power of two) */
+};
+
+struct mem_mu_state : public mu_state
+{
+        /* Size limit of any one glob.
+           Set only during construction.  */
+        const unsigned max_glob_size;
+
+        /* Maximum possible total message size, in bytes.
+           For messages of indeterminate size, will be MAXUINT_MAX.  */
+        maxuint max_msg_size;
+
+        /*** Alignment ***/
+
+        /* Number of low bits of the current stream offset known to be constant.
+           For example, if this is 2, then the lowest two bits
+           of the offset are known.  */
+
+        int align_bits;
+
+        /* Value of the lowest `align_bits' bits of the current stream offset.
+           Must always be less than 2^align_bits.
+           For example, if align_bits is 2 and align_ofs is 3,
+           then we know that we are three bytes beyond
+           a natural longword (4-byte) boundary.  */
+
+        int align_ofs;
+
+        /* Normalize align_ofs according to align_bits.  */
+
+        inline void align_ofs_normalize()
+                { align_ofs &= (1 << align_bits) - 1; }
+
+        /*** Chunkification ***/
+
+        /* If we've started a chunk, then this points to a cast_expr pointer
+           to fill in, when the chunk is finished, with the size of the chunk.
+           If we're between chunks, this is null.  */
+
+        cast_expr *chunk_size_expr;
+
+        /* Byte offset so far in the current chunk.
+           Always 0 if we're between chunks.  */
+
+        int chunk_size;
+
+        virtual void new_chunk();
+        virtual void new_chunk_align(int needed_bits);
+        virtual void end_chunk();
+
+        /* Break the current chunk, if any, starting a new chunk
+           next time we need one.  */
+
+        inline void break_chunk()
+                { if (chunk_size_expr) end_chunk(); }
+
+        /* Makes room in the marshaling buffer for a new primitive.
+           May start a new chunk and/or glob in the process.
+           Returns the byte offset in the (new) current chunk
+           at which the primitive should be placed.  */
+
+        virtual int chunk_prim(int needed_align_bits, int prim_size);
+
+        /*** Globification ***/
+
+        /* If we've started a glob, then this points to a cast_expr pointer
+           to fill in, when the glob is finished,
+           with the maximum size of the glob.
+           If we're between globs, this is null.  */
+
+        cast_expr *glob_size_expr;
+
+        /* Maximum size so far of the current glob.
+           Always 0 if we're between globs.  */
+
+        int glob_size;
+
+        virtual void new_glob();
+        virtual void end_glob();
+
+        /* Make sure there's a current glob,
+           creating a new one if necessary.  */
+
+        inline void make_glob()
+                { if (!glob_size_expr) new_glob(); }
+
+        /* Break the current glob, if any,
+           starting a new glob next time we need one.  */
+
+        inline void break_glob()
+                { if (glob_size_expr) end_glob(); }
+
+        /* Grow the current glob by `amount' bytes.
+           If there is no current glob, create one first.
+           If the current glob is too big, create a new one.  */
+
+        void mem_mu_state::glob_grow(int amount);
+
+        /* Do necessary globbing stuff before adding a new primitive.
+           Called by chunk_prim().  */
+        virtual void glob_prim(int needed_align_bits, int prim_size);
+
+        /*** Union processing ***/
+
+        int union_align_bits;
+        int union_align_ofs;
+        int union_glob_size;
+        int union_one_glob;
+
+        virtual void mu_union_case(functor *f, mint_ref union_itype,
+                                   mint_const discrim_val);
+
+        virtual void mu_union(functor *f, mint_ref union_itype);
+
+        /*** Array processing ***/
+
+        /* This is set by mu_array()
+           to true if the entire array is being marshaled into one glob.
+           mu_array_elem() uses it to determine whether to
+           break_chunk() or break_glob() at the end of each iteration.  */
+        int array_one_glob;
+
+        virtual void mu_array_elem(cast_expr elem_expr,
+                                   cast_type elem_ctype,
+                                   mint_ref elem_itype,
+                                   pres_c_mapping elem_mapping,
+                                   mint_ref array_itype);
+
+
+        /* Subclass code must implement these to provide marshaling
+           stream parameters.  */
+
+        virtual void get_prim_params(mint_ref itype, int *size,
+                                     int *align_bits, char **macro_name);
+
+
+        /* These explore the pres/int type trees looking for
+           anything needing conversion.  If this item can be
+           marshaled/unmarshaled directly with no conversion,
+           then these routines return an expression representing
+           the amount of memory to copy.  Otherwise, they return 0.  */
+
+        virtual cast_expr mapping_noconv(cast_expr expr,
+                                         cast_type ctype,
+                                         mint_ref itype,
+                                         pres_c_mapping map);
+
+        virtual cast_expr inline_noconv(inline_state *ist,
+                                        mint_ref itype,
+                                        pres_c_inline inl);
+
+#if 0
+        /* This routine actually spits out the code to perform
+           a no-conversion marshal.  */
+
+        virtual void mu_noconv(cast_expr expr, cast_type ctype,
+                               mint_ref itype, cast_expr len);
+#endif
+
+        virtual void mu_array(cast_expr array_expr, cast_type elem_ctype,
+                              cast_expr len_expr, cast_type len_ctype,
+                              mint_ref itypename, pres_c_mapping elem_map);
+
+        mem_mu_state(pres_c_1 *_pres, mu_state_op _op,
+                     int _assumptions, int init_align_bits,
+                     int init_align_ofs, int init_max_glob_size);
+
+        mem_mu_state(const mem_mu_state &must);
+
+        virtual void mu_mapping_simple(cast_expr expr,
+                                       cast_type ctype,
+                                       mint_ref itype);
+
+        virtual void mu_end();
+};
+\end{verbatim}
+
+Basically, this class adds support for chunks and globs.  Chunks are segments
+of memory (arrays) in which globs are placed.  Globs are aligned pieces of
+memory that can be placed into a chunk.  This class also handles conversion for
+alignment and endianess.  New functions are created to create globs and chunks,
+and certain functions are replaced by \mmus{} to implement the use of chunks
+and globs when appropriate.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Creating Backends}
+
+There is no cookbook method to creating a new back end.  Basically, the
+procedure is to create a run-time support library that provides
+transport-specific versions of the macros called by Flick stubs.  After than,
+the trick is override and replace certain functionality to optimize the
+generated stubs.  In more advanced cases, functions will be overriden in order
+to comply with the transport standard.  For example, the Mach~4 back end had to
+track what expressions could be placed in registers, and to use a single buffer
+for large arrays.  To accomplish this, the array and union code had to be
+overriden.
+
+The current method of development used existing stubs to compare to Flick
+generated code.  The back end was then refined and changed to conform to those
+test stubs.  However, development of a completely new transport mechanism can't
+use this method.  In this case, it is best to manually generate expected output
+and compare it to generated output.  Understanding what parts of the library
+produce what code is essential to this process of refinement.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\com{
+\subsection{Comments, Personal Biases}
+
+Flick is intended to be a flexible \IDL{} compiler toolkit.  While this is
+definitely the right approach to this problem, the current design is quite
+lacking in a number of areas.  This is to be expected.  First designs rarely
+work, especially if the software is intended to be reusable.\footnote{This
+definitely won't appear in the final draft.  This is just some comments from us
+software engineering missionaries on reusable software.  You have been warned.}
+
+Code reuse, while a noble idea, is only the tip of the iceberg.  In fact, most
+modern software reuse ideas note that code reuse can't happen in isolation, and
+it can't happen chaotically.  Reuse must be planned, and those plans are part
+of what is reused.
+
+I personally believe that Flick's design was rather chaotic.  This is fine for
+a prototype, but is unacceptable in a final product.  If a software product is
+to be reused, it's purpose and design must be clear and planned.  I really
+believe Flick suffers from a lack of clear design, and we should really
+consider redesigning it before releasing it.
+
+The first design of Flick is a prototype.  Prototypes are indispensable in one
+sense, and dispensable in another.  While prototypes are invaluable in gaining
+domain knowledge, they are next to useless as actual products.  While it is
+tempting to use a prototype as a final version, it should be avoided.
+Prototypes should take much time to build, and they should stop being developed
+as soon as the necessary knowledge is gained from them.\footnote{The message
+here: view prototypes as expendable, used only until no longer needed, then
+tossed away.}
+
+I really don't think Flick's current design should be developed much longer.
+If the current version is released and used, it's maintenance will steal
+resources from any redesign efforts.\footnote{And I personally believe that
+Flick needs redesign.  Also, most people think that reusable software must be
+designed at least twice, regardless of how good the first design was.}  If
+Flick is a important part of the Flux project, then it should be a quality
+implementation.  If it is just a proof of concept and not a usable product,
+then don't bother with redesign.
+
+I think the main problem with the Flick project is that no one treated the
+first cut at the system as a prototype, and as a consequence too many resources
+where expended in ``hacking'' it up to work properly.  Instead, as soon as
+issues in the design had been explored, work could of began on the design of
+the production system taking into account things that were learned from the
+prototype.  After the production system had been started, the design then could
+be evaluated and changed as production continued.  In fact, a prototype of the
+production design could be made to test certain aspects of the design, and that
+prototype used to refine the design further.
+
+Software design always changes, and redesign is often required.  So, it makes
+sense to me to not expend unnecessary effort in getting a bad design to work.
+Instead, the effort should be spent on creating better designs.  After all, if
+software always needs redesign, why spend any more effort than is necessary to
+check the validity of a design?  If it isn't working, toss it and start again.
+Don't spend too much time banging away if it isn't doing much good.
+
+Software, especially reusable software, isn't magically created from scratch.
+However, it definitely isn't created by hacking on a piece of code until it
+works.  Creating reusable software requires a balance between exploratory
+coding and formalized design processes.  End users of reusable software are
+really reusing aspects of the design of the software.  If the design isn't
+clear, logical and useful, the end-user can't reuse the code.\footnote{I know,
+I know.  Software isn't really created like this.  Well, why not?  Processes
+don't insure success.  However, it serves to made software creation predictable
+and manageable.}
+}%com
+
+%\end{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

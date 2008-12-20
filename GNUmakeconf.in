@@ -1,0 +1,124 @@
+#
+# Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+# All the programs and other cruddy little definitions are made in just one
+# place, here.  The directory names still need to be defined in their own
+# Makefiles, since they have to vary depending on what directory level they're
+# at.  <sigh>
+
+# XXX
+TARGET_OS	= @target_os@
+TARGET_ARCH	= @target_cpu@
+
+export HOST_CC		= @CC@
+export HOST_CXX		= @CXX@
+export HOST_LD		= @LD@
+export HOST_AR		= @AR@
+export HOST_RANLIB	= @RANLIB@
+
+LEX		= @LEX@
+LEXLIB		= @LEXLIB@
+YACC		= @YACC@
+INSTALL		= @INSTALL@
+INSTALL_PROGRAM	= @INSTALL_PROGRAM@
+INSTALL_DATA	= @INSTALL_DATA@
+
+DEFINES		= @DEFS@
+LIBS		= @LIBS@
+
+LATEX		= latex
+DVIPS		= dvips
+FIG2DEV		= fig2dev
+TEX4HT		= ht
+
+# It is not necessary to wrap these in `ifndef's in order for us to allow the
+# user to override these on the command line: command line settings cause GNU
+# make to ignore ordinary assignments like these.  See Section 9.5 of the GNU
+# Make Manual.
+#
+CFLAGS		= @CFLAGS@
+HOST_CFLAGS	= @host_cflags@
+TARGET_CFLAGS	= @target_cflags@
+
+CXXFLAGS	= @CXXFLAGS@
+HOST_CXXFLAGS	= @host_cxxflags@
+TARGET_CXXFLAGS	= @target_cxxflags@
+
+LDFLAGS		= @LDFLAGS@
+
+DVIPS_FLAGS	=
+
+# We use gcc/g++'s feature of automatically generating dependency files from
+# the source (-MD), as well as the separator used to distinguish directories
+# searched for include files via "" and <> (-I-).  Since other compilers are
+# unlikely to have these flags, we only specify them when we have gcc/g++.
+#
+# XXX - You must use BOTH gcc AND g++ to get these flags set.  If either is
+# not a GNU compiler, the flags will not be used.  (The reason for this is
+# that they are placed into ALL_CPPFLAGS in GNUmakerules, and are thus used
+# for both C and C++ compilation.)
+
+ifeq (@using_gcc@@using_gxx@,yesyes)
+  CFLAGS_GEN_DEP	= -MD
+  CFLAGS_INCLUDE_SEP	= -I-
+else
+  CFLAGS_GEN_DEP	= 
+  CFLAGS_INCLUDE_SEP	= 
+endif
+
+HOST_INCDIR	= $(exec_prefix)$(shell test -d $(exec_prefix)/include || \
+					(test -d $(exec_prefix)/@cross_dir@ \
+					 && echo /@cross_dir@))/include
+HOST_BINDIR	= $(exec_prefix)$(shell test -d $(exec_prefix)/bin || \
+					(test -d $(exec_prefix)/@cross_dir@ \
+					 && echo /@cross_dir@))/bin
+HOST_LIBDIR	= $(exec_prefix)$(shell test -d $(exec_prefix)/lib || \
+					(test -d $(exec_prefix)/@cross_dir@ \
+					 && echo /@cross_dir@))/lib
+
+ifeq (@target@, @host@)
+# We are building Flick to compile for the native host.
+# Make sure we always use the `HOST_*' variables in all cases.
+override COMPILE_FOR = HOST
+
+else
+# We are building Flick to compile for a different target.
+# We must set up different `TARGET_*' variables.
+
+TARGET_CC	= @target_alias@-gcc
+TARGET_CXX	= @target_alias@-g++
+TARGET_LD	= @target_alias@-ld
+TARGET_AR	= @target_alias@-ar
+TARGET_RANLIB	= @target_alias@-ranlib
+
+TARGET_INCDIR	= $(exec_prefix)/@target_alias@/include
+TARGET_BINDIR	= $(exec_prefix)/@target_alias@/bin
+TARGET_LIBDIR	= $(exec_prefix)/@target_alias@/lib
+
+endif
+
+# The program name transformations determined by `configure'.
+PROGRAM_PREFIX		= @program_prefix@
+PROGRAM_SUFFIX		= @program_suffix@
+PROGRAM_EXTENSION	= @EXEEXT@
+
+## End of file.
+

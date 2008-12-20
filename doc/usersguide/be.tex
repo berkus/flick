@@ -1,0 +1,276 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1997, 1998, 1999 The University of Utah and the Computer
+%% Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Back Ends}
+\label{sec:Back Ends}
+
+Flick has seven separate, optimizing back ends to produce stubs that use IIOP
+(for C and C++ stubs), ONC/TCP, Mach~3 typed messages, Trapeze messages,
+Khazana-style messages, or Fluke IPC\@.  As described in
+Section~\ref{sec:Presentation Generators}, Flick separates the client- and
+server-side presentations into two PRES\_C files.  This means that in order to
+generate both client and server code, you must run a back end twice: once on
+the client-side `\filename{.prc}' file and once on the server-side
+`\filename{.prc}' file.  For instance, the two commands:
+
+\begin{verbatim}
+        flick-c-pbe-iiop foo-client.prc     # make client
+        flick-c-pbe-iiop foo-server.prc     # make server
+\end{verbatim}
+
+\noindent produce the client stubs (\filename{foo-client.c},
+\filename{foo-client.h}) and then the server skeletons
+(\filename{foo-server.c}, \filename{foo-server.h}) using Flick's IIOP back end.
+Of course, it is important to use the same back end to produce both client and
+server code.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Command Line Options}
+\label{subsec:BE:Command Line Options}
+
+All back ends support the following options in addition to the standard flags:
+
+\begin{optionlist}
+  \item[-h~\optionarg{filename} \oroption{} --header~\optionarg{filename}]
+  %
+  Output the header file to \optionarg{filename}.  If this is not specified,
+  the name of the header file will be constructed from the name of the output
+  `\filename{.c}'/`\filename{.cc}' file (which is specified with \option{-o}).
+  If the output C/C++ file is \filename{stdout}, the header will be inlined
+  into the output.
+
+  \item[-p~\optionarg{prefix} \oroption{} --prefix~\optionarg{prefix}]
+  %
+  Use \optionarg{prefix} when including the generated header file from the
+  generated C or C++ file, i.e.: \texttt{\#include "\emph{prefix}header.h"}.
+
+  \item[-s \oroption{} --system_header]
+  %
+  In the output C or C++ file, include the generated header as a system header
+  rather than a user header, i.e., using \texttt{<>} rather than \texttt{""}.
+
+  \item[-n~\optionarg{filename} \oroption{} --inline~\optionarg{filename}]
+  %
+  Allow ``simple'' presentation implementation functions to be inlined.  This
+  option allows us to support fast inline functions similar to those from TAO's
+  IDL compiler.  These functions are placed in \optionarg{filename}, and
+  included by the generated header or source depending on the compile-time
+  directive \cidentifier{__ACE_INLINE__}.
+
+  \item[--no_timestamp]
+  %
+  Do not output timestamp information into the generated header and C/C++ code
+  files.  This option is useful for regression testing.
+
+  \item[-i \oroption{} --no_included_imple\-mentations]
+  %
+  Suppress the definition of stubs that are derived from interfaces that were
+  \cfunction{#include}d by the IDL file that was processed by the front end.
+  \emph{This option must be used with caution, as you may unintentionally
+  cause Flick to omit functions that you need in order to compile your client
+  or server application.}
+
+  \item[-d \oroption{} --no_included_declar\-ations]
+  %
+  Suppress the declaration of stubs that are derived from interfaces that were
+  \cfunction{#include}d by the IDL file that was processed by the front end.
+  \emph{This option must also be used with caution, as you may unintentionally
+  cause Flick to omit function declarations that you need in order to compile
+  your client or server application.}
+
+  \item[-m \oroption{} --all_mu_stubs]
+  %
+  Generate all marshal and unmarshal stubs.  Normally Flick generates only
+  those that are actually used by the generated code.  \emph{This option is
+  useful mainly for debugging.  The generated code is significantly larger if
+  all marshal and unmarshal stubs are produced --- generally too large for
+  practical use.}
+
+  \item[-P~\optionarg{filename} \oroption{}
+        --presentation_imple\-mentation~\optionarg{filename}]
+  %
+  Read the ``presentation implementation'' from \optionarg{filename}.  The
+  presentation implementation (a `\filename{.scml}' --- Source Code Markup
+  Language --- file) describes how certain functions are to be created and
+  written into the generated code.  This option is normally not required
+  because each back end has its own built-in default.
+
+  \item[--nostdinc]
+  %
+  Tell the back end not to search in the standard locations for SCML files.
+  Again, this option is generally not used, unless one is implementing or
+  testing Flick.
+
+  \item[-I~\optionarg{directory} \oroption{} --include~\optionarg{directory}]
+  %
+  Look in \optionarg{directory} for presentation implementation
+  (`\filename{.scml}') files.  This option may be repeated in order to define a
+  search path.  Like \option{-P}, this option is normally not required because
+  each back end automatically looks in the Flick installation directories for
+  the SCML files it needs.
+
+  \item[-f~\optionarg{filename} \oroption{} --file~\optionarg{filename}]
+  %
+  In the output C or C++ file, output: \texttt{\#include "\emph{filename}"}.
+  This option is often used with the IIOP C++ back end; see
+  Section~\ref{subsec:BE:Additional Comments} for more information.
+
+  \item[-F~\optionarg{filename} \oroption{} --File~\optionarg{filename}]
+  %
+  In the output header file, output: \texttt{\#include "\emph{filename}"}.
+  This option is often used with the IIOP C++ back end; see
+  Section~\ref{subsec:BE:Additional Comments} for more information.
+
+  \item[-D~\optionarg{vardef} \oroption{} --define~\optionarg{vardef}]
+  %
+  Use the variable definition \optionarg{vardef} when reading the presentation
+  implementation (SCML) files.  This option may be repeated in order to define
+  multiple variables.
+\end{optionlist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Additional Comments}
+\label{subsec:BE:Additional Comments}
+
+\subsubsection{IIOP/C++ Back End Issues}
+\label{subsubsec:BE:IIOP/C++ Back End Issues}
+
+The IIOP back end for C++, \program{flick-c-pbe-iiopxx}, is careful to generate
+client and server code that can be compiled into a single program (in order to
+support TAO ``collocated'' objects).  However, a side effect is that the
+generated C++ files for client and server each need to \texttt{\#include} the
+other's header file in order to compile.  So, the IIOP back end for C++ is
+normally invoked like this:
+
+\begin{verbatim}
+        flick-c-pbe-iiopxx -h client.h -f server.h ...    # make client
+        flick-c-pbe-iiopxx -h server.h -F client.h ...    # make server
+\end{verbatim}
+
+\noindent where \filename{client.h} and \filename{server.h} are replaced with
+your names for the client and server header files, respectively.
+
+The first command generates the client code and header files; the client's
+header file is named \filename{client.h} and the generated client C++ file will
+\texttt{\#include~"server.h"}.  Similarly, the second command generates the
+server code and header files; the server's header file is named
+\filename{server.h} and the server's header will \texttt{\#include~"client.h"}.
+Note that one uses \option{-f} when generating the client and \option{-F} when
+generating the server.  This is required in order to sequence the
+\texttt{\#include}s properly.
+
+\subsubsection{Code Generation Issues}
+\label{subsubsec:BE:Code Generation Issues}
+
+All of Flick's back ends produce code that is optimized for speed, and Flick is
+currently single-minded in pursuit of fast code.  The current version of Flick
+largely overlooks other code generation issues that may be important to certain
+application domains:
+
+\begin{description}
+  \item[Code Size.]  Because Flick aggressively inlines code to marshal and
+  unmarshal data, the size of the generated stub functions can be very large.
+  The generated code becomes larger as the complexity of the IDL-defined
+  interfaces increases.  A future release of Flick will make better inlining
+  decisions.
+
+  \item[Code Complexity.]  Flick-generated code is not intended to be
+  human-readable, although the code is generally not too difficult for
+  programmers to understand.  Flick makes extensive use of the C preprocessor.
+  Some compilers may have problems with Flick-generated code; for instance, we
+  discovered that Microsoft Visual C++~4.2 was unable to deal with
+  deeply nested \cfunction{switch} statements.
+
+  \item[Thread Safety.]  Flick does not generate thread-safe code.  If your
+  application is multithreaded, you will need to provide explicit locks around
+  the Flick-generated stubs.
+
+  \item[Error Handling.]  Although the generated stubs generally handle errors
+  in an appropriate manner, Flick's runtimes may fail an \cfunction{assert} or
+  \cfunction{exit} in response to certain critical errors.  A future release of
+  Flick will better address error handling and recovery within the runtimes.
+\end{description}
+
+\noindent The \filename{doc/BUGS} file in the Flick source tree lists known
+bugs with Flick's code generators.
+
+\subsubsection{Server Main Functions}
+\label{subsubsec:BE:Server Main Functions}
+
+The IIOP (C only), ONC/TCP, Khazana, and Trapeze back ends each produce a
+\cfunction{main} function for the server, whereas the IIOP~C++, Mach~3, and
+Fluke back ends do not.  The assumption is that the former back ends will be
+used to generate ``standalone'' servers while the latter back ends will
+generate code for use in a more complex framework.
+
+\subsubsection{Mix-and-Match Problems}
+\label{subsubsec:BE:Mix-and-Match Problems}
+
+While it is possible to combine presentation generators and back ends in
+unusual ways --- e.g., create Sun-style ONC/TCP code for a CORBA-style
+presentation --- Flick's runtime libraries may not be able to handle unusual
+combinations.  In this release we have focused on code generation for
+``matched'' presentation and code generation, meaning:
+
+\begin{itemize}
+  \item CORBA-style C stubs using IIOP (\program{flick-c-pfe-corba} with
+  \program{flick-c-pbe-iiop});
+
+  \item CORBA-style C++ stubs using IIOP (\program{flick-c-pfe-corbaxx} with
+  \program{flick-c-pbe-iiopxx});
+
+  \item ONC~RPC-style stubs using ONC/TCP (\program{flick-c-pfe-sun} with
+  \program{flick-c-pbe-sun});
+
+  \item MIG-style stubs using Mach~3 (\program{flick-c-fe-mig} with
+  \program{flick-c-pbe-mach3mig}); and
+
+  \item Fluke-style stubs using Fluke~IPC (\program{flick-c-pfe-fluke} with
+  \program{flick-c-pbe-fluke}).
+\end{itemize}
+
+These ``mixed'' combinations have also been tested and should work:
+
+\begin{itemize}
+  \item CORBA-style stubs using Mach~3 (\program{flick-c-pfe-corba} with
+  \program{flick-c-pbe-mach3mig})\footnote{Although this combination works,
+  there are several serious message encoding issues to be resolved: most
+  notably, the encodings of interface and operation identifiers.};
+
+  \item CORBA-style stubs using Trapeze (\program{flick-c-pfe-corba} with
+  \program{flick-c-pbe-trapeze}); and
+
+  \item ONC~RPC-style stubs using Trapeze (\program{flick-c-pfe-sun} with
+  \program{flick-c-pbe-trapeze}).
+\end{itemize}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

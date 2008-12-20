@@ -1,0 +1,395 @@
+%k 10000
+%n 5000
+%a 20000
+%e 10000
+%p 25000
+
+Ident		([A-Za-z_][A-Za-z_0-9]*)
+Number		([0-9]+)
+String		([-/._$A-Za-z0-9]+)
+QString		(\"[^"\n]*\")
+AString		(\<[^>\n]*\>)
+FileName	({QString}|{AString})
+
+%{
+/*
+ * Copyright (c) 1997, 1999 The University of Utah and
+ * the Computer Systems Laboratory at the University of Utah (CSL).
+ *
+ * This file is part of Flick, the Flexible IDL Compiler Kit.
+ *
+ * Flick is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Flick is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Flick; see the file COPYING.  If not, write to
+ * the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+ */
+
+/* 
+ * Mach Operating System
+ * Copyright (c) 1991,1990 Carnegie Mellon University
+ * All Rights Reserved.
+ * 
+ * Permission to use, copy, modify and distribute this software and its
+ * documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ * 
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS"
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
+ * ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ * 
+ * Carnegie Mellon requests users of this software to return to
+ * 
+ *  Software Distribution Coordinator  or  Software.Distribution@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ * 
+ * any improvements or extensions that they make and grant Carnegie Mellon
+ * the rights to redistribute these changes.
+ */
+
+#include <string.h>
+#include <ctype.h>
+
+#include <mom/compiler.h>
+#include <mom/libmeta.h>
+#include <mom/pres_c.h>
+
+#include "mig_string.h"
+#include "type.h"
+#include "statement.h"
+#include "global.h"
+#include "parser.h"
+#include "lexxer.h"
+#include "error.h"
+/* #include "cpu.h" */
+#include "message.h"
+
+#define	stringize(x)	#x
+
+#ifdef	LDEBUG
+#define RETURN(sym)							\
+{									\
+    printf("yylex: returning '%s' (%d)\n", #sym, (sym));	        \
+    gotToken; 							        \
+    return (sym);							\
+}
+#else	/* LDEBUG */
+#define RETURN(sym)	{ gotToken; return (sym); }
+#endif	/* LDEBUG */
+
+#define	TPRETURN(intype, outtype, tsize)				\
+{									\
+    yylval.symtype.innumber = (intype);					\
+    yylval.symtype.instr = stringize(intype);				\
+    yylval.symtype.outnumber = (outtype);				\
+    yylval.symtype.outstr = stringize(outtype);				\
+    yylval.symtype.size = (tsize);					\
+    RETURN(sySymbolicType);						\
+}
+
+#define	TRETURN(type, tsize)	TPRETURN(type,type,tsize)
+
+#define	FRETURN(val)							\
+{									\
+    yylval.flag = (val);						\
+    RETURN(syIPCFlag);							\
+}
+
+extern YYSTYPE yylval;		/* added by rm */
+
+int lineno, savedlineno;
+int tokenpos, nextpos, savedpos;
+data_channel_index current_i_file;
+char *inname;
+extern pres_c_1 out_pres_c;
+
+#ifdef	YY_START
+static int oldYYBegin;
+#define SAVE_BEGIN oldYYBegin = YY_START
+#define RSTR_BEGIN BEGIN oldYYBegin
+#else
+static struct yysvf *oldYYBegin;
+#define SAVE_BEGIN oldYYBegin = yybgin
+#define RSTR_BEGIN yybgin = oldYYBegin;
+#endif
+
+/* process body of # directives */
+static void doSharp(const char *body, int len);
+void yyerror(const char *s);
+
+/*
+ * We don't need `yyunput' from Flex, so we define `YY_NO_UNPUT' to remove its
+ * definition and thus avoid a compile-time warning about not using that static
+ * function.
+ */
+#define YY_NO_UNPUT
+%}
+
+%Start	Normal String FileName QString SkipToEOL
+
+%%
+
+<Normal>[Rr][Oo][Uu][Tt][Ii][Nn][Ee]		RETURN(syRoutine);
+<Normal>[Ff][Uu][Nn][Cc][Tt][Ii][Oo][Nn]	RETURN(syFunction);
+<Normal>[Pp][Rr][Oo][Cc][Ee][Dd][Uu][Rr][Ee]	RETURN(syProcedure);
+<Normal>[Ss][Ii][Mm][Pp][Ll][Ee][Pp][Rr][Oo][Cc][Ee][Dd][Uu][Rr][Ee] RETURN(sySimpleProcedure);
+<Normal>[Ss][Ii][Mm][Pp][Ll][Ee][Rr][Oo][Uu][Tt][Ii][Nn][Ee] RETURN(sySimpleRoutine);
+<Normal>[Ss][Uu][Bb][Ss][Yy][Ss][Tt][Ee][Mm]	RETURN(sySubsystem);
+<Normal>[Mm][Ss][Gg][Oo][Pp][Tt][Ii][Oo][Nn]	RETURN(syMsgOption);
+<Normal>[Mm][Ss][Gg][Ss][Ee][Qq][Nn][Oo]	RETURN(syMsgSeqno);
+<Normal>[Ww][Aa][Ii][Tt][Tt][Ii][Mm][Ee]	RETURN(syWaitTime);
+<Normal>[Nn][Oo][Ww][Aa][Ii][Tt][Tt][Ii][Mm][Ee]	RETURN(syNoWaitTime);
+<Normal>[Ii][Nn]				RETURN(syIn);
+<Normal>[Oo][Uu][Tt]				RETURN(syOut);
+<Normal>[Ii][Nn][Oo][Uu][Tt]			RETURN(syInOut);
+<Normal>[Rr][Ee][Qq][Uu][Ee][Ss][Tt][Pp][Oo][Rr][Tt]	RETURN(syRequestPort);
+<Normal>[Rr][Ee][Pp][Ll][Yy][Pp][Oo][Rr][Tt]		RETURN(syReplyPort);
+<Normal>[Uu][Rr][Ee][Pp][Ll][Yy][Pp][Oo][Rr][Tt]	RETURN(syUReplyPort);
+<Normal>[Ss][Rr][Ee][Pp][Ll][Yy][Pp][Oo][Rr][Tt]	RETURN(sySReplyPort);
+<Normal>[Aa][Rr][Rr][Aa][Yy]			RETURN(syArray);
+<Normal>[Oo][Ff]				RETURN(syOf);
+<Normal>[Ee][Rr][Rr][Oo][Rr]			RETURN(syErrorProc);
+<Normal>[Ss][Ee][Rr][Vv][Ee][Rr][Pp][Rr][Ee][Ff][Ii][Xx] RETURN(syServerPrefix);
+<Normal>[Uu][Ss][Ee][Rr][Pp][Rr][Ee][Ff][Ii][Xx]	RETURN(syUserPrefix);
+<Normal>[Ss][Ee][Rr][Vv][Ee][Rr][Dd][Ee][Mm][Uu][Xx]	RETURN(syServerDemux);
+<Normal>[Rr][Cc][Ss][Ii][Dd]			RETURN(syRCSId);
+<Normal>[Ii][Mm][Pp][Oo][Rr][Tt]		RETURN(syImport);
+<Normal>[Uu][Ii][Mm][Pp][Oo][Rr][Tt]		RETURN(syUImport);
+<Normal>[Ss][Ii][Mm][Pp][Oo][Rr][Tt]		RETURN(sySImport);
+<Normal>[Tt][Yy][Pp][Ee]			RETURN(syType);
+<Normal>[Kk][Ee][Rr][Nn][Ee][Ll][Ss][Ee][Rr][Vv][Ee][Rr] RETURN(syKernelServer);
+<Normal>[Kk][Ee][Rr][Nn][Ee][Ll][Uu][Ss][Ee][Rr]	RETURN(syKernelUser);
+<Normal>[Ss][Kk][Ii][Pp]			RETURN(sySkip);
+<Normal>[Ss][Tt][Rr][Uu][Cc][Tt]		RETURN(syStruct);
+<Normal>[Ii][Nn][Tt][Rr][Aa][Nn]		RETURN(syInTran);
+<Normal>[Oo][Uu][Tt][Tt][Rr][Aa][Nn]		RETURN(syOutTran);
+<Normal>[Dd][Ee][Ss][Tt][Rr][Uu][Cc][Tt][Oo][Rr]	RETURN(syDestructor);
+<Normal>[Cc][Tt][Yy][Pp][Ee]				RETURN(syCType);
+<Normal>[Cc][Uu][Ss][Ee][Rr][Tt][Yy][Pp][Ee]		RETURN(syCUserType);
+<Normal>[Cc][Ss][Ee][Rr][Vv][Ee][Rr][Tt][Yy][Pp][Ee]	RETURN(syCServerType);
+<Normal>[Cc]_[Ss][Tt][Rr][Ii][Nn][Gg]			RETURN(syCString);
+
+<Normal>[Ii][Ss][Ll][Oo][Nn][Gg]		FRETURN(flLong);
+<Normal>[Ii][Ss][Nn][Oo][Tt][Ll][Oo][Nn][Gg]	FRETURN(flNotLong);
+<Normal>[Dd][Ee][Aa][Ll][Ll][Oo][Cc]		FRETURN(flDealloc);
+<Normal>[Nn][Oo][Tt][Dd][Ee][Aa][Ll][Ll][Oo][Cc] FRETURN(flNotDealloc);
+<Normal>[Ss][Ee][Rr][Vv][Ee][Rr][Cc][Oo][Pp][Yy] FRETURN(flServerCopy);
+<Normal>[Cc][Oo][Uu][Nn][Tt][Ii][Nn][Oo][Uu][Tt] FRETURN(flCountInOut);
+
+<Normal>[Pp][Oo][Ll][Yy][Mm][Oo][Rr][Pp][Hh][Ii][Cc]	TRETURN(MACH_MSG_TYPE_POLYMORPHIC, word_size_in_bits);
+
+<Normal>"MACH_MSG_TYPE_UNSTRUCTURED"	TRETURN(MACH_MSG_TYPE_UNSTRUCTURED,0);
+<Normal>"MACH_MSG_TYPE_BIT"		TRETURN(MACH_MSG_TYPE_BIT,1);
+<Normal>"MACH_MSG_TYPE_BOOLEAN"		TRETURN(MACH_MSG_TYPE_BOOLEAN,32);
+<Normal>"MACH_MSG_TYPE_INTEGER_16"	TRETURN(MACH_MSG_TYPE_INTEGER_16,16);
+<Normal>"MACH_MSG_TYPE_INTEGER_32"	TRETURN(MACH_MSG_TYPE_INTEGER_32,32);
+<Normal>"MACH_MSG_TYPE_INTEGER_64"	TRETURN(MACH_MSG_TYPE_INTEGER_64,64);
+<Normal>"MACH_MSG_TYPE_CHAR"		TRETURN(MACH_MSG_TYPE_CHAR,8);
+<Normal>"MACH_MSG_TYPE_BYTE"		TRETURN(MACH_MSG_TYPE_BYTE,8);
+<Normal>"MACH_MSG_TYPE_INTEGER_8"	TRETURN(MACH_MSG_TYPE_INTEGER_8,8);
+<Normal>"MACH_MSG_TYPE_REAL"		TRETURN(MACH_MSG_TYPE_REAL,0);
+<Normal>"MACH_MSG_TYPE_STRING"		TRETURN(MACH_MSG_TYPE_STRING,0);
+<Normal>"MACH_MSG_TYPE_STRING_C"	TRETURN(MACH_MSG_TYPE_STRING_C,0);
+
+<Normal>"MACH_MSG_TYPE_MOVE_RECEIVE"	TPRETURN(MACH_MSG_TYPE_MOVE_RECEIVE,MACH_MSG_TYPE_PORT_RECEIVE, word_size_in_bits);
+<Normal>"MACH_MSG_TYPE_COPY_SEND"	TPRETURN(MACH_MSG_TYPE_COPY_SEND,MACH_MSG_TYPE_PORT_SEND, word_size_in_bits);
+<Normal>"MACH_MSG_TYPE_MAKE_SEND"	TPRETURN(MACH_MSG_TYPE_MAKE_SEND,MACH_MSG_TYPE_PORT_SEND, word_size_in_bits);
+<Normal>"MACH_MSG_TYPE_MOVE_SEND"	TPRETURN(MACH_MSG_TYPE_MOVE_SEND,MACH_MSG_TYPE_PORT_SEND, word_size_in_bits);
+<Normal>"MACH_MSG_TYPE_MAKE_SEND_ONCE"	TPRETURN(MACH_MSG_TYPE_MAKE_SEND_ONCE,MACH_MSG_TYPE_PORT_SEND_ONCE, word_size_in_bits);
+<Normal>"MACH_MSG_TYPE_MOVE_SEND_ONCE"	TPRETURN(MACH_MSG_TYPE_MOVE_SEND_ONCE,MACH_MSG_TYPE_PORT_SEND_ONCE, word_size_in_bits);
+
+<Normal>"MACH_MSG_TYPE_PORT_NAME"	TRETURN(MACH_MSG_TYPE_PORT_NAME, word_size_in_bits);
+<Normal>"MACH_MSG_TYPE_PORT_RECEIVE"	TPRETURN(MACH_MSG_TYPE_POLYMORPHIC,MACH_MSG_TYPE_PORT_RECEIVE, word_size_in_bits);
+<Normal>"MACH_MSG_TYPE_PORT_SEND"	TPRETURN(MACH_MSG_TYPE_POLYMORPHIC,MACH_MSG_TYPE_PORT_SEND, word_size_in_bits);
+<Normal>"MACH_MSG_TYPE_PORT_SEND_ONCE"	TPRETURN(MACH_MSG_TYPE_POLYMORPHIC,MACH_MSG_TYPE_PORT_SEND_ONCE, word_size_in_bits);
+<Normal>"MACH_MSG_TYPE_POLYMORPHIC"	TRETURN(MACH_MSG_TYPE_POLYMORPHIC, word_size_in_bits);
+
+"/*"			{ int prevchar = 0, currchar;
+                          gotToken;
+			  for (;;) {
+			      currchar = input();
+			      incNextPos;
+			      if (currchar == EOF)
+				  break;
+			      if (currchar == '\n') {
+				  ++lineno;
+				  nextpos = 0;
+				  tokenpos = 0;
+			      }
+			      else if (currchar == '\t')
+				      nextpos += (8 - 1) - ((nextpos-1) & 7);
+			      else if (prevchar == '/' && currchar == '*') {
+				      tokenpos = nextpos-2; 
+				      warn("contains nested comment");
+			      }
+			      else if ((currchar == '/') && (prevchar == '*'))
+				  break;
+			      prevchar = currchar;
+			  }
+			}
+
+<Normal>":"		RETURN(syColon);
+<Normal>";"		RETURN(sySemi);
+<Normal>","		RETURN(syComma);
+<Normal>"+"		RETURN(syPlus);
+<Normal>"-"		RETURN(syMinus);
+<Normal>"*"		RETURN(syStar);
+<Normal>"/"		RETURN(syDiv);
+<Normal>"("		RETURN(syLParen);
+<Normal>")"		RETURN(syRParen);
+<Normal>"="		RETURN(syEqual);
+<Normal>"^"		RETURN(syCaret);
+<Normal>"~"		RETURN(syTilde);
+<Normal>"<"		RETURN(syLAngle);
+<Normal>">"		RETURN(syRAngle);
+<Normal>"["		RETURN(syLBrack);
+<Normal>"]"		RETURN(syRBrack);
+<Normal>"|"		RETURN(syBar);
+
+<Normal>{Ident}		{ yylval.identifier = strmake(yytext);
+			  RETURN(syIdentifier); }
+<Normal>{Number}	{ yylval.number = atoi(yytext); RETURN(syNumber); }
+
+<String>{String}	{ yylval.string = strmake(yytext);
+			  BEGIN Normal; RETURN(syString); }
+<FileName>{FileName}	{ yylval.string = strmake(yytext);
+			  BEGIN Normal; RETURN(syFileName); }
+<QString>{QString}	{ yylval.string = strmake(yytext);
+			  BEGIN Normal; RETURN(syQString); }
+
+^\#[ \t]*{Number}[ \t]*\"[^"]*\"	{ doSharp(yytext+1, yyleng-1);
+					  SAVE_BEGIN;
+					  BEGIN SkipToEOL; }
+^\#\ *{Number}				{ doSharp(yytext+1, yyleng-1);
+					  SAVE_BEGIN;
+					  BEGIN SkipToEOL; }
+^\#					{ /*
+					   * Don't warn about unrecognized CPP
+					   * directives; just ignore them.
+					   */
+					  /* yyerror("illegal # directive"); */
+					  SAVE_BEGIN;
+					  BEGIN SkipToEOL; }
+
+<SkipToEOL>\n		RSTR_BEGIN;
+<SkipToEOL>.		;
+
+[ \t]			{ gotTokenAndWhite; }
+\n			{ lineno++;	  tokenpos = nextpos = 0; }
+.			{ BEGIN Normal; RETURN(syError); }
+
+%%
+
+extern void
+LookNormal(void)
+{
+    if (inname == 0)
+    {
+	inname = strmake("(unknown)");
+	lineno = 0;
+    }
+
+    BEGIN Normal;
+}
+
+extern void
+LookString(void)
+{
+    BEGIN String;
+}
+
+extern void
+LookQString(void)
+{
+    BEGIN QString;
+}
+
+extern void
+LookFileName(void)
+{
+    BEGIN FileName;
+}
+
+static void
+doSharp(const char *body, int len)
+{
+    register const char *startName;
+    
+    lineno = atoi(body);
+    startName = strchr(body, '"');
+    if (startName != NULL)
+    {
+	data_channel_index last_i_file = current_i_file;
+        char *end;
+        int flag = 0, i;
+        
+        end = strrchr(body, '"');
+	*end = '\0';
+	strfree(inname);
+	inname = strmake(startName+1);
+        for( i = (end - body);
+             (i < len) && ((body[i] == ' ') || (body[i] == '\t'));
+             i++ );
+        if( isdigit(body[i]) ) {
+            flag = atoi(&body[i]);
+        }
+	
+	/*
+	 * Since the root filename was purged of its path, we have to make sure
+	 * that we don't try to add the full-path version.  Also, if the root
+	 * file includes another file in the same directory or a subdirectory,
+	 * then we strip off the pathname of that file, too.
+	 *
+	 * XXX - This isn't the whole solution.  If the root file includes a
+	 * file relative to the parent directory (".."), then the preprocessor
+	 * may give us only the exact path of the file, not the relative path.
+	 * What we really want is the text inside the #include directive,
+	 * rather than exact paths, perhaps with additional information as to
+	 * which are system files and user files (e.g. whether included with <>
+	 * or "").  Unfortunately, the preprocessor does away with the #include
+	 * lines, and only gives us a relative or full pathname, although gcc
+	 * is at least gracious enough to also indicate system include files.
+	 */
+	if (strcmp(inname, root_filename) != 0) {
+	    const char *root_dir = dir_part(root_filename);
+	    int dir_len = strlen(root_dir);
+	    
+	    if ((dir_len > 0)
+		&& (strncmp(inname, root_dir, dir_len) == 0)) {
+		current_i_file = meta_add_file(&out_pres_c.meta_data,
+					       muststrdup(inname + dir_len+1),
+					       IO_FILE_INPUT);
+	    } else {
+		current_i_file = meta_add_file(&out_pres_c.meta_data,
+					       muststrdup(inname),
+					       IO_FILE_INPUT);
+	    }
+	} else {
+	    current_i_file = root_file;
+	}
+	
+        switch( flag ) {
+        case 1:
+	    break;
+	case 2:
+	    meta_include_file(&out_pres_c.meta_data,
+			      current_i_file,
+			      last_i_file);
+	    break;
+	default:
+	    break;
+        }
+    }
+}

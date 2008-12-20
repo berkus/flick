@@ -1,0 +1,3 @@
+This directory contains data creation and manipulation routines for the MINT
+data format.  It is used extensively throughout presentation generation and
+back end code generation.

@@ -1,0 +1,3 @@
+This directory contains code for Flick's front ends, which translate from some
+IDL (CORBA IDL, ONC RPC IDL, MIG IDL, ...) to AOI.  Actually, the MIG front end
+skips over AOI and generates PRES_C directly.

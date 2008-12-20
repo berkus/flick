@@ -1,0 +1,4 @@
+This directory contains Flick's ONC RPC (a.k.a. Sun RPC) IDL front end, which
+translates ONC RPC IDL files into AOI files.  This front end uses the original
+`rpcgen' code to parse the IDL; Flick-specific code then translates the parse
+tree into AOI format.

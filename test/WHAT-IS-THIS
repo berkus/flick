@@ -1,0 +1,7 @@
+This directory is the root of test tree.  The structure of the test directory
+tree is patterned after the stages of the Flick compiler.  There are separate
+directories to hold the results of each front end, presentation generator, and
+back end.  The output from each stage can be verified against known-good copies
+of the output files.  Driver programs are compiled and linked separately.
+There is a Makefile in the root of the testing tree that simplifies the testing
+process, and a README file to explain everything.

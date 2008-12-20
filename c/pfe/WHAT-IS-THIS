@@ -1,0 +1,3 @@
+This directory contains all of the code (except for common data structure
+manipulation libraries) for translation from AOI to PRES_C.  This is called the
+``presentation generation'' phase of IDL compilation.

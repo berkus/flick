@@ -1,0 +1,757 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1996, 1999 The University of Utah and the Computer Systems
+%% Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{Front Ends}
+\label{cha:FE}
+
+A Flick front end is a program that reads an \IDL{} source file and from that
+produces an internal representation of the described interfaces.  There is a
+separate front end for each \IDL{} that Flick understands: one for the \CORBA{}
+\IDL{}, a second for the \ONCRPC{} (a.k.a. Sun~\RPC{}) \IDL{}, and a third for
+the Mach \MIG{} \IDL{}.
+
+The \CORBA{} and \ONCRPC{} front ends translate \IDL{} files into Flick's
+\AOI{} representation, whereas the \MIG{} front end translates its inputs into
+Flick's \PRESC{} representation.  The difference is due to the nature of the
+three languages.
+%
+The \CORBA{} and \ONCRPC{} \IDL{}s are ``pure'' interface description languages
+in that they describe interfaces only in abstract terms.  In other words, a
+\CORBA{} or \ONCRPC{} \IDL{} file does not specify how its \IDL{} constructs
+are to be translated into constructs of another programming language (e.g., C
+or C++).  Because \CORBA{} and \ONCRPC{} interface descriptions are free from
+translation details, a \CORBA{} or \ONCRPC{} \IDL{} file can be completely
+translated --- without loss of information --- into a representation in Flick's
+\AOI{} format.
+%
+In contrast, a \MIG{} \IDL{} specification commonly describes how the interface
+is to be translated into C functions and data types.  For example, the \MIG{}
+\IDL{} keywords \idl{cusertype} and \idl{cservertype} specify how a \MIG{}
+\IDL{} type will be translated into the generated client-side and server-side
+code!  Because \MIG{} interface specifications are littered with these kinds of
+mapping-detail ``impurities,'' \MIG{} \IDL{} cannot generally be translated
+into \AOI{} without loss of information.  Therefore, Flick's \MIG{} front end
+skips over the \AOI{} format and generates \PRESC{} directly from \MIG{}
+\IDL{}\@.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Front End Libraries}
+\label{sec:FE:Front End Libraries}
+
+The nature of any compiler front end is that it is structured around the
+compiler's input language.  Because input languages are often quite different
+from each other, and because there are many tools for creating compiler front
+ends (e.g., \program{lex} and \program{yacc}), Flick does not provide any kind
+of shared language-processing library for its front ends.  (The situation is
+quite different for later stages of \IDL{} compilation.  As described in
+Chapters~\ref{cha:PG} and~\ref{cha:BE}, Flick's separate ``presentation
+generators'' and back ends are quite similar to one another, and therefore,
+Flick can provide a great deal of library support for all implementations of
+those compilation steps.)
+
+The library support for Flick's front ends is therefore limited to manipulation
+of common data types, command line parsing, and a few utility functions:
+
+\begin{filenamelist}
+  \item[libflick-aoi.a]
+  %
+  The \AOI{} library provides common functions for manipulating \AOI{} data
+  structures, as described in Chapter~\ref{cha:AOI}.
+
+  \item[libflick-meta.a]
+  %
+  This library contains functions for manipulating file metadata, as described
+  in Chapter~\ref{cha:META}.
+
+  \item[libflick-compiler.a]
+  %
+  This library provides general utility functions that are used by all Flick
+  compiler steps.  Additionally, because there is no library just for front
+  ends, this library also holds a few functions that are really only useful to
+  front ends: e.g., functions to invoke the C and C++ preprocessors
+  (\cfunction{call_c_preprocessor} and \cfunction{call_cxx_preprocessor}) and a
+  function to handle common command line arguments
+  (\cfunction{front_end_args}).  These front-end specific functions should
+  probably be moved into a separate library in the future.
+\end{filenamelist}
+
+Because the \MIG{} front end produces \PRESC{}, it must link with
+\filename{libflick-pres_c.a}, \filename{libflick-mint.a}, and
+\filename{libflick-cast.a} in addition to the libraries listed above.
+
+The next three sections describe each of Flick's front ends.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{CORBA Front End}
+\label{sec:FE:CORBA Front End}
+
+The \CORBA{} front end, contained in the \filename{fe/newcorba} directory, was
+written especially for Flick.  It is a more or less straightforward
+\program{lex}- and \program{yacc}-based program that translates \CORBA{} \IDL{}
+specifications into their \AOI{} equivalents.  The front end generally parses
+\CORBA{}~2.0 \IDL{}, with the addition of the \CORBA{}~2.1 ``\idl{long long}''
+data type.
+
+(Prior to August~1996, Flick's \CORBA{} front end was based on Sun's freely
+available \CORBA{} compiler front end.
+%% XXX --- \cite{}.
+The Sun-based \CORBA{} front end was contained in the \filename{fe/corba}
+directory; hence, the new front end went into \filename{fe/newcorba}.  Although
+the Sun-based \CORBA{} front end is still available in the Flick CVS archives,
+it is not distributed as part of Flick, and it has not been maintained since
+1996.)
+
+%% This is basically two tables in one: the mappings of CORBA IDL definitions,
+%% followed by the mappings of CORBA IDL types.
+%%
+\begin{table}
+  \begin{center}
+    \small
+    \begin{tabular}{|l|l|}
+      \hline
+      \CORBA{} \IDL{} Declaration & \AOI{} Definition (\ctype{aoi_def}) Type \\
+      \hline
+      \idl{module}                & \cidentifier{AOI_NAMESPACE} \\
+      \idl{interface}             & \cidentifier{AOI_INTERFACE} or
+                                    \cidentifier{AOI_FWD_INTRFC} \\
+      \emph{operation}            & an \ctype{aoi_operation} within an
+                                    \cidentifier{AOI_INTERFACE} \\
+      \emph{attribute}            & an \ctype{aoi_attribute} within an
+                                    \cidentifier{AOI_INTERFACE} \\
+
+      & \\
+      \idl{typedef}               & \emph{see specific types, below} \\
+      \idl{struct}                & \cidentifier{AOI_STRUCT} \\
+      \idl{union}                 & \cidentifier{AOI_UNION} \\
+      \idl{enum}                  & \cidentifier{AOI_ENUM} \\
+      \idl{native}                & \emph{not supported} \\
+
+      & \\
+      \idl{const}                 & \cidentifier{AOI_CONST} \\
+      \idl{exception}             & \cidentifier{AOI_EXCEPTION} \\
+      \hline
+      %
+      \multicolumn{2}{l}{}\\
+      %
+      \hline
+      \CORBA{} \IDL{} Type        & \AOI{} Type \\
+      \hline
+      \idl{void}                  & \cidentifier{AOI_VOID} \\
+      \idl{boolean}               & \cidentifier{AOI_INTEGER},
+                                    min $0$, range $1$ \\
+      \idl{char}                  & \cidentifier{AOI_CHAR},
+                                    8 bits, no flags \\
+      \idl{wchar}                 & \emph{not supported} \\
+      \idl{enum}                  & \emph{see declarations, above} \\
+
+      & \\
+      \idl{octet}                 & \cidentifier{AOI_INTEGER},
+                                    min $0$, range $2^{8}-1$ \\
+      \idl{short}                 & \cidentifier{AOI_INTEGER},
+                                    min $-2^{15}$, range $2^{16}-1$ \\
+      \idl{unsigned short}        & \cidentifier{AOI_INTEGER},
+                                    min $0$, range $2^{16}-1$ \\
+      \idl{long}                  & \cidentifier{AOI_INTEGER},
+                                    min $-2^{31}$, range $2^{32}-1$ \\
+      \idl{unsigned long}         & \cidentifier{AOI_INTEGER},
+                                    min $0$, range $2^{32}-1$ \\
+      \idl{long long}             & \cidentifier{AOI_SCALAR},
+                                    64 bits, no flags \\
+      \idl{unsigned long long}    & \cidentifier{AOI_SCALAR},
+                                    64 bits, unsigned \\
+
+      & \\
+      \idl{float}                 & \cidentifier{AOI_FLOAT},
+                                    32 bits \\
+      \idl{double}                & \cidentifier{AOI_FLOAT},
+                                    64 bits \\
+      \idl{long double}           & \emph{not supported} \\
+      \idl{fixed}                 & \emph{not supported} \\
+
+      & \\
+      \emph{fixed-length array}   & \cidentifier{AOI_ARRAY}
+                                    of element type \\
+      \idl{sequence}              & \cidentifier{AOI_ARRAY}
+                                    of element type \\
+      \idl{string}                & \cidentifier{AOI_ARRAY}
+                                    of \cidentifier{AOI_CHAR},
+                                    with null-termination flag \\
+      \idl{wstring}               & \emph{not supported} \\
+      \idl{struct}                & \emph{see declarations, above} \\
+      \idl{union}                 & \emph{see declarations, above} \\
+
+      & \\
+      \idl{Object}                & \cidentifier{AOI_INDIRECT} to built-in
+                                    \idl{CORBA::Object} definition \\
+      \idl{any}                   & \cidentifier{AOI_TYPED} \\
+      \idl{CORBA::TypeCode}       & \cidentifier{AOI_TYPE_TAG} \\
+
+      & \\
+      \emph{use of named type}    & \cidentifier{AOI_INDIRECT}
+                                    to \ctype{aoi_def} that defines the type \\
+      \hline
+    \end{tabular}
+  \end{center}
+  \caption{Mapping of \CORBA{} \IDL{} Declarations and Types to \AOI{}\@.}
+  \label{table:FE:CORBA to AOI}
+\end{table}
+
+The mapping from \CORBA{} \IDL{} to \AOI{} is straightforward, since many of
+the notions in \AOI{} were in fact based on their \CORBA{} equivalents.
+Table~\ref{table:FE:CORBA to AOI} summarizes the translation of top-level
+\CORBA{} \IDL{} declarations into \AOI{} definitions, and of specific \CORBA{}
+\IDL{} types into \AOI{} types.  \IDL{} constant values (e.g., \idl{7},
+\idl{TRUE}) are of course translated into equivalent \AOI{} literal constants.
+Most \IDL{} declarations translate into \AOI{} \ctype{aoi_def}s that associate
+the appropriate names and definitions.  \IDL{} operations and attributes, for
+historical reasons, are different, and are translated into special
+\ctype{aoi_operation} and \ctype{aoi_attribute} structures.  Note that certain
+\IDL{} constructs and types, introduced after \CORBA{}~2.0, are not yet
+supported.
+%
+For further details about \AOI{}, refer to Chapter~\ref{cha:AOI}.
+
+A few additional comments about the \CORBA{} front end:
+
+\begin{description}
+  \item[Scoping.]
+  %
+  Although Flick generally accepted the \CORBA{}~2.0 \IDL{}, the front end
+  implements some scoping rules from later versions of the language
+  (\CORBA{}~2.3).  For instance, the name of an interface cannot be redefined
+  within the immediate scope of that interface.  Many other features of
+  \CORBA{}~2.3, such as escaped identifiers, are \emph{not} yet supported.
+
+  \item[\texttt{\#}\idl{pragma} Directives.]
+  %
+  Flick does not yet support the \idl{pragma} directives defined for \CORBA{}
+  \IDL{}\@.
+
+  \item[\idl{context} Clauses.]
+  %
+  Flick's \CORBA{} front end does not support \idl{context} clauses.  It would
+  be relatively simple to extend \AOI{} to support context variables, but
+  nobody uses them anyway.
+\end{description}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{ONC RPC (Sun) Front End}
+\label{sec:FE:ONC RPC (Sun) Front End}
+
+The \ONCRPC{} front end, contained in the \filename{fe/sun} directory, is
+derived from the 1988 ``RPCSRC~4.0'' version of Sun's \rpcgen{} program.  The
+principal modification is that original \rpcgen{} back end has been removed and
+replaced with a custom ``back end'' that generates \AOI{}\@.  Other minor
+modifications have updated the 1988 code for ANSI~C, fixed bugs, and so on.
+%
+The \ONCRPC{} front end's scanner and parser are hand-coded --- largely
+unmodified from the original \rpcgen{} code --- and produce a linked list of
+\ctype{definition} structures.  The Flick-specific ``back end,'' contained in
+\filename{fe/sun/xlate.c}, simply translates this list of definitions into the
+equivalent \AOI{} structures.
+
+\begin{table}
+  %% Fancy footnotes at work.  Hence, the `minipage' and the extra counters.
+  \begin{minipage}{\linewidth}
+  \renewcommand{\thefootnote}{\thempfootnote}
+  \newcounter{iskeyword}
+  \newcounter{isalias}
+  %%
+  \begin{center}
+    \small
+    \begin{tabular}{|l|l|}
+      \hline
+      \ONCRPC{} \IDL{} Declaration        & \AOI{} Definition (\ctype{aoi_def})
+                                            Type \\
+      \hline
+      \idl{program}                       & \cidentifier{AOI_INTERFACE}
+                                            (\emph{not}
+                                            \cidentifier{AOI_NAMESPACE}) \\
+      \idl{version}                       & \cidentifier{AOI_INTERFACE} \\
+      \emph{procedure}                    & an \ctype{aoi_operation} within an
+                                            \cidentifier{AOI_INTERFACE} \\
+
+      & \\
+      \idl{typedef}                       & \emph{see specific types, below} \\
+      \idl{struct}                        & \cidentifier{AOI_STRUCT} \\
+      \idl{union}                         & \cidentifier{AOI_UNION} \\
+      \idl{enum}                          & \cidentifier{AOI_ENUM} \\
+
+      & \\
+      \idl{const}                         & \cidentifier{AOI_CONST} \\
+      \hline
+      %
+      \multicolumn{2}{l}{}\\
+      %
+      \hline
+      \ONCRPC{} \IDL{} Type               & \AOI{} Type \\
+      \hline
+      \idl{void}                          & \cidentifier{AOI_VOID} \\
+      \idl{bool}                          & \cidentifier{AOI_INTEGER},
+                                            min $0$, range $1$ \\
+      \idl{char}%
+        \footnote{This type is not part
+        of the \ONCRPC{} \IDL{} defined
+        by RFC~1831,
+        %% XXX --- \cite{}.
+        but is recognized as a keyword
+        by \rpcgen{}.}%
+        \setcounter{iskeyword}%
+          {\value{mpfootnote}}            & \cidentifier{AOI_CHAR} \\
+      \idl{unsigned char}%
+        \footnotemark[\value{iskeyword}],
+      \idl{u_char}%
+        \footnote{This type is not part
+        of the \ONCRPC{} \IDL{} defined
+        by RFC~1831, but is recognized
+        as a built-in alias by
+        \rpcgen{}.}%
+        \setcounter{isalias}%
+          {\value{mpfootnote}}            & \cidentifier{AOI_CHAR},
+                                            with unsigned flag \\
+      \idl{enum}                          & \emph{see declarations, above} \\
+
+      & \\
+      \idl{int}                           & \cidentifier{AOI_INTEGER},
+                                            min $-2^{31}$, range $2^{32}-1$ \\
+      \idl{unsigned int},
+        \idl{u_int}%
+        \footnotemark[\value{isalias}]    & \cidentifier{AOI_INTEGER},
+                                            min $0$, range $2^{32}-1$ \\
+      %% `short int' is also allowed.
+      \idl{short}%
+        \footnotemark[\value{iskeyword}]  & \cidentifier{AOI_INTEGER},
+                                            min $-2^{15}$, range $2^{16}-1$\\
+      %% `unsigned short int' is also allowed.
+      \idl{unsigned short}%
+        \footnotemark[\value{iskeyword}],
+        \idl{u_short}%
+        \footnotemark[\value{isalias}]    & \cidentifier{AOI_INTEGER},
+                                            min $0$, range $2^{16}-1$ \\
+      %% `long int' is also allowed.
+      \idl{long}%
+        \footnotemark[\value{iskeyword}]  & \cidentifier{AOI_INTEGER},
+                                            min $-2^{31}$, range $2^{32}-1$ \\
+      %% `unsigned long int' is also allowed.
+      \idl{unsigned long}%
+        \footnotemark[\value{iskeyword}],
+      \idl{u_long}%
+        \footnotemark[\value{isalias}]    & \cidentifier{AOI_INTEGER},
+                                            min $0$, range $2^{32}-1$ \\
+      %% Is `hyper int' allowed by `rpcgen'?
+      \idl{hyper}                         & \emph{not supported} \\
+      \idl{unsigned hyper}                & \emph{not supported} \\
+
+      & \\
+      \idl{float}                         & \cidentifier{AOI_FLOAT},
+                                            32 bits \\
+      \idl{double}                        & \cidentifier{AOI_FLOAT},
+                                            64 bits \\
+      \idl{quadruple}                     & \emph{not supported} \\
+
+      & \\
+      \emph{fixed-length array}           & \cidentifier{AOI_ARRAY}
+                                            of element type \\
+      \emph{variable-length array}        & \cidentifier{AOI_ARRAY}
+                                            of element type \\
+      \emph{fixed-length} \idl{opaque}    & \cidentifier{AOI_ARRAY}
+                                            of \cidentifier{AOI_INTEGER}
+                                            (min $0$, range $2^{8}-1$)
+                                            % with opaque flag
+                                            \\
+                                            %% AOI_ARRAY_FLAG_OPAQUE is set,
+                                            %% but that flag is obsolete, so
+                                            %% don't mention it here.
+      \emph{variable-length} \idl{opaque} & \cidentifier{AOI_ARRAY}
+                                            of \cidentifier{AOI_INTEGER}
+                                            (min $0$, range $2^{8}-1$)
+                                            % with opaque flag
+                                            \\
+                                            %% AOI_ARRAY_FLAG_OPAQUE is set,
+                                            %% but that flag is obsolete, so
+                                            %% don't mention it here.
+      \idl{string}                        & \cidentifier{AOI_ARRAY}
+                                            of \cidentifier{AOI_CHAR},
+                                            with null-termination flag \\
+      \emph{pointer (a.k.a.\ optional)}   & \cidentifier{AOI_OPTIONAL}
+                                            of member type \\
+      \idl{struct}                        & \emph{see declarations, above} \\
+      \idl{union}                         & \emph{see declarations, above} \\
+
+      & \\
+      \emph{use of named type}            & \cidentifier{AOI_INDIRECT} to
+                                            \ctype{aoi_def} that defines the
+                                            type \\
+      \hline
+    \end{tabular}
+  \end{center}
+  \end{minipage}
+  \caption{Mapping of \ONCRPC{} \IDL{} Declarations and Types to \AOI{}\@.}
+  \label{table:FE:ONCRPC to AOI}
+\end{table}
+
+As with \CORBA{} \IDL{}, the mapping from \ONCRPC{} \IDL{} to \AOI{} is more or
+less straightforward, and is summarized in Table~\ref{table:FE:ONCRPC to AOI}.
+Because Flick's \ONCRPC{} front end is based on a relatively old version of
+\rpcgen{}, it parses an old version of the \IDL{} that predates the current
+language defined by RFC~1831.  In practice, this means:
+
+\begin{itemize}
+  \item Flick's \ONCRPC{} front end allows at most one parameter to be passed
+  to any procedure.  (The newer \IDL{} allows multiple parameters.)
+
+  \item Flick does not recognize the \idl{hyper} and \idl{quadruple} types,
+  which were introduced in later versions of \rpcgen{}.
+\end{itemize}
+
+Flick accepts the various \IDL{} ``extensions'' that are generally accepted by
+\rpcgen{}, as outlined in Table~\ref{table:FE:ONCRPC to AOI}.  Flick does not,
+however, support `\idl{%}' directives in \ONCRPC{} \IDL{} files.  These
+directives tell \rpcgen{} to pass text directly into the generated output file.
+Since Flick's \ONCRPC{} front end produces \AOI{}, there is nowhere to store
+literal code, and so Flick simply discards these directives.
+
+Finally, here are a few interesting observations about the \ONCRPC{} front end:
+
+\begin{description}
+  %%
+  %% If you fix the following, fix the corresponding text in `aoi.tex', too!
+  %%
+  \item[\idl{program} and \idl{version} Declarations.]
+  %
+  A \idl{program} declaration is represented in \AOI{} as an (empty)
+  \cidentifier{AOI_INTERFACE}, not as an \cidentifier{AOI_NAMESPACE}.  This is
+  partly historical --- the \ONCRPC{} front end was created before namespaces
+  were represented in \AOI{} --- and partly because there is nowhere to store
+  an \ONCRPC{} program identifier in an \cidentifier{AOI_NAMESPACE} definition.
+  A \idl{version} declaration is represented as an \cidentifier{AOI_INTERFACE}
+  that inherits from the interface corresponding to the containing
+  \idl{program} declaration.  The \AOI{} representation of \ONCRPC{}
+  \idl{program} and \idl{version} declarations should be changed in the future;
+  this would for example allow one to make a \CORBA{}-style presentation of an
+  \ONCRPC{} \IDL{}-defined interface.
+
+  \item[\idl{long} Versus \idl{int}.]
+  %
+  Although \idl{long} is not properly part of the \ONCRPC{} \IDL{}, \rpcgen{}
+  accepts \idl{long} as a built-in type and maps it to the C language
+  \ctype{long} type.  Flick, however, is unable to treat \idl{long} and
+  \idl{int} declarations separately.  Flick's \ONCRPC{} presentation generator
+  (described in Section~\ref{subsec:PG:ONC RPC Presentation Generator}) must
+  map both of these types to C \ctype{int}, because Flick's \ONCRPC{} front end
+  maps both \IDL{} types to a single \AOI{} type.  Fixing this would require a
+  change to \AOI{}, i.e., extending \cidentifier{AOI_INTEGER} definitions to
+  keep track of whether the type was explicitly long (or short, or unsigned,
+  or\ldots{}).
+
+  \item[\idl{const} Declarations.]
+  %
+  %% XXX --- \cite{} for RFC 1832 and ``more recent ONC documentation'' (i.e.,
+  %% _ONC+_Developer's_Guide_, Sun Microsystems, 1995, page 233.
+  RFC~1832 is unclear about the types of constants; more recent \ONC{}
+  documentation states that ``symbolic constants may be used wherever an
+  integer constant is used.''  Nevertheless, \rpcgen{} and Flick's \ONCRPC{}
+  front end both allow literal string constants to be defined.  Unlike
+  \rpcgen{}, Flick disallows forward and undefined-but-unused constant
+  declarations; the value of a constant must be determinable when the constant
+  is declared.  Thus, the following declarations will be accepted by \rpcgen{}
+  but rejected by Flick:
+
+\begin{verbatim}
+   const a = b; const b = 1; /* ``Forward'' declaration of `b'.  */
+   const bar = foo; /* `foo' undefined, but `bar' is never used. */
+\end{verbatim}
+
+  \rpcgen{} accepts these kinds of weird declarations simply because it doesn't
+  do anything interesting with them.
+
+  %%
+  %% If you remove `AOI_ARRAY_FLAG_OPAQUE', fix `aoi.tex', too!
+  %%
+  \item[\idl{opaque} Array Flags.]
+  %
+  The front end sets the \cidentifier{AOI_ARRAY_FLAG_OPAQUE} flag on
+  \idl{opaque} arrays, although this flag is obsolete in the current version of
+  Flick.
+\end{description}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{MIG Front End}
+\label{sec:FE:MIG Front End}
+
+The \MIG{} front end, contained in the \filename{fe/mig} directory, is derived
+from the original \MIG{} \IDL{} compiler written by Carnegie Mellon University.
+Many files are copyrighted by CMU:
+
+%% Read the notice below!  I interpret it to mean that we are required to
+%% reproduce it here, since this is ``supporting documentation.''
+
+\begin{verbatim}
+/*
+ * Mach Operating System
+ * Copyright (c) 1991,1990 Carnegie Mellon University
+ * All Rights Reserved.
+ *
+ * Permission to use, copy, modify and distribute this software and its
+ * documentation is hereby granted, provided that both the copyright
+ * notice and this permission notice appear in all copies of the
+ * software, derivative works or modified versions, and any portions
+ * thereof, and that both notices appear in supporting documentation.
+ *
+ * CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS
+ * CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
+ * ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ *
+ * Carnegie Mellon requests users of this software to return to
+ *
+ *  Software Distribution Coordinator  or  Software.Distribution@CS.CMU.EDU
+ *  School of Computer Science
+ *  Carnegie Mellon University
+ *  Pittsburgh PA 15213-3890
+ *
+ * any improvements or extensions that they make and grant Carnegie the
+ * rights to redistribute these changes.
+ */
+\end{verbatim}
+
+Flick's \MIG{} front end was created by replacing \MIG{}'s original back end
+with a new ``back end'' that produces \PRESC{} files instead of C language
+stubs.  As described previously, Flick's \MIG{} front end produces \PRESC{}
+instead of \AOI{} because the \MIG{} \IDL{} allows a programmer to specify how
+\IDL{} constructs should be mapped onto the C language.  In essence, this means
+that Flick's \MIG{} front end is also a ``presentation generator'' as described
+in Chapter~\ref{cha:PG}.
+
+Except for minor maintenance (e.g., updates for ANSI C), the basic scanning and
+parsing functions are essentially unchanged from the original \MIG{} source
+code.  The presentation generator functions of Flick's \MIG{} front end are
+described in Section~\ref{subsec:PG:MIG Presentation Generator}.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Summary and Comments}
+\label{sec:FE:Summary and Comments}
+
+The differences between Flick's \CORBA{}, \ONCRPC{}, and \MIG{} front ends
+illustrate an important strength: namely, that by providing multiple
+intermediate representations with differing levels of detail, Flick is able to
+accommodate several very different \IDL{}s.  The differences also highlight a
+potential improvement to Flick: in particular, the need to extend \AOI{} to
+accommodate some sort of ``annotation'' facility that could express \MIG{}'s
+``impure'' constructs.
+%
+The \AOI{} format is critical in order for Flick to provide a large, reusable
+infrastructure for presentation generation, the second stage of \IDL{}
+compilation.  The common presentation generator library is designed to read and
+process \AOI{} descriptions.  Since Flick's \MIG{} front end does not produce
+\AOI{}, it cannot directly benefit from Flick's common presentation generation
+library, and therefore, the \MIG{} front end has its own, mostly separate
+infrastructure for producing \PRESC{}\@.  This duplication of effort could be
+greatly reduced if it were possible to divide the current \MIG{} front end into
+two programs: a front end producing some sort of annotated \AOI{}, and a
+separate presentation generator (based on Flick's common library) that read and
+processed the annotations.  An annotatable \AOI{} format would also be useful
+for other purposes, such as attaching quality-of-service attributes to normally
+``pure'' \CORBA{} interface descriptions.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Below is a catalog of functions in the CORBA front end.  Commented out at
+%% least for now, because (1) the one-line descriptions are pretty obvious, and
+%% (2) there's no similar catalog for the ONC RPC and MIG front ends.
+
+%\begin{cprototypelist}
+%  \item[NEW_ARRAY(VoidArray array, type, type value)] This macro will
+%  initialize a \cidentifier{VoidArray} with a buffer and first element of type
+%  \ctype{type}.
+%
+%  \item[ADD_TO_ARRAY(VoidArray array, type, type value)] This macro will add
+%  another element to the array of type \ctype{type}, resizing it if necessary.
+%
+%  \item[ARRAY_REF(VoidArray array, type, pos)] This macro will reference the
+%  element at index \cidentifier{pos} in \cidentifier{array}.
+%
+%  \item[void Start()] Initializes the parser.  Currently this will:
+%  \begin{itemize}
+%    \item Add the \idl{CORBA} namespace.
+%
+%    \item Add the \idl{Object} forward interface to the \idl{CORBA} namespace.
+%
+%    \item If \cidentifier{ALLOW_ROOT_TYPECODE} is defined, it will add a
+%    forward interface for \idl{TypeCode} into the root scope.  This is a
+%    compatability feature for a version of TAO; it should be turned off
+%    otherwise.
+%  \end{itemize}
+%
+%  \item[void Finish()] Finalizer for the parser.  Currently, this does
+%  nothing.
+%
+%  \item[void AddScope(char *name)] Pushes a new lexical scope onto the stack.
+%  This causes the global \cidentifier{scope} level to be incremented and
+%  another \ctype{ref_list} added to the tail of the \cidentifier{the_scope}
+%  list.
+%
+%  \item[void DelScope()] Pops the top lexical scope off of the stack.  The
+%  last \ctype{ref_list} on \cidentifier{the_scope} will be removed and the
+%  global \cidentifier{scope} level will be decremented.
+%
+%  \item[static const char *GetFullScopePrefix(ref_list *sc = the_scope)] This
+%  returns a string containing the scope names in the passed in list separated
+%  by \cliteral{"::"}.
+%
+%  \item[void DupeError(aoi_def *, aoi_kind)] Checks for duplicate definitions
+%  in the \AOI{}\@.
+%
+%  \item[void UndefError(char *name)] Used to signal an error when
+%  \cidentifier{name} isn't defined.  The function tracks all of these errors
+%  so an undefined name will only be printed out once and not every time it is
+%  used.
+%
+%  \item[aoi_interface *GetNewInterface()] Allocates and initializes an
+%  \ctype{aoi_interface}.
+%
+%  \item[aoi_def *AoiConst(types, char *, aoi_const)] Allocates an
+%  \ctype{aoi_def} and initializes it to be an \cidentifier{AOI_CONST} of the
+%  given type and value.
+%
+%  \item[aoi_def *new_aoi_def(const char *, int)] Allocates a new
+%  \ctype{aoi_def} and initializes it with the arguments.  Note that this just
+%  allocates memory for the \ctype{aoi_def}: it doesn't add the definition to
+%  the current scope.
+%
+%  \item[int new_error_ref(const char *)] This adds an \cidentifier{AOI_ERROR}
+%  to the \AOI{}\@.
+%
+%  \item[aoi_def *AddDef(aoi_def *, aoi_kind)] Adds the \ctype{aoi_def} to the
+%  current scope in the \AOI{}\@.
+%
+%  \item[void AddAttrs(VoidArray *)] Appends the given attributes to the
+%  current interface.
+%
+%  \item[void AddOp(aoi_operation *)] Appends an operation to the current
+%  interface.
+%
+%  \item[void AddParents(VoidArray *)] Appends an array of parents to the
+%  current interface.
+%
+%  \item[int FindLocalName(char *, int err = 1)] Returns the position of the
+%  given name in the local scope, or any of its parent scopes.  If
+%  \cidentifier{err} is true then this function may signal an undefined error
+%  and call \cfunction{new_error_ref}.
+%
+%  \item[int FindGlobalName(char *)] Returns the position of the given name
+%  within the root scope.
+%
+%  \item[int FindScopedName(char *, aoi_ref)] Returns the position of the given
+%  name within the scope specified by the \ctype{aoi_ref}.
+%
+%  \item[int GetScopedNameList(ref_list *)] Returns the position of the scoped
+%  name specified by the \ctype{ref_list}.
+%
+%  \item[int GetInsideScope(ref_list *, int)] Returns the position of the scope
+%  name specified by the \ctype{ref_list} within the scope specified scope.
+%
+%  \item[types GetConstType(aoi_ref)] Returns a \ctype{types} value
+%  corresponding to the given \ctype{aoi_type} and can be used for a constant.
+%
+%  \item[aoi_const GetConstVal(aoi_ref)] Returns the value of a constant
+%  definition in the \AOI{}\@.
+%
+%  \item[aoi_type GetAoiType(aoi_ref)] Allocates an \ctype{aoi_def} that is
+%  either an indirect to the real type, or something that is handled by
+%  \cfunction{GetAoiTypeSpecial}.
+%
+%  \item[static int GetAoiTypeSpecial(aoi_ref r, aoi_type at)] This checks for
+%  special cases of references to other types.  It currently just checks if the
+%  type is \idl{CORBA::TypeCode} and makes the \ctype{aoi_type} an
+%  \cidentifier{AOI_TYPE_TAG}.
+%
+%  \item[aoi_type MakeAoiType(types)] Allocates an \ctype{aoi_type} and
+%  initializes it based on the \ctype{types} argument.
+%
+%  \item[aoi_type GetAoiTypeFromDecl(aoi_type, Declaration)] Returns an
+%  \ctype{aoi_type} created from the \ctype{Declaration}.  If the
+%  \cidentifier{sizes} slot in the \ctype{Declaration} is not empty than
+%  \cidentifier{AOI_ARRAY} types will be created as needed.
+%
+%  \item[aoi_def *GetAoiDefFromDecl(aoi_type, Declaration)] Allocates and
+%  returns an \ctype{aoi_def} with the name and type specified by the
+%  \ctype{Declaration}.
+%
+%  \item[aoi_const GetReadRequest(char *)] Returns an \ctype{aoi_const} that
+%  can be used as the operation name for a read request on an attribute with
+%  the given name.
+%
+%  \item[aoi_const GetReadReply(char *)] Returns an \ctype{aoi_const} that can
+%  be used as the operation name for a read reply on an attribute with the
+%  given name.
+%
+%  \item[aoi_const GetWriteRequest(char *, int)] Returns an \ctype{aoi_const}
+%  that can be used as the operation name for a write request on an attribute
+%  with the given name.
+%
+%  \item[aoi_const GetWriteReply(char *, int)] Returns an \ctype{aoi_const}
+%  that can be used as the operation name for a write reply on an attribute
+%  with the given name.
+%
+%  \item[aoi_const GetRequest(char *)] Returns an \ctype{aoi_const} that can
+%  correspond to the operation name used in a request.
+%
+%  \item[aoi_const GetReply(char *)] Returns an \ctype{aoi_const} that can
+%  correspond to the operation name used in a reply.
+%
+%  \item[aoi_const GetInterfaceCode(char *)] Returns a string used for the
+%  \cidentifier{code} part of an \ctype{aoi_interface}.
+%
+%  \item[unsigned int GetPosInt(aoi_const)] Converts an \AOI{} integer constant
+%  to an \ctype{unsigned int}.
+%
+%  \item[int isInt(aoi_const_u)] Returns true if the \ctype{aoi_const} is an
+%  integer.
+%
+%  \item[int isFloat(aoi_const_u)] Returns true if the \ctype{aoi_const} is a
+%  floating point number.
+%
+%  \item[void CheckUnionCaseDuplicate(VoidArray *, aoi_union_case *)] Checks
+%  for duplicate case values in an array of union cases.
+%
+%  \item[void ResolveForwardInterfaces()] Walks over the entire \AOI{} linking
+%  together forward interfaces with their definitions.  The link is done by
+%  setting the \cidentifier{AOI_FWD_INTRFC}s \ctype{aoi_ref} to be the
+%  definition's.  If there is no definition, then the value is -1.
+%\end{cprototypelist}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

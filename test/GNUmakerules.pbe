@@ -1,0 +1,142 @@
+#
+# Copyright (c) 1996, 1999 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+ifndef _flick_makerules_test_pbe_
+_flick_makerules_test_pbe_ = yes
+
+# Any Makefile that includes this file is expected to define the following
+# macros:
+#
+# `TESTS', the set of tests.  These names do *not* have extensions; the rules
+# in this file know how to add extensions as needed to construct input and
+# output file names.
+#
+# `TEST_PRES_C_DIR_LIST', the set of directories that will be searched for
+# input PRES_C files.
+#
+# `FLICK_PBE', the name of the current Flick presentation back end.  This
+# should be set to one of the macros defined in `test/GNUmakerules.common'
+# (e.g., $(FLICK_C_PBE_MACH3MIG)).
+#
+# Optionally, a Makefile that includes this file may define the following
+# macros:
+#
+# `FLICK_PBE_STUBS_FILE_SUFFIX', the file name suffix that should be used for
+# generated stub source code files (e.g., `.c' or `.cc').  The default value of
+# this macro is `.c'.  NOTE that `GNUmakerules.programs' can handle only `.c'
+# and `.cc' dependencies.
+#
+# `FLICK_PBE_HEADER_FILE_SUFFIX', the file name suffix that should be used for
+# generated header files (e.g., `.h' or `.hh').  The default value of this
+#  macro is `.h'.
+#
+# XXX --- `GNUmakerules.programs' currently handles `.h' header files only.
+
+###############################################################################
+
+ifndef FLICK_PBE_STUBS_FILE_SUFFIX
+  FLICK_PBE_STUBS_FILE_SUFFIX = .c
+endif
+
+ifndef FLICK_PBE_HEADER_FILE_SUFFIX
+  FLICK_PBE_HEADER_FILE_SUFFIX = .h
+endif
+
+# `C' and `H' are convenience macros containing the suffixes of the stub source
+# and header files, respectively, without the initial `.'.  We use these macros
+# in the rules below.
+
+C = $(patsubst .%,%,$(FLICK_PBE_STUBS_FILE_SUFFIX))
+H = $(patsubst .%,%,$(FLICK_PBE_HEADER_FILE_SUFFIX))
+
+# `ARCHETYPE_EXTS' describes which files may be saved for later reference (see
+# the file `test/GNUmakerules.common' for more information).  For presentation
+# back ends, we want to save the generated source and header files.
+
+ARCHETYPE_EXTS = -client.$(H) -client.$(C) -server.$(H) -server.$(C)
+
+include $(SRCDIR)/test/GNUmakerules.common
+
+vpath %.prc $(TEST_PRES_C_DIR_LIST)
+
+###############################################################################
+###############################################################################
+####
+#### Here are the rules for creating client stubs, server skeletons, and
+#### diagnostic files.
+####
+###############################################################################
+###############################################################################
+
+.PHONY: all all-client all-server
+
+all: $(foreach test,$(TESTS),$(addprefix $(test),-client.$(H) -server.$(H)))
+
+all-client: $(addsuffix -client.$(H),$(TESTS))
+
+all-server: $(addsuffix -server.$(H),$(TESTS))
+
+.PHONY: $(TESTS)
+
+$(TESTS): %: %-client.$(H) %-server.$(H)
+
+###
+
+# Making the header file actually makes the stub source code file, too.  This
+# is why none of the phony targets above depend on the `.c'/`.cc' files.
+
+$(addsuffix -client.$(H),$(TESTS)): %-client.$(H): %-client.prc $(FLICK_PBE)
+	$(FLICK_PBE) $(FLICK_PBE_CLIENT_FLAGS) -h $@ -o $(@:.$(H)=.$(C)) $<
+
+$(addsuffix -server.$(H),$(TESTS)): %-server.$(H): %-server.prc $(FLICK_PBE)
+	$(FLICK_PBE) $(FLICK_PBE_SERVER_FLAGS) -h $@ -o $(@:.$(H)=.$(C)) $<
+
+# We have rules for the `.c'/`.cc' files, however, just in case somebody
+# specifically asks for one.
+
+$(addsuffix -client.$(C),$(TESTS)): %-client.$(C): %-client.prc $(FLICK_PBE)
+	$(FLICK_PBE) $(FLICK_PBE_CLIENT_FLAGS) -h $(@:.$(C)=.$(H)) -o $@ $<
+
+$(addsuffix -server.$(C),$(TESTS)): %-server.$(C): %-server.prc $(FLICK_PBE)
+	$(FLICK_PBE) $(FLICK_PBE_SERVER_FLAGS) -h $(@:.$(C)=.$(H)) -o $@ $<
+
+###############################################################################
+###############################################################################
+####
+#### Here are the housecleaning rules.
+####
+###############################################################################
+###############################################################################
+
+CLEAN_FILES += $(addsuffix -client.$(H),$(TESTS)) \
+	       $(addsuffix -server.$(H),$(TESTS)) \
+	       $(addsuffix -client.$(C),$(TESTS)) \
+	       $(addsuffix -server.$(C),$(TESTS))
+
+# NOTE that `GNUmakerules.common' declares the `<test>.clean' targets as phony.
+
+$(addsuffix .clean,$(TESTS)): %.clean:
+	$(RM) $*-client.$(H) $*-server.$(H) $*-client.$(C) $*-server.$(C)
+
+endif
+
+## End of file.
+

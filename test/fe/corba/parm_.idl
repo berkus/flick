@@ -1,0 +1,136 @@
+/*
+ * Copyright (c) 1995, 1996, 1999 The University of Utah and
+ * the Computer Systems Laboratory at the University of Utah (CSL).
+ *
+ * This file is part of Flick, the Flexible IDL Compiler Kit.
+ *
+ * Flick is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Flick is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Flick; see the file COPYING.  If not, write to
+ * the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+ */
+
+enum Enumeration {ONE, TWO};
+
+struct FStruct {
+	short a;
+};
+
+struct VStruct {
+	string a;
+};
+
+union FUnion switch (long) {
+	case 1: long x;
+	default: char z;
+};
+
+union VUnion switch (long) {
+	case 1: string a;
+	default: char z;
+};
+
+typedef long FArray[10];
+typedef string VArray[10];
+
+typedef sequence<long,10> BFSequence;
+typedef sequence<long>    UFSequence;
+
+typedef sequence<string,10> BVSequence;
+typedef sequence<string>    UVSequence;
+
+interface intf {
+  short Short(in short a,
+	      inout short b,
+	      out short c);
+  long Long(in long a,
+	    inout long b,
+	    out long c);
+  long long LongLong(in long long a,
+		     inout long long b,
+		     out long long c);
+  unsigned short UShort(in unsigned short a, 
+			inout unsigned short b, 
+			out unsigned short c);
+  unsigned long ULong(in unsigned long a,
+		      inout unsigned long b, 
+		      out unsigned long c);
+  unsigned long long ULongLong(in unsigned long long a,
+			       inout unsigned long long b, 
+			       out unsigned long long c);
+  float Float(in float a, 
+	      inout float b, 
+	      out float c);
+  double Double(in double a, 
+		inout double b, 
+		out double c);
+  /* The `long double' type is not supported in Flick (yet). */
+  /* The `fixed<d,s>' type is not supported in Flick (yet). */
+  boolean Boolean(in boolean a,
+		  inout boolean b,
+		  out boolean c);
+  char Char(in char a, 
+	    inout char b, 
+	    out char c);
+  /* The `wchar' type is not supported in Flick (yet). */
+  octet Octet(in octet a,
+	      inout octet b,
+	      out octet c);
+  Enumeration Enum(in Enumeration a,
+	     	   inout Enumeration b,
+	     	   out Enumeration c);
+  intf ObjectRef(in intf a,
+		 inout intf b,
+		 out intf c);
+  FStruct FixedStruct(in FStruct a,
+		      inout FStruct b,
+		      out FStruct c);
+  VStruct VarStruct(in VStruct a,
+		    inout VStruct b,
+		    out VStruct c);
+  FUnion FixedUnion(in FUnion a,
+	       	    inout FUnion b,
+	       	    out FUnion c);
+  VUnion VarUnion(in VUnion a,
+	       	  inout VUnion b,
+	       	  out VUnion c);
+  string String(in string a,
+		inout string b,
+		out string c);
+  string<20> BoundString(in string<20> a,
+			 inout string<20> b,
+			 out string<20> c);
+  /* The `wstring' type is not supported in Flick (yet). */
+  BFSequence BoundedFixedSequence(in BFSequence a,
+				  inout BFSequence b,
+				  out BFSequence c);
+  BVSequence BoundedVarSequence(in BVSequence a,
+				inout BVSequence b,
+				out BVSequence c);
+  UFSequence FixedSequence(in UFSequence a,
+			   inout UFSequence b,
+			   out UFSequence c);
+  UVSequence VarSequence(in UVSequence a,
+			 inout UVSequence b,
+			 out UVSequence c);
+  FArray FixedArray(in FArray a,
+		    inout FArray b,
+		    out FArray c);
+  VArray VarArray(in VArray a,
+		  inout VArray b,
+		  out VArray c);
+};  
+
+
+
+
+

@@ -1,0 +1,43 @@
+module CORBA {
+
+	typedef sequence<string>	StringSequence;
+	typedef sequence<octet>		OctetSequence;
+	typedef sequence<long>		LongSequence;
+	typedef OctetSequence		ReferenceData;
+	typedef StringSequence		ReferenceString;
+	typedef LongSequence		ReferenceLong;
+
+	interface ImplementationDef
+		{
+			attribute string 		interface_name;
+			attribute string 		object_name;
+			attribute ReferenceData		id;
+		};
+
+	enum Policy {
+		SHARED_SERVER,
+		UNSHARED_SERVER,
+		SERVER_PER_METHOD
+	};
+
+	interface CreationImplDef: ImplementationDef 
+		{
+			attribute string		path_name;
+			attribute Policy		activation_policy;
+			attribute StringSequence	args;
+			attribute StringSequence	env;
+		};
+
+	interface Activator
+		{
+			Object activate(in ImplementationDef impl);
+			void   deactivate(in Object obj, in ImplementationDef impl);
+		};
+
+
+	interface ActivationImplDef: ImplementationDef
+		{
+			attribute Activator activator_obj;
+		};
+
+};

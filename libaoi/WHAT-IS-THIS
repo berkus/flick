@@ -1,0 +1,3 @@
+This directory contains data creation and manipulation routines for the AOI
+data format.  The AOI library is used extensively in Flick's front ends and
+presentation generators.

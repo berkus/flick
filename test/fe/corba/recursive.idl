@@ -1,0 +1,88 @@
+/*
+ * Copyright (c) 1999 The University of Utah and
+ * the Computer Systems Laboratory at the University of Utah (CSL).
+ *
+ * This file is part of Flick, the Flexible IDL Compiler Kit.
+ *
+ * Flick is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Flick is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Flick; see the file COPYING.  If not, write to
+ * the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+ */
+
+struct ta {
+	struct tb {
+		long a;
+		double b;
+		short c;
+	} a;
+	struct tc {
+		char a;
+		string b;
+		sequence<tc> c;
+	} b;
+	struct td {
+		tb a;
+		struct te {
+			char a;
+			char b;
+			char c;
+			char d;
+			sequence<td> e;
+		} b;
+	} c;
+	sequence<ta> next;
+	tb d;
+	tc e;
+	td f;
+};
+
+struct tb {
+	ta::tb a;
+	ta::td b;
+	sequence<ta::td> c;
+	sequence<tb> d;
+};
+
+enum tc { NORTH, EAST, WEST, SOUTH, DOWN };
+
+union td switch (long) {
+ case 1:
+	 ta one;
+ case 2:
+	 tb two;
+ case 3:
+	 union te switch (tc) {
+	 case NORTH: long x;
+	 case EAST: double y;
+	 case WEST: boolean z;
+	 case SOUTH: tb s;
+	 case DOWN:
+		 union tu switch (boolean) {
+		   case TRUE: sequence<td,1> next;
+		 } u;
+	 } three;
+  default:sequence<td> again;
+};
+
+interface obj {
+	
+	attribute long my_attr;
+	
+	typedef obj my_obj;
+	
+	my_obj get_server();
+	void   set_server(in my_obj srvr);
+	
+	td convert(inout ta a1, in tb b1, out tc c1);
+	
+};

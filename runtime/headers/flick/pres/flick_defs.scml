@@ -1,0 +1,74 @@
+<!--
+ === Copyright (c) 1999 The University of Utah and
+ === the Computer Systems Laboratory at the University of Utah (CSL).
+ === All rights reserved.
+ ===
+ === Permission to use, copy, modify and distribute this software is hereby
+ === granted provided that (1) source code retains these copyright, permission,
+ === and disclaimer notices, and (2) redistributions including binaries
+ === reproduce the notices in supporting documentation.
+ ===
+ === THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ === IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ === ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS
+ === SOFTWARE.
+ ===
+ === CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ === improvements that they make and grant CSL redistribution rights.
+ -->
+
+<ifndef name="FLICK_DEFS_SCML">
+<define name="FLICK_DEFS_SCML" kind="static-variable" value=true>
+
+<include file="std_defines.scml">
+
+<macro name="version_info" rparams={ifile:tag_list ofile:tag_list}>
+<if !system_info.flags.no_timestamp>
+<pre>/*
+ *      * DO NOT EDIT!  THIS FILE IS MACHINE-GENERATED! *
+ *
+ *      <(ofile.path)>
+ *      created by <(system_info.user)>@<(system_info.hostname)> on <(system_info.time)>
+ *      from file <(ifile.path)>
+ *      with Flick version <(system_info.flick.version)> (compiled on <(
+        system_info.flick.date)> <(system_info.flick.time)>)
+ *      send bug reports to &lt;<(system_info.flick.contact)>&gt;
+ */
+
+</pre>
+</if>
+</macro>
+
+<scope name="stubs_file_defs">
+  <macro name="prologue">
+  <version_info ifile=input_file ofile=stubs_file>
+  <pre>#include <if system_info.flags.system_header>&lt;<else>"</if><(system_info.flags.header)><if system_info.flags.system_header>&gt;<else>"</if><defvar
+  file:any><ignore file=system_info.flags.source_include_file><for
+  each="file" iter="lpc">
+  #include <(file[lpc])></for>
+  
+  </pre>
+  </macro>
+  
+  <macro name="epilogue">
+  </macro>
+</scope>
+
+<scope name="header_file_defs">
+  <macro name="prologue">
+  <version_info ifile=input_file ofile=header_file>
+  <pre>#ifndef _<(header_file.c_id)>_
+  #define _<(header_file.c_id)>_
+  <defvar file:any><ignore
+  file=system_info.flags.header_include_file><for each="file" iter="lpc">
+  #include <(file[lpc])></for>
+  </pre>
+  </macro>
+  
+  <macro name="epilogue">
+  <pre>#endif /* _<(header_file.c_id)>_ */
+  </pre>
+  </macro>
+</scope>
+
+</ifndef>

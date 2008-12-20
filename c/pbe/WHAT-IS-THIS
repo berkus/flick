@@ -1,0 +1,4 @@
+This directory contains the code for all back ends that produce C or C++ code.
+Aside from certain data structure and general support libraries (libcast,
+libcompiler, etc.), this directory should contain all code related to the
+translation of PRES_C (.prc) files to C and C++ source and header files.

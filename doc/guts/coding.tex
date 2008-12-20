@@ -1,0 +1,590 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1995, 1996, 1999 The University of Utah and the Computer
+%% Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{An Outline of the Source Code}
+\label{cha:Coding}
+
+This chapter describes the overall organization of Flick's source code and
+provides some insights into why things are strucutured as they are.
+Programmers should read this chapter thoroughly before proceeding to later
+parts of the manual.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Flick Programs, Files, and Libraries}
+\label{sec:Coding:Flick Programs, Files, and Libraries}
+
+\begin{figure}
+  \begin{center}
+    \includegraphics[width=\columnwidth]{flick.eps}
+  \end{center}
+  \caption{Overview of the Flick \IDL{} Compiler.}
+  \label{fig:Coding:Flick}
+\end{figure}
+
+%% The following two paragraphs were adapted from `use-over.tex' in the user's
+%% manual.
+
+Flick works in three phases, each implemented as a separate program: the front
+end, the presentation generator, and the back end.  These steps are illustrated
+in Figure~\ref{fig:Coding:Flick}.  A Flick front end is simply a parser that
+translates some \IDL{} input into an intermediate representation called an
+\AOI{} (Abstract Object Interface, `\filename{.aoi}') file.  Next, a
+presentation generator determines how the constructs in the \AOI{} file (the
+parsed \IDL{} file) are to be mapped onto type and function definitions in the
+C or C++ programming language.  In other words, the presentation generator
+determines how the generated stubs will appear --- e.g., the stubs' function
+prototypes --- and how they will interact with user code
+--- e.g., the stubs' parameter passing conventions.  This information about the
+stubs is written into a \PRESC{} (Presentation in C/C++, `\filename{.prc}')
+file.  The final phase of compilation, the back end, reads a \PRESC{} file and
+one or more \SCML{} (Source Code Markup Language) files, and from those
+descriptions produces the C or C++ code for the optimized stubs, written to use
+a particular transport system (e.g., \TCP{}) and message format.
+%
+A \filename{Makefile} is generally used to run the desired Flick compiler
+programs in series.\footnote{At one time, the \program{flick-c-pdl} program
+could act as a driver for the other stages of Flick.  That program, however, is
+very much of of date as of this writing.  See the \filename{c/pdl} directory
+for sources.}
+
+Flick has multiple implementations of each of the three phases described above.
+There are three separate front ends: one to parse \CORBA{} \IDL{} files, one to
+parse \ONCRPC{} (Sun) \IDL{} files, and one to parse \MIG{} \IDL{} files.
+There are five different presentation generators, implementing the \CORBA{} (C
+and C++), \ONCRPC{}, \MIG{}, and Fluke\footnote{Fluke is the operating system
+being developed by the Flux Project at the University of Utah.  Flick produces
+all of the stub code for Fluke.  For more information, refer to \flukeurl{}.}
+mappings of \IDL{} constructs onto C or C++\@.  Finally, there are seven
+separate back ends for producing stubs that use \IIOP{} (C and C++), \ONCTCP{},
+Mach messages, Trapeze,\footnote{Trapeze is the fast Myrinet-based networking
+system from Duke University.  For more information, see \trapezeurl{}.}
+Khazana-style messages,\footnote{Khazana is distributed global memory service
+in development at the University of Utah.  For more information, see
+\khazanaurl{}.}  and Fluke \IPC{}\@.
+
+%% End of stuff from `use-over.tex'.
+
+As shown in Figure~\ref{fig:Coding:Flick}, the separate programs communicate
+through intermediate \AOI{} and \PRESC{} files.  (An \AOI{} file also contains
+\META{} data; a \PRESC{} file also contains \META{}, \MINT{}, and \CAST{}
+data.\footnote{As of this writing, a \PRESC{} file also contains \AOI{}, for
+the benefit of the \ONCTCP{} back end.  This is a bug, not a feature.})  This
+means that Flick must be able to write all of these intermediate languages to
+files and read them back again.  To facilitate these steps, Flick defines these
+intermediate languages in \ONCRPC{} \IDL{} files (`\filename{.x}' files,
+contained in the \filename{mom} directory).  When Flick is compiled, these
+files are processed by \rpcgen{} to produce the functions to read and write
+Flick's intermediate languages to and from files.
+
+Each of Flick's compilation stages is primarily implemented by one or more
+large libraries of C and C++ code.  Different implementations of an \IDL{}
+compilation stage are created by specializing library C++ classes or overriding
+library C functions to implement new, tailored behavior.  For instance, the
+\ONCRPC{} presentation generator was created by deriving from the base
+presentation generator C++ class, and then supplying a small amount of new code
+to implement the specifics of the \ONCRPC{} language mapping.  The libraries
+that manipulate Flick's intermediate languages are described in
+Part~\ref{part:The Intermediate Representations} of this manual; the libraries
+for individual compiler stages are described in Part~\ref{part:The Programs and
+Libraries}.
+
+Before moving on to the organization of Flick's source code, here are some
+retrospective thoughts on the general design and implementation of Flick:
+
+\begin{description}
+  \item[Using \rpcgen{} to Generate Code for Flick's Intermediate
+  Representations.]
+  %
+  The primary reason for using \rpcgen{} in defining Flick's intermediate
+  representations was to eliminate the need for programmers to write IR
+  serialization and other I/O code by hand.  In retrospect, this early decision
+  has saved the Flick implementors a lot of work.  At the same time, however,
+  it has made other parts of the work more difficult.  The limitations of the
+  \ONCRPC{} \IDL{} forced compromises in the design of the IRs, e.g., in the
+  representation of scopes and references in \AOI{}.  Further, because the
+  \rpcgen{}-produced data types are transparent C types, Flick's programmers
+  were tempted to treat them as transparent --- not abstract --- entities.  At
+  many points in the code, \rpcgen{}-defined structures are filled out
+  field-by-field, rather than by calling a separate constructor or
+  initialization function.  This has made maintenance more difficult, because
+  when the \ONCRPC{} \IDL{} definition of a data type is changed, all the
+  manipulating code must be updated as well.
+  %
+  This is not a consistent problem: there are many Flick library functions to
+  help programmers manipulate IRs data structures as abstract objects.  It
+  would have been useful, however, to \emph{force} this style of programming
+  throughout Flick's development.\footnote{Obviously, we need to implement our
+  own, custom presentation of \ONCRPC{} \IDL{} for developing Flick itself!}
+
+  \item[Back Ends.]
+  %
+  A back end is responsible for generating code that works with a particular
+  transport system, using a particular message format and a particular data
+  encoding format, in conjunction with a certain runtime library.  Thus, there
+  are at least four messaging aspects that each back end decides.  It would be
+  useful to separate these aspects in Flick's back ends, so that each could be
+  specified separately.\footnote{It would probably be a bad idea to separate
+  these aspects into separate programs.  Who would want an \IDL{} compiler
+  implemented as \emph{six} separate programs?!}
+
+  \item[Mix-and-Match.]
+  %
+  In principle, Flick's design makes it possible and straightforward to mix
+  different front ends, presentation generators, and back ends in novel ways to
+  create a wide variety of stubs.  In practice, however, there are several
+  significant barriers to the random mixing of components:
+  %
+  \begin{itemize}
+    \item Combining different front ends and presentation generators is
+    difficult because there is often no obvious mapping for constructs of a
+    ``foreign'' \IDL{}\@.  For instance, just how should a \CORBA{} \IDL{}
+    \idl{exception} be presented by Flick's \ONCRPC{} presentation generator?
+    %
+    In practice, it seems that people don't really want to mix front ends and
+    presentation generators in any case.
+
+    \item Mixing presentation generators and back ends is principally hindered
+    by the need to provide appropriate runtime support to the generated code.
+    For instance, \CORBA{} object references need to be implemented atop every
+    available transport system, and the Flick developers simply haven't had the
+    time to do the required runtime programming for all ``mismatched'' cases.
+
+    \item Occasionally, issues arise between mismatched \IDL{} and back end.
+    For instance, how can a non-Mach back end implement a \MIG{}
+    \IDL{}-specified port right?  These kinds of conflicts will increase in the
+    future as annotations are attached to \IDL{} specifications, e.g., quality
+    of service constraints.
+  \end{itemize}
+  %
+  Therefore, in practice, Flick developers have tended to focus on well-defined
+  pairings between different Flick components.
+\end{description}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Organization of the Source Code}
+\label{sec:Coding:Organization of the Source Code}
+
+Flick's source code is organized in a directory hierarchy as follows:
+
+\begin{itemize}
+  \item Library header files are generally placed within the \filename{mom}
+  subdirectory.  This includes the `\filename{.x}' files that describe Flick's
+  various intermediate data formats as described in
+  Section~\ref{sec:Coding:Flick Programs, Files, and Libraries}.  Header files
+  for libraries that are specific to C/C++ code generation are stored in the
+  \filename{mom/c} subdirectory.
+
+  \item The source code for libraries and programs that are \emph{specific} to
+  C/C++ code generation is stored within the \filename{c} directory.
+  %
+  \begin{itemize}
+    \item Code for the C/C++-specific libraries is found here, in
+    \filename{c/libcast} and \filename{c/libpres_c}.
+
+    \item Code for C/C++ presentation generation is stored within
+    \filename{c/pfe}.  (``\filename{pfe}'' stands for ``presentation front
+    end,'' which is the old name for what we now call a presentation
+    generator.)  The base presentation generator library is in
+    \filename{c/pfe/lib}.  Other subdirectories of \filename{c/pfe} contain
+    other presentation generator libraries or specific presentation generators.
+
+    \item Code for C/C++ back ends is stored within \filename{c/pbe}.
+    (``\filename{pbe}'' is an abbreviation for ``presentation back end,'' which
+    is the old name for what we now call a back end.)  The base back end
+    library is contained in \filename{c/pbe/lib}; other subdirectories of
+    \filename{c/pbe} contain other back end libraries or specific back ends.
+  \end{itemize}
+
+  \item The source code for libraries and programs \emph{not specific} to C/C++
+  code generation is generally stored within immediate subdirectories of the
+  root.  For instance:
+  %
+  \begin{itemize}
+    \item The \AOI{}, \META{}, \MINT{}, and general compiler libraries are
+    contained in the \filename{libaoi}, \filename{libmeta}, \filename{libmint},
+    and \filename{libcompiler} directories, respectively.
+
+    \item Front ends are stored within the \filename{fe} directory.  For
+    example, \filename{fe/newcorba} contains the source for Flick's \CORBA{}
+    front end.  (Note that the \MIG{} front end is found in \filename{fe/mig},
+    despite the fact that the \MIG{} front end is specific to the generation of
+    C language stubs.)
+  \end{itemize}
+\end{itemize}
+
+In addition, there are top-level directories for other major components of the
+source code, including the runtime libraries and headers (\filename{runtime}),
+extra support files for certain platforms (\filename{support}), the Flick
+testing infrastructure (\filename{test}), and documentation (\filename{doc}).
+
+Below is a detailed listing of the major directories in the Flick source code
+tree.  This catalog is generated automatically by a script that collects the
+contents of the \filename{WHAT-IS-THIS} files in the Flick source tree.  Some
+of the listed directories --- those that contain out-of-date or obsolete code
+--- may not be included as part of general Flick distributions.
+
+\begin{filenamelist}
+\input{directories}
+\end{filenamelist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Coding Style}
+\label{sec:Coding Style}
+
+Flick is not implemented in an extremely rigid style.  Nevertheless, the code
+has been written using a few general rules and idioms, and these rules should
+be followed whenever one adds new code or modifies existing code.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Files}
+\label{subsec:Coding:Files}
+
+Obviously, new files should be placed in accordance with the existing directory
+hierarchy described in Section~\ref{sec:Coding:Organization of the Source
+Code}.  File names should be chosen to match the file's existing peers; e.g.,
+if the existing file names use underscores to separate words, the new file name
+should follow this pattern.
+%
+Flick source files generally use the following file name extensions:
+
+\begin{filenamelist}
+  \item[.cc] C++ source files.
+
+  \item[.hh] C++-only header files.
+
+  \item[.c] C source files.
+
+  \item[.h] C header files.  Note that C header files must be
+  \cidentifier{#include}-able by C++ code.  In general, this means that one
+  uses preprocessor magic to ensure that whenever the file is included by C++
+  source, the header contents are wrapped within an \cprototype{extern "C"}
+  declaration.
+
+  \item[.idl] \CORBA{} \IDL{} files.
+
+  \item[.x] \ONCRPC{} \IDL{} files.
+
+  \item[.defs] \MIG{} \IDL{} files.
+\end{filenamelist}
+
+Each \program{make}-able directory contains a \filename{GNUmakefile.in} file
+that is processed by Flick's \program{configure} script to produce a
+\filename{GNUmakefile} for building the directory contents.  (Flick requires
+GNU Make.)  Most ``leaf'' \filename{GNUmakefile}s do little more than define a
+few macros.  The \filename{GNUmakerules.*} files at the root of the source tree
+contain the actual rules used to build various Flick libraries and programs.
+Consult the user's manual for further help in building Flick.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Aesthetics}
+\label{subsec:Coding:Aesthetics}
+
+When writing new code or modifying existing code, please follow these
+guidelines:
+
+\begin{description}
+  \item[Maintain consistency.]
+  %
+  When modifying Flick in any way, the primary rule is to \emph{make new code
+  look like the code that's already there}.  A corollary to the rule is this:
+  do not reformat existing code.  Keep the same declaration style, commenting
+  style, indentation style, and so on as you write and modify code.  Most any
+  good, consistent coding style can be readable, but an \emph{inconsistent}
+  style creates Programmer's Hell.  Gratuitous reformatting of existing code
+  makes it difficult to tell from a \program{diff} what was actually changed
+  and what is just cosmetic.
+
+  \item[Comment the code.]
+  %
+  Source code is useless if people cannot understand it.  Comment new code
+  \emph{as you write it}.  Fix poorly commented code as you find it.
+  %
+  %% XXX --- Misuse of `\cidentifier'.
+  Comments come in a variety of forms, but the preferred style is to have the
+  initiators (\cidentifier{/*}) and terminators (\cidentifier{*/}) on separate
+  lines with each line of text starting with an asterisk (\cidentifier{*}).
+  The result looks clean, even though it can be troublesome to edit afterwards.
+  Be careful not to use `\cidentifier{//}'-style comments in C code; not all C
+  compilers accept such comments.
+
+  \item[Avoid tricks; write portable code.]
+  %
+  Obvious code is best.  Avoid tricks and non-portable idioms; in particular,
+  be careful to avoid language extensions provided by \program{gcc} and
+  \program{g++}.  Use the GNU compiler options \option{-pedantic} and
+  \option{-ansi} to weed out GNUisms in new code.
+
+  \item[Treat compiler warnings as errors.]
+  %
+  Not only should your code compile on a variety of platforms with a variety of
+  compilers, it should also compile \emph{without any warnings}.  A warning is
+  a signal that something is wrong.  A constant stream of warnings makes it too
+  easy for new warnings to hide.
+
+  \item[Use C for general-purpose libraries.]
+  %
+  The libraries for Flick's intermediate representations (\AOI{}, \MINT{}, and
+  so on) are implemented in C so that they may be used in both C and C++
+  programs.  The functions in \filename{libcompiler} are implemented in C for
+  the same reason.
+
+  \item[Maintain language consistency.]
+  %
+  Some parts of Flick are implemented in C, and others are implemented in C++.
+  However, it is confusing when a single component is implemented using both
+  languages.  When working on an existing component, use the language that is
+  already in use for that component.  When starting a new component, use the
+  language that is common for components of that class.
+
+  \item[Use the Flux Project coding style.]
+  %
+  The Flux coding style should be used in all C- and C++-based programs
+  implemented by the Flux Project.  The most obvious hallmark of this style is
+  8-character indentation stops --- chosen to make \program{vi} users happy.  A
+  second hallmark is that braces are ``hung'' after \cidentifier{if},
+  \cidentifier{else}, \cidentifier{for}, and \cidentifier{switch}.  Braces are
+  not hung, however, around the bodies of functions, structure type
+  definitions, and so on.  The following code snippet illustrates these points
+  of the Flux coding style:
+
+\begin{verbatim}
+int
+make_payments(. . .)
+{
+        . . .
+        for (i = 0; i < pmt_max; ++i) {
+                if (i == pmt_num) {
+                        skip_payment(pmts, i);
+                        . . .
+                } else {
+                        double_payment(pmts, i);
+                        . . .
+                }
+                print_current_payments(pmts);
+        }
+}
+\end{verbatim}
+
+  \emph{It is more important to maintain consistency} with existing code than
+  it is to apply the Flux coding style.  In particular, this means that when
+  ``foreign'' code is assimilated into Flick (e.g., bits of \rpcgen{} for the
+  \ONCRPC{} front end, and bits of \MIG{} for the \MIG{} front end), \emph{the
+  formatting of the foreign code should be preserved}.
+
+  \item[Use library routines as much as possible.]
+  %
+  In particular, avoid treating Flick's intermediate representation types
+  (e.g., the various \AOI{} and \PRESC{} node types) as ``exposed'' C
+  structures whenever it is feasible and reasonable to do so.  As much as
+  possible, use the appropriate library functions to manipulate IR nodes as
+  abstract data types.  This makes the code easier to read and maintain.  (This
+  advice is somewhat idealistic.  While it is generally straightforward to
+  create nodes through a library interface, there is currently very little
+  library support for accessing node data in any kind of abstract way.)
+\end{description}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Storage Allocation}
+\label{subsec:Coding:Storage Allocation}
+
+\emph{Although Flick-generated stubs and skeletons are careful to manage memory
+in a robust manner}, Flick itself handles memory in a way that is more
+appropriate to a compiler.
+
+Flick is written with the assumption that memory is plentiful, and this
+assumption is evident in two ways throughout the code.  First, Flick makes
+frequent use of library routines that implement ``allocate memory or panic''
+behavior (see Section~\ref{sec:libcompiler:Memory and Strings}).  Thus, if
+memory runs out, Flick will exit ungracefully.  Second, Flick is often not very
+careful in freeing memory.  Memory may ``leak'' when the last pointer to a bit
+of previously allocated storage is lost.
+
+In practice, this style of coding is not problematic for Flick: there is plenty
+of memory on modern computer systems, the compiler's memory demands are not
+large in any case, and the various Flick compiler passes run very quickly.  It
+is certainly possible to find \IDL{} inputs, however, that cause Flick to
+consume inordinate amounts of memory or CPU time.  For this and other reasons,
+we expect to eventually ``clean up'' Flick's memory management code, either
+through recoding or through the addition of some kind of garbage collector.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Tags}
+\label{subsec:Coding:Tags}
+
+Many functions in Flick take their arguments as ``tag lists'': lists of
+name-value associations.  Each association consists of an identifier,
+representing some attribute, followed by the set of (zero or more) values for
+that attribute.  A special tag identifier signals the end of the tag list.  For
+instance, the function \cfunction{add_function} accepts a list of tags
+describing the properties of a C++ function:
+
+\begin{verbatim}
+    add_function(tl,
+                 sc_out_name,
+                 PFA_Protection, current_protection,
+                 PFA_Constructor,
+                 PFA_FunctionKind, "T_out(T_var &)",
+                 PFA_Scope, scope,
+                 PFA_ReturnType, cast_new_type(CAST_TYPE_NULL),
+                 PFA_Parameter, type, "r", NULL,
+                 PFA_TAG_DONE);
+\end{verbatim}
+
+\noindent Each tag (the \cidentifier{PFA_*} identifiers) in the above example
+is paired with zero or more data values.  Most tags have a single associated
+value; for example, \cidentifier{PFA_Protection} is paired with the value of
+the variable \cidentifier{current_protection}.  Some tags, however, are
+associated with no values (e.g., \cidentifier{PFA_Constructor} in the example
+above) or with multiple values (e.g., \cidentifier{PFA_Parameter}).  When a tag
+has no value, it usually signifies a boolean switch: the attribute is true when
+the tag appears in the tag list.  The special \cidentifier{PFA_TAG_DONE}
+identifier in the above example signals the end of the tag list.
+
+Tags are generally grouped into sets or ``families'' according to their
+purpose.  For instance, all of the tag identifiers in the above example begin
+with \cidentifier{PFA} because they are all ``presentation function
+attributes'' as defined in \filename{mom/c/libpres_c.h}.  The documentation for
+any tag set should explain the meaning of each tag identifier and the values
+that each tag must be associated with.  (For more information about the
+\cidentifier{PFA} tags, see Section~\ref{sec:PRESC:The PRESC Library}.)
+
+Essentially all functions that accept tag lists are \cidentifier{varargs}-style
+functions, meaning that they may be called with an arbitrary-length list of
+tags and values.  This is why a special tag is required to mark the end of a
+tag list.  Functions that accept tag lists generally do so because they
+construct objects (e.g., \PRESC{} nodes) or just because they have a large
+number of possible arguments.  When used to construct objects, the tags
+generally correspond to slots or flags within the constructed object.  Some
+subset of the possible tags may not be present in the argument list given to a
+function: for instance, in the above example, the
+\cidentifier{PFA_GlobalFunction} tag was not specified.  The documentation for
+a function that takes a tag list should describe what tags are required (if
+any) and what happens when certain tags are not present in a given tag list.
+
+Because tag lists are generally passed to \cidentifier{varargs}-style
+functions, \emph{programmers must be extremely careful} to ensure that the
+right types and number of values are associated with each tag: the C compiler
+cannot typecheck a tag list!  \emph{Most notably, programmers must make sure to
+use \cidentifier{NULL} rather than \cliteral{0} when passing a literal null
+pointer to a tags-based function.}  On some architectures (e.g., 64-bit
+machines), a null pointer and an integer \cliteral{0} have different
+representations, and may not even be represented by the same number of bits.
+In a \cidentifier{varargs} list, the compiler does not know what types of
+values are required for each tag, and thus the compiler cannot automatically
+convert zeros to null pointer values.
+
+The notion of a tag lists can be extended to create entire object hierarchies.
+For example, the following statement uses tag lists to create a nest of four
+\PRESC{} nodes: a \cidentifier{PRES_C_INLINE_ATOM} containing a
+\cidentifier{PRES_C_MAPPING_TEMPORARY}, which contains a
+\cidentifier{PRES_C_MAPPING_ARGUMENT}, which contains a
+\cidentifier{PRES_C_MAPPING_DIRECT}\@.  Tag lists are used to specify the
+hierarchy of nodes and fill in the nodes' data slots.
+
+\begin{verbatim}
+    ac->length = PRES_C_I_ATOM,
+                   PIA_Index, 0,
+                   PIA_Mapping, PRES_C_M_TEMPORARY,
+                     PMA_Name, "string_len",
+                     PMA_CType, lctype,
+                     PMA_PreHandler, "stringlen",
+                     PMA_TempType, TEMP_TYPE_ENCODED,
+                     PMA_Target, PRES_C_M_ARGUMENT,
+                       PMA_ArgList, ac->arglist_name,
+                       PMA_Name, "length",
+                       PMA_Mapping, PRES_C_M_DIRECT, END_PRES_C,
+                       END_PRES_C,
+                     END_PRES_C,
+                   END_PRES_C;
+\end{verbatim}
+
+The node types are specified by special \cidentifier{PRES_C_*} macros, which
+expand into calls to functions.  Each function takes a tag list:
+\cidentifier{PIA_*} tags specify ``\PRESC{} inline attributes'' and
+\cidentifier{PMA_*} tags specify ``\PRESC{} mapping attributes.''  The special
+tag \cidentifier{END_PRES_C} marks the end of each tag list.
+
+The tag-based code makes it clear how the four nodes relate to each other.
+Moreover, the above tag-based statement is easier to read and maintain than the
+alternative: a block of C statements that create and initialize each node
+individually.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Summary and Comments}
+\label{sec:Coding:Summary and Comments}
+
+Flick began as a collection of C-only programs and libraries.  Originally,
+individual presentation generators and back ends would ``specialize'' library
+code simply by providing new versions of certain functions.  At compile time,
+the linker would include the specialized function in the generated program.
+This technique made it difficult to create a specialized version of a function
+that extended the behavior of the library routine; in object-oriented terms, it
+was impossible to invoke a parent method.  Further, because libraries were
+simply collections of C functions (and types), it was not inherently obvious
+which sets of functions applied to which ``objects'' in the library.
+
+For these reasons, most of Flick was converted to C++ in 1995.  Some parts,
+notably the libraries for manipulating Flick's intermediate languages, remained
+in C\@.  (This made it easier to write C programs based on these libraries.)
+The conversion was done in the most straightforward manner: certain C structure
+types were replaced with C++ classes, and functions on those structures were
+transformed into methods.  Most of the existing C idioms (e.g., the use of
+\cidentifier{stdio}, \cidentifier{malloc}, and so on), however, were left in
+place.  This approach was highly pragmatic: the existing C code worked, so
+there was no need to replace it; the programmers already knew the C idioms; and
+in 1995, many C++ implementations were notoriously buggy.
+
+The result was that Flick became a combination of C and C++, programmed in a
+very C-like style.  Largely, Flick has remained in this state, although newer
+parts of Flick take greater advantage of C++-specific idioms.
+
+The overall design of the original C implementation has survived through
+Flick's conversion to C++ and through the many extensions that have been made
+since.  The remaining chapters of this manual describe Flick's current design
+and implementation in detail.  In places, this design is starting to show its
+age.  Therefore, where appropriate, this manual will point out problems that
+have become apparent in the current design and implementation of Flick, and
+will suggest ways in which these problems might be corrected in the future.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

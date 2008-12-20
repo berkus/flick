@@ -1,0 +1,332 @@
+#
+# Copyright (c) 1994, 1995, 1996, 1997, 1998, 1999 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+# This makefile defines generic symbols and rules
+# used by the makefiles in the various mach4 subdirectories.
+# It is heavily dependent on GNU make running on something like Unix.
+# Building the game with different tools requires a different set of makefiles.
+#
+# SECTIONS must be the list of program sections to include
+# (directory names relative to the top of the source tree).
+#
+# SRCDIR must be set to the top-level directory of the source tree.
+# (The current directory is always assumed to be an object directory.)
+#
+# OBJDIR must be set to the top-level object directory
+# (i.e. a series of `..'s indicating how deep we are at the moment).
+#
+# DEFINES can be set to a string of -D options (e.g. -DDEBUG).
+# INCDIRS can be a list of system include directories to be searched by #include <>'s.
+# LIBDIRS can be a list of library directories.
+# xxx_CPPFLAGS can be set to other flags for the C preprocessor and anything that uses it.
+# xxx_CFLAGS can be set to other flags for the C compiler.
+# xxx_CXXFLAGS can be set to other flags for the C++ compiler.
+# xxx_LDFLAGS can be set to other flags for the linker.
+#
+# Replace xxx with HOST, TARGET, or ALL
+# depending on which rules you want to affect.
+#
+# The standard flags variables (CFLAGS, CXXFLAGS, CPPFLAGS, etc.)
+# are used by the rules but never defined,
+# so you can supply them on the make command line
+# (e.g. `make CFLAGS=-save-temps').
+
+
+# Always use the traditional Bourne shell for commands.
+SHELL := /bin/sh
+
+# XXX Global Flick version number
+FLICK_VERSION := 2.1
+DEFINES += -DFLICK_VERSION=\"$(FLICK_VERSION)\"
+
+# For each specified section in SECTIONS,
+# also look any OS- and architecture-specific subdirectories.
+SECTIONS := $(foreach SEC,$(SECTIONS),			\
+		$(SEC)/$(TARGET_OS)/$(TARGET_ARCH)	\
+		$(SEC)/$(TARGET_OS)			\
+		$(SEC)/$(TARGET_ARCH)			\
+		$(SEC))
+
+# Source directories in the generic source tree to search in.
+SRCDIRS += $(addprefix $(SRCDIR)/,$(SECTIONS))
+
+# Remove directories that don't exist --- this keeps our compilation commands
+# simpler.
+SRCDIRS := $(foreach DIR,$(SRCDIRS),\
+	     $(shell if test -d $(DIR); then echo $(DIR); fi))
+
+# Compilation of Mach itself and its satellite programs
+# should always use the headers in the source and object directories
+# instead of any that might already be in the installation directory.
+# XXX generate MIG includes in $(OBJDIR)/include instead?
+INCDIRS += $(SRCDIR) $(OBJDIR)
+HOST_INCDIRS += $(INCDIRS)
+TARGET_INCDIRS += $(INCDIRS)
+
+# Where to find the libraries we build.
+LIBDIRS += $(OBJDIR)/lib
+
+# Command to make multiple levels of directories in one shot.
+# XXX install can do this too; would it be better?
+# Perhaps a job for autoconf?
+MKDIR = -mkdir -p
+
+# Some of the rules below may be used to build things
+# to be executed on either the host or the target.
+# The COMPILE_FOR variable is used to select HOST_* or TARGET_* variables.
+# Use HOST_* by default; that is correct for building the compiler itself.
+ifndef COMPILE_FOR
+COMPILE_FOR = HOST
+endif
+
+# Compilation flags
+# XXX $(CFLAGS_INCLUDE_SEP) should be between SRCDIRS and INCDIRS
+ALL_CPPFLAGS	+= $(CFLAGS_GEN_DEP) $(DEFINES) \
+		   -I. $(addprefix -I,$(SRCDIRS)) \
+		   $(CFLAGS_INCLUDE_SEP)
+HOST_CPPFLAGS	+= $(ALL_CPPFLAGS) $(addprefix -I,$(HOST_INCDIRS))
+TARGET_CPPFLAGS	+= $(ALL_CPPFLAGS) $(addprefix -I,$(TARGET_INCDIRS))
+
+# `CFLAGS' is set in the `configure'-generated `GNUmakeconf' file and is
+# separate from `ALL_CFLAGS' defined here.  `CFLAGS' can be specified by the
+# user, either at configure time or compile time.
+#
+# `HOST_CFLAGS' and `TARGET_CFLAGS' are also set in the `configure'-generated
+# `GNUmakeconf' file, and can also be set by the user at configure or compile
+# time.  We *add* to them below, which is why we must specify `override'.
+#
+# XXX --- We used to support `SECTION_CFLAGS'; when set, it would override the
+# definition of `ALL_CFLAGS' below.  We used this feature to force the runtime
+# libraries and test programs to be compiled `-O2'.  But now, everything is
+# compiled `-O2' by default (by virtue of `configure'), so the need for per-
+# section `CFLAGS' is less pressing.  Per-section configuration also resulted
+# in portability problems because we didn't base the value of `SECTION_CFLAGS'
+# on configure-time knowledge (e.g., what if `gcc' on your host doesn't support
+# `-g', or what if you're not using `gcc' at all?).  So `SECTION_CFLAGS' was
+# removed, at least until we figure out how to do it right.
+#
+# ifdef SECTION_CFLAGS
+#   ALL_CFLAGS		+= $(SECTION_CFLAGS)
+# else
+    ALL_CFLAGS		+=
+# endif
+override HOST_CFLAGS	+= $(HOST_CPPFLAGS) $(ALL_CFLAGS)
+override TARGET_CFLAGS	+= $(TARGET_CPPFLAGS) $(ALL_CFLAGS)
+
+# Handle `CXXFLAGS', `ALL_CXXFLAGS', `HOST_CXXFLAGS' and `TARGET_CXXFLAGS' like
+# we handle the corresponding `*_CFLAGS' variables above.
+#
+# Like `CFLAGS', `CXXFLAGS' is set in the `configure'-generated `GNUmakeconf'
+# file and is separate from `ALL_CXXFLAGS' defined here.  `CXXFLAGS' can be
+# specified by the user, either at configure time or compile time.
+#
+ALL_CXXFLAGS +=
+override HOST_CXXFLAGS		+= $(HOST_CPPFLAGS) $(ALL_CXXFLAGS)
+override TARGET_CXXFLAGS	+= $(TARGET_CPPFLAGS) $(ALL_CXXFLAGS)
+
+# Linker flags.
+ALL_LDFLAGS	+= $(addprefix -L,$(LIBDIRS))
+HOST_LDFLAGS	+= $(ALL_LDFLAGS)
+TARGET_LDFLAGS	+= $(ALL_LDFLAGS)
+
+# Where to find source files
+vpath % $(SRCDIRS)
+
+# Find every file in the list of source directories, and then filter that list
+# to find C files, C++ files, and so on.  This is (presumably) faster than
+# scanning the source directories multiple times, each time for a different
+# type of file.
+
+FILES := $(foreach DIR,$(SRCDIRS),$(wildcard $(DIR)/*))
+
+CFILES := $(filter %.c,$(FILES))
+CCFILES := $(filter %.cc,$(FILES))
+TEXFILES := $(filter %.tex,$(FILES))
+FIGFILES := $(filter %.fig,$(FILES))
+
+###############################################################################
+
+# How to compile C and C++ files.
+
+%.o: %.c
+	$($(COMPILE_FOR)_CC) -c $(CPPFLAGS) $(CFLAGS) $($(COMPILE_FOR)_CFLAGS) $<
+%.o: %.cc
+	$($(COMPILE_FOR)_CXX) -c $(CPPFLAGS) $(CXXFLAGS) $($(COMPILE_FOR)_CXXFLAGS) $<
+
+# Building `lex' and `yacc' files into C files.
+
+%.c %.h: %.y
+	$(YACC)	-d $<
+	mv -f y.tab.c $*.c
+	mv -f y.tab.h $*.h
+
+%.cc %.hh: %.yy
+	$(YACC) -d $<
+	mv -f y.tab.c $*.cc
+	mv -f y.tab.h $*.hh
+
+%.c: %.l
+	$(LEX) $<
+	mv -f lex.yy.c $@
+
+%.cc: %.ll
+	$(LEX) $<
+	mv -f lex.yy.c $@
+
+# XXX how to compile Sun RPC IDL files.
+#%.xi: $(SRCDIR)/mom/%.x
+#	$(CPP) $(TARGET_CPPFLAGS) -x c-header $< | sed -e 's/^include.*$$//' >$@
+#	sed -e 's/^[^:]*:/$@ :/' <$*.d >$*.d2
+#	mv -f $*.d2 $*.d
+#%.xii: $(SRCDIR)/mom/%.x
+#	(grep "^include" $< || true) | sed -e 's/^i/#i/' >$@
+#%.h: %.xi %.xii
+#	echo >$@ "#ifndef _flick_$*_h_"
+#	echo >>$@ "#define _flick_$*_h_"
+#	echo >>$@
+#	echo >>$@ "#include <rpc/types.h>"
+#	echo >>$@ "#include <rpc/xdr.h>"
+#	cat $*.xii >>$@
+#	rpcgen -h $< >>$@
+#	echo >>$@ "#endif /* _flick_$*_h_ */"
+#%_xdr.c: %.xi %.h
+#	rpcgen -c $< >$@
+#CLEAN_FILES += *.xi *.xii *_xdr.c
+
+%.h: $(SRCDIR)/mom/%.x
+# rpcgen refuses to overwrite its output file
+	rm -f $@
+	rpcgen -h -o $@ $<
+%_xdr.c: $(SRCDIR)/mom/%.x
+	echo >$@ "#include <mom/$*.h>"
+	(cat $< | rpcgen -c ) >>$@
+
+# Do not clean `%_xdr.c' files because we may be on a system without `rpcgen'.
+# CLEAN_FILES += *_xdr.c
+
+# XXX kludges
+%_1: %.x $(TARGET)
+	./$(TARGET) <$< >$@
+
+###############################################################################
+
+# How to build documentation.
+# XXX --- We don't currently handle BibTeX.
+
+%.ps: %.dvi
+	$(DVIPS) $(DVIPS_FLAGS) -o $@ $<
+
+%.dvi: %.tex
+	$(LATEX) $<
+	if fgrep -q -i -e 'rerun to get' $(@:.dvi=.log) ; then \
+		$(LATEX) $< ; \
+	fi; true
+	if fgrep -q -i -e 'rerun to get' $(@:.dvi=.log) ; then \
+		$(LATEX) $< ; \
+	fi; true
+
+%.eps: %.fig
+	$(FIG2DEV) -L ps $< $@
+
+# TeX4ht gets confused if the filename on the command line has the full path
+# of the source file.  The source file may be in the source tree, but LaTeX's
+# output files are going to go into the object tree!  Hence, the $(notdir ...).
+# The $(basename ...) is also there to cope with TeX4ht's fragile nature.
+#
+%.html: %.tex
+	$(TEX4HT) $(LATEX) $(basename $(notdir $<))
+
+###############################################################################
+
+# How to install files into their final resting places.
+
+INSTALL_BINDIR = $(INSTALL_ROOT)$($(COMPILE_FOR)_BINDIR)
+INSTALL_LIBDIR = $(INSTALL_ROOT)$($(COMPILE_FOR)_LIBDIR)
+INSTALL_INCDIR = $(INSTALL_ROOT)$($(COMPILE_FOR)_INCDIR)
+
+$(INSTALL_BINDIR)/$(PROGRAM_PREFIX)%$(PROGRAM_SUFFIX)$(PROGRAM_EXTENSION): %
+	$(MKDIR) $(@D)
+	$(INSTALL_PROGRAM) $< $@
+
+$(INSTALL_LIBDIR)/%: %
+	$(MKDIR) $(@D)
+	$(INSTALL_DATA) $< $@
+
+# The following rule isn't ever used; `GNUmakerules.include' defines its own
+# targets for installing include files.
+#
+$(INSTALL_INCDIR)/%.h: %.h
+	$(MKDIR) $(@D)
+	$(INSTALL_DATA) $< $@
+
+
+# Get rid of a bunch of nasty built-in implicit rules,
+# to avoid bogus circular dependencies and make things go faster.
+# Use the `-r' command line option to make to get even better performance.
+.SUFFIXES:
+
+
+# The generated object files have the same prefix names as the source files,
+# except they live in the current (object) directory.
+# Compile MIG files before other C source files,
+# because they create header files used in the other sources.
+# The $(sort)s are to eliminate duplicate files,
+# which might appear when files are being overridden.
+GEN_OBJFILES += \
+	$(sort $(patsubst %.c,%.o,$(GEN_CFILES))) \
+	$(sort $(patsubst %.c,%.o,$(notdir $(CFILES)))) \
+	$(sort $(patsubst %.cc,%.o,$(notdir $(CCFILES))))
+
+# Make sure we only clean the object files we generated.
+OBJFILES += $(GEN_OBJFILES)
+CLEAN_FILES += $(GEN_OBJFILES)
+.PRECIOUS: $(GEN_OBJFILES)
+
+
+# To install, at the very least we also want to make everything.
+install: all
+
+
+# How to clean out the automatically built stuff in an object directory.
+clean:
+	rm -rf *.d *.bak tags depend $(CLEAN_FILES)
+distclean: clean
+
+
+# How to update the dependency file in an object directory.
+# This funny bit of magic (hopefully the most obscure thing here)
+# basically replaces the `md' program in ODE.
+# The `sed' line removes the dependencies being replaced,
+# the `for' line tacks the new dependencies to the end of the file,
+# and then the individual dependency files are deleted.
+comma := ,
+depend: $(wildcard *.d)
+	@if test -f depend; then sed $(patsubst %.d,-e '/^%\./$(comma)/^#/d',$^) <depend >depend.new; fi; true
+	@(for file in $^ /dev/null; do (cat $$file; echo '#'); done) >>depend.new
+	@mv -f depend.new depend
+	@if test "" != "$^"; then rm -f $^; fi; true
+
+
+# Include the dependency graph (if it exists).
+-include depend
+
+## End of file.
+

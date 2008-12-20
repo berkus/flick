@@ -1,0 +1,164 @@
+-*- mode: Text -*-
+
+			Cygwin Support Files for Flick
+
+		     The Flux Project, University of Utah
+			 http://www.cs.utah.edu/flux/
+				+1-801-585-3271
+
+				 November 1999
+
+
+This directory contains files that are not part of Flick, but which you may
+need in order to compile and use Flick in a Cygwin environment.
+
+The Cygwin library implements a UNIX-like interface for Windows 95 and Windows
+NT.  The Cygwin toolset is a suite of GNU tools ported to run with the Cygwin
+library.  The Cygwin library and toolset are available from Cygnus Solutions
+via the World Wide Web at <http://sourceware.cygnus.com/cygwin/>.
+
+CONTENTS ----------------------------------------------------------------------
+
+In this directory you will find:
+
+	README		The file you are reading now.
+
+	include		This directory contains C system header files that are
+			required in order to build Flick.  Cygwin does not
+			contain these files by default.
+
+	libnsl		This directory contains a minimal `libnsl' library
+			which contains the standard set of RPC and XDR
+			functions.  While many systems provide these functions
+			in `libc', Cygwin does not.
+
+	portmap		This directory contains an enhanced portmapper daemon.
+			A portmapper is required in order for one to run ONC
+			RPC (Sun RPC)-based servers on a Windows host.
+
+	tcp_wrappers	This directory contains the TCP/IP daemon wrapper
+			package.  The `tcp_wrappers' library can be used to
+			build a secure version of portmapper, above.
+
+The files within `include' and `libnsl' are derived from corresponding files
+within the GNU C Library.  The GNU C Library in turn assimilated these files
+from Sun Microsystems' RPCSRC distribution of Sun RPC.  All of the files within
+`include' and `libnsl' are freely distributable; some are controlled by the Sun
+RPC license and some are controlled by the GNU Library General Public License
+(GLPL).  See the `COPYRIGHT' file in the root of the Flick distribution for
+details, or refer to the individual source files.
+
+The files within `portmap' are derived from Weitse Venema's enhanced portmapper
+distribution, version 4.  (See the `portmap/README' file.)  The files within
+`tcp_wrappers' are derived from Weitse Venema's TCP/IP daemon wrapper package,
+version 7.6.  (See the `tcp_wrappers/README' file.)  All of the files in the
+`portmap' and `tcp_wrappers' directories are freely distributable; some are
+controlled by the Sun RPC license and some are controlled by a BSD license.
+Again, refer to the `COPYRIGHT' file at the root of the Flick distribution for
+details, or see the individual source files.
+
+The `portmap' installation notes (below) contain important details about
+portmapper security features under Cygwin.
+
+All of the support files have been tested with Cygwin beta 20.1.
+
+INSTALLATION ------------------------------------------------------------------
+
+If you are using the Flick binary distribution for Cygwin, a `make install'
+will install both Flick and the additional support files described above.
+
+If you are using the Flick source distribution, installation of the additional
+Cygwin support files is manual but simple:
+
+	include		To install the header files, simply copy the files
+			within this directory into GCC's system include
+			directory.  The complete pathname of GCC's system
+			include directory depends on your installation of
+			Cygwin.  You can find your system include directory by
+			searching for the file `stdio.h' in your Cygwin
+			installation.  The directory that contains `stdio.h' is
+			your system header directory.
+
+			BE CAREFUL to preserve the directory hierarchy of the
+			files that you copy into your system header directory.
+			For instance, the files in the `rpc' subdirectory must
+			appear in an `rpc' subdirectory of GCC's system header
+			directory, so that they can be included as <rpc/rpc.h>,
+			etc.
+
+			ALSO BE CAREFUL not to delete any header files that are
+			already installed on your system!
+
+	libnsl		To install the `libnsl' library, you must compile the
+			libnsl sources with GCC and then copy `libnsl.a' into
+			GCC's system library directory.  The Makefile with
+			`libnsl' should be sufficient to compile the library.
+
+			Again, the exact pathname of the system library
+			directory varies across Cygwin installations.  You can
+			find your system's library directory by searching for
+			the file `libc.a'.  The directory that contains
+			`libc.a' is your system library directory.
+
+	portmap		You must compile and install the `libnsl' library,
+			and compile the `tcp_wrappers' library before you can
+			compile the `portmap' daemon.
+
+			To install the `portmap' daemon, you simply compile the
+			portmapper sources with GCC and then copy the resultant
+			`portmap' program to some directory in your executable
+			search path.  A good location might be the `bin'
+			directory within your Cygwin tree (e.g., where
+			`bash.exe' resides).  The Makefile with `portmap'
+			should be sufficient to compile the daemon and support
+			programs.
+
+			You may want to install the utility `pmap_dump' and
+			`pmap_set' programs in your search path as well.
+
+			Note that you must start the `portmap' daemon on your
+			Windows machine before you run any Flick-generated ONC
+			RPC (Sun RPC)-based servers.  (ONC RPC servers attempt
+			to register themselves with the portmapper.)  To start
+			the portmapper daemon, simply run the `portmap'
+			program.  Command line options:
+
+				-d	Prevent `portmap' from running as a
+					daemon, and cause debugging information
+					to be printed to stderr.
+
+				-v	Issue verbose logging access control
+					checks.
+
+			The `-d' switch may be required under Windows 95.  We
+			have had problems running `portmap' as a daemon under
+			Windows 95, but haven't really investigated the issue.
+
+			Note that host-based access control is enabled by
+			default, and `portmap' links with the `tcp_wrappers'
+			library supplied.  If you prefer to use a different
+			wrapper library (or to disable host-based access
+			control), you will need to modify the portmapper
+			Makefile accordingly.
+
+	tcp_wrappers	You must compile and install the `libnsl' library
+			before you can compile the `tcp_wrappers' library.
+
+			Simply compile the `tcp_wrapper' sources with GCC.  The
+			Makefile with `tcp_wrappers' should be sufficient to
+			compile the library and support programs.
+
+			Note that this is the complete TCP/IP wrapper package,
+			and thus will make more than just the `libwrap.a'
+			library needed for the `portmap' daemon.
+
+COMPILING FLICK ---------------------------------------------------------------
+
+After you have installed the extra support files into your Cygwin setup, you
+should be able to compile and use Flick.  Refer to the Flick user's guide or
+the `INSTALL' file for further instructions.
+
+-------------------------------------------------------------------------------
+
+## End of file.
+

@@ -1,0 +1,219 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1997, 1999 The University of Utah and the Computer Systems
+%% Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Define a command for commenting-out text.
+%%
+\long\def\com#1{}
+
+%% Define some commands for defining URLs.  These commands create URLs that
+%% turn into hypertext links when we process this document with `TeX4ht'.
+%% If we're not producing HTML, we need to provide `\HCode' as a no-op.
+%%
+\providecommand{\HCode}[1]{}
+\newcommand{\urlhttp}{%
+  \begingroup%
+  \def\UrlLeft##1\UrlRight{\HCode{<A HREF="##1">}##1\HCode{</A>}}%
+  \urlstyle{tt}%
+  \Url}
+\newcommand{\urlmailto}{%
+  \begingroup%
+  \def\UrlLeft##1\UrlRight{\HCode{<A HREF="mailto:##1">}##1\HCode{</A>}}%
+  \urlstyle{tt}%
+  \Url}
+\newcommand{\urlftp}{%
+  \begingroup%
+  \def\UrlLeft##1\UrlRight{\HCode{<A HREF="##1">}##1\HCode{</A>}}%
+  \urlstyle{tt}%
+  \Url}
+
+%% Define some Flick-related URLs.
+%%
+\urldef{\flickurl}{\urlhttp}{http://www.cs.utah.edu/flux/flick/}
+\urldef{\flickemail}{\urlmailto}{flick@cs.utah.edu}
+\urldef{\flickbugsemail}{\urlmailto}{flick-bugs@cs.utah.edu}
+\urldef{\flukeurl}{\urlhttp}{http://www.cs.utah.edu/flux/}
+\urldef{\khazanaurl}{\urlhttp}{http://www.cs.utah.edu/flux/}
+\urldef{\fluxurl}{\urlhttp}{http://www.cs.utah.edu/flux/}
+
+\urldef{\taourl}{\urlhttp}{http://www.cs.wustl.edu/~schmidt/TAO.html}
+\urldef{\taosrcurl}{\urlftp}{ftp://ace.cs.wustl.edu/pub/ACE/}
+\urldef{\trapezeurl}{\urlhttp}{http://www.cs.duke.edu/ari/trapeze/}
+
+%% What version of TAO do we support?
+%%
+\newcommand{\taoversion}{\mbox{1.0}}
+
+%% Define some commands to typeset the names of files, C functions, etc.
+%%
+\newcommand{\filename}{\begingroup \Url}
+
+\newcommand{\cfunction}{\begingroup \Url}
+\newcommand{\cprototype}{\begingroup \Url}
+\newcommand{\ctype}{\begingroup \Url}
+\newcommand{\cidentifier}{\begingroup \Url}
+
+\newcommand{\idl}{\begingroup \Url}
+
+\newcommand{\program}{\begingroup \Url}
+
+% `\option' is not a URL because we want to be able to invoke macros with an
+% option, e.g., `\optionarg' and `\optionor'.
+\newcommand{\option}[1]{\texttt{#1}}
+
+%% Define an environment for lists of command line options.  This `optionlist'
+%% environment was adapted from the `Mentry' example on page 65 of _The_LaTeX_
+%% _Companion_ by Goossens et al.
+%%
+\newcommand{\optionlistlabel}[1]%
+  {\raisebox{0pt}[1ex][0pt]%
+            {\makebox[\labelwidth][l]%
+                     {\parbox[t]{\labelwidth}%
+                             {\raggedright\hspace{0pt}\option{#1}}%
+                     }%
+            }%
+  }
+\newcommand{\optionarg}[1]{\texttt{\emph{#1}}}
+\newcommand{\oroption}{\textrm{or}}
+\newenvironment{optionlist}%
+  {\begin{list}{}%
+         {\renewcommand{\makelabel}{\optionlistlabel}%
+          %
+          % Provide a command for padding the height of the text.  Required
+          % when the height of the text is less than the height of the item
+          % label.
+          \newcommand{\optionpad}{\\\mbox{}}%
+          %
+          % Set our various list lengths.
+          \setlength{\labelwidth}{2.0in}%
+          \setlength{\leftmargin}{2.4in}%
+          \setlength{\parsep}{1ex plus 0.3ex}%
+          \setlength{\partopsep}{0pt}%
+          \setlength{\itemsep}{0pt}%
+         }%
+  }%
+  {\end{list}}
+
+%% Define an environment for lists of filenames.  This is essentially identical
+%% to the `optionlist' environment above.  If the filename is too weird, this
+%% won't work; see the comments in `url.sty'.
+%%
+\newcommand{\filenamelistlabel}[1]%
+  {\raisebox{0pt}[1ex][0pt]%
+            {\makebox[\labelwidth][l]%
+                     {\parbox[t]{\labelwidth}%
+                             {\raggedright\hspace{0pt}\filename{#1}}%
+                     }%
+            }%
+  }
+\newenvironment{filenamelist}%
+  {\begin{list}{}%
+         {\renewcommand{\makelabel}{\filenamelistlabel}%
+          \newcommand{\filenamepad}{\\\mbox{}}%
+          \setlength{\labelwidth}{2.0in}%
+          \setlength{\leftmargin}{2.4in}%
+          \setlength{\parsep}{1ex plus 0.3ex}%
+          \setlength{\partopsep}{0pt}%
+          \setlength{\itemsep}{0pt}%
+         }%
+  }%
+  {\end{list}}
+
+%% Define an environment for lists of commands (i.e., command lines).  This is
+%% essentially identical to the `optionlist' environment above.  Note that this
+%% is explicit *not* a `programlist': `\program' typesets its argument as a URL
+%% whereas this environment does not.
+%%
+\newcommand{\commandlistlabel}[1]%
+  {\raisebox{0pt}[1ex][0pt]%
+            {\makebox[\labelwidth][l]%
+                     {\parbox[t]{\labelwidth}%
+                             {\raggedright\hspace{0pt}\texttt{#1}}%
+                     }%
+            }%
+  }
+\newcommand{\commandarg}[1]{\texttt{\emph{#1}}}
+\newcommand{\orcommand}{\textrm{or}}
+\newenvironment{commandlist}%
+  {\begin{list}{}%
+         {\renewcommand{\makelabel}{\commandlistlabel}%
+          \newcommand{\commandpad}{\\\mbox{}}%
+          \setlength{\labelwidth}{2.0in}%
+          \setlength{\leftmargin}{2.4in}%
+          \setlength{\parsep}{1ex plus 0.3ex}%
+          \setlength{\partopsep}{0pt}%
+          \setlength{\itemsep}{0pt}%
+         }%
+  }%
+  {\end{list}}
+
+%% Redefine `\maketitle' to include our copyright notice.  This is almost
+%% identical to the `titlepage' version of `\maketitle' from the LaTeX2e
+%% standard `book.cls' file.
+%%
+\makeatletter
+\renewcommand{\maketitle}{\begin{titlepage}%
+  \let\footnotesize\small
+  \let\footnoterule\relax
+  \let \footnote \thanks
+  \null\vfil
+  \vskip 60\p@
+  \begin{center}%
+    {\LARGE \@title \par}%
+    \vskip 3em%
+    {\large
+     \lineskip .75em%
+      \begin{tabular}[t]{c}%
+        \@author
+      \end{tabular}\par}%
+      \vskip 1.5em%
+    {\large \@date \par}%       % Set date in \large size.
+  \end{center}\par
+  \vfill                        % <<< new
+  \noindent%                    % <<< new
+  {\small%                      % <<< new
+   \@copyrightnotice@begin%     % <<< new
+   \@copyrightnotice%           % <<< new
+   \@copyrightnotice@end}%      % <<< new
+  \@thanks
+  \vfil\null
+  \end{titlepage}%
+  \setcounter{footnote}{0}%
+  \global\let\thanks\relax
+  \global\let\maketitle\relax
+  \global\let\@thanks\@empty
+  \global\let\@author\@empty
+  \global\let\@date\@empty
+  \global\let\@title\@empty
+  \global\let\title\relax
+  \global\let\author\relax
+  \global\let\date\relax
+  \global\let\and\relax
+}
+\makeatother
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

@@ -1,0 +1,11 @@
+This directory contains the definitions of all of the ONC RPC IDL-specified
+intermediate data formats formats used internally by Flick (AOI, MINT, CAST,
+PRES_C, and META).  These formats are specified in ONC RPC IDL because Flick
+needs to send these intermediate formats between separate programs, and Flick
+does that by writing data to intermediate files.  Because the formats are
+specified in IDL, we can use `rpcgen' to automatically create the code to read
+and write Flick's intermediate data representations.
+
+This directory also contains the header files for the libraries that manipulate
+Flick's non-C/C++-specific intermediate representations (i.e., libaoi, libmint,
+and libmeta).

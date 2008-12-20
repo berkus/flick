@@ -1,0 +1,3 @@
+This directory contains the CORBA C++-specific modifications to the ``generic''
+AOI to C language mapping.  It is a library so that other presentation
+generators can be derived from it.

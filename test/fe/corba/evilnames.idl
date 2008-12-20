@@ -1,0 +1,63 @@
+/*
+ * Copyright (c) 1999 The University of Utah and
+ * the Computer Systems Laboratory at the University of Utah (CSL).
+ *
+ * This file is part of Flick, the Flexible IDL Compiler Kit.
+ *
+ * Flick is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Flick is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Flick; see the file COPYING.  If not, write to
+ * the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+ */
+
+struct a {
+	struct b {
+		struct a {
+			long zero;
+		} effect;
+	} m_a;
+	struct c {
+		b::a m_a;
+	} m_b;
+};
+
+typedef a::b::a b;
+
+enum c {
+	C1,
+	C2,
+	C3,
+	C4
+};
+
+module d {
+	struct a {
+		sequence < ::a::b::a, 10> m_a;
+		sequence <c, 10> m_b;
+		sequence <d::a, 1> link;
+		sequence <a, 1> link2;
+	};
+	
+	union b switch(::c) {
+	case C1:
+		long m_a;
+	case C2:
+		a m_b;
+	case C3:
+		::a::b m_c;
+	case C4:
+		long m_d;
+	};
+};
+
+/* End of file. */
+

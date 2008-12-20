@@ -1,0 +1,2 @@
+This directory contains code for stub generation using the TAO runtime.  TAO is
+the real-time, open source CORBA ORB from Washington University in St. Louis.

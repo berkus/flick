@@ -1,0 +1,142 @@
+/*
+ * Copyright (c) 1997 The University of Utah and
+ * the Computer Systems Laboratory at the University of Utah (CSL).
+ *
+ * This file is part of Flick, the Flexible IDL Compiler Kit.
+ *
+ * Flick is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Flick is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Flick; see the file COPYING.  If not, write to
+ * the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+ */
+
+/*
+ * Operations that test the delivery and reception of both
+ * simple/standard and complex types, using both in-line and
+ * out-of-line methods.
+ */
+
+subsystem types 4440000;
+
+serverprefix s_;
+
+
+/*************/
+/*** TYPES ***/
+/*************/
+
+/*#include <mach/std_type.defs>*/
+
+type mach_port_t = MACH_MSG_TYPE_COPY_SEND;
+
+/* std types */
+type char = MACH_MSG_TYPE_CHAR;
+type byte = MACH_MSG_TYPE_BYTE;
+type bool = MACH_MSG_TYPE_BOOLEAN;
+type shortshort = MACH_MSG_TYPE_INTEGER_8;
+type short = MACH_MSG_TYPE_INTEGER_16;
+type int = MACH_MSG_TYPE_INTEGER_32;
+type long = MACH_MSG_TYPE_INTEGER_32;
+type signed = MACH_MSG_TYPE_INTEGER_32;
+type unsigned = MACH_MSG_TYPE_INTEGER_32;
+#if 1
+type float = (MACH_MSG_TYPE_REAL, 32);
+type double = (MACH_MSG_TYPE_REAL, 64);
+#else 
+type float = MACH_MSG_TYPE_REAL_32;
+type double = MACH_MSG_TYPE_REAL_64;
+#endif
+
+/* array types */
+
+type charA = array[9] of char;
+type byteA = array[9] of byte;
+type boolA = array[9] of bool;
+type shortshortA = array[9] of shortshort;
+type shortA = array[9] of short;
+type intA = array[9] of int;
+type longA = array[9] of long;
+type signedA = array[9] of signed;
+type unsignedA = array[9] of unsigned;
+type floatA = array[9] of float;
+type doubleA = array[9] of double;
+
+/* The above types are defined in the following header file: */
+import "mig-types.h";
+
+
+/******************/
+/*** OPERATIONS ***/
+/******************/
+
+routine snd(
+	target			: mach_port_t;
+	in	_char		: char;
+	in	_byte		: byte;
+	in	_bool		: bool;
+	in	_short8		: shortshort;
+	in	_short16	: short;
+	in	_int		: int;
+	in	_long		: long;
+	in	_signed		: signed;
+	in	_unsigned	: unsigned;
+	in	_float		: float;
+	in	_double		: double
+	);
+
+routine rcv(
+	target			: mach_port_t;
+	out	_char		: char;
+	out	_byte		: byte;
+	out	_bool		: bool;
+	out	_short8		: shortshort;
+	out	_short16	: short;
+	out	_int		: int;
+	out	_long		: long;
+	out	_signed		: signed;
+	out	_unsigned	: unsigned;
+	out	_float		: float;
+	out	_double		: double
+	);
+
+routine sndArr(
+	target			: mach_port_t;
+	in	_charA		: charA;
+	in	_byteA		: byteA;
+	in	_boolA		: boolA;
+	in	_short8A	: shortshortA;
+	in	_short16A	: shortA;
+	in	_intA		: intA;
+	in	_longA		: longA;
+	in	_signedA	: signedA;
+	in	_unsignedA	: unsignedA;
+	in	_floatA		: floatA;
+	in	_doubleA	: doubleA
+	);
+
+routine rcvArr(
+	target			: mach_port_t;
+	out	_charA		: charA;
+	out	_byteA		: byteA;
+	out	_boolA		: boolA;
+	out	_short8A	: shortshortA;
+	out	_short16A	: shortA;
+	out	_intA		: intA;
+	out	_longA		: longA;
+	out	_signedA	: signedA;
+	out	_unsignedA	: unsignedA;
+	out	_floatA		: floatA;
+	out	_doubleA	: doubleA
+	);
+
+/* End of file. */
+

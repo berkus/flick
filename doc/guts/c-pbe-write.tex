@@ -1,0 +1,215 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1995, 1996, 1999 The University of Utah and the Computer
+%% Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The back end of Flick is implemented as a series of iterators which each
+perform a specific transformation on the \PRESC{} structure created in the
+presentation generation phase.  There are currently 4 different iterators:
+allocation, encoding, decoding, and deallocation.
+
+\begin{itemize}
+  \item \textbf{Allocation}
+
+  This iterator should allocate any memory that the stub is responsible for.
+  For a server stub, the space for the unmarshaled parameters should be
+  allocated at this point.  A client stub needs to allocate space for the
+  parameters passed to the stub.  In addition, this iterator should deal with
+  any setup necessary to begin an \RPC{}\@.
+
+  \item \textbf{Encoding}
+
+  This iterator marshals parameters or return values into a buffer.  On the
+  client side, encoding of parameters automatically resizes the buffer as
+  necessary.  The server side may have to allocate a buffer, as well.
+
+  \item \textbf{Decoding}
+
+  This iterator unmarshals return values (or parameters) from a buffer into
+  data structures to be returned to the caller or work functions.  The space
+  for these values should have been allocated by the Allocator iterator.
+
+  \item \textbf{Deallocation}
+
+  This is for general cleanup, both memory deallocation and any other clean up
+  necessary to complete an \RPC{}.
+\end{itemize}
+
+As would seem logical, server skeletons and client stubs call these iterators
+in slightly different order, as an \RPC{} calling mechanism would dictate.
+
+Currently, these 4 iterators are represented as a single class, with the
+iterator type specified at construction time.  Most of the iterators simply
+generate identical code, changing certain keywords in macro names.  For
+example, the code for marshaling/unmarshaling only differs in direction (one is
+the reverse of the other) and the macro names:
+\texttt{flick\_mach3mig\_encodeglob} versus
+\texttt{flick\_mach3mig\_decodeglob}.  Most of the code is \emph{very} similar.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Marshaling Buffer Management}
+
+Stubs generated for non-trivial \RPC{}s generally need some kind of
+\emph{marshaling buffer}, into/out of which messages are marshaled.  Sometimes
+a message can use multiple marshaling buffers.  The format of the marshaled
+data in the buffer(s) depends on the encoding scheme being used by the back end
+(e.g., \XDR{} is an encoding scheme), and by the \MINT{} interface definition for the
+\RPC{} in question.  The format of the marshaled data does NOT usually depend on
+any aspects of presentation.  (However, there can be exceptions to this rule;
+e.g., see the local PBE described in Section~\ref{c-pbe-local}).
+
+Some transport mechanisms can transfer an ``unlimited'' amount of data in one
+message (e.g., Mach 3); others impose some arbitrary limit (e.g., Mach 4).
+Flick stubs are generally expected to be able to handle an unlimited amount of
+data, regardless of any limitations of the transport mechanism
+
+Fixed-length arrays are generally handled as merely a degenerate case of
+variable-length arrays: the two types of arrays are identical except that
+fixed-length arrays use a ``degenerate integer'' data type with only one
+possible value as their length data type.  Thus, fixed and variable-length
+arrays can usually be marshaled in exactly the same way; the
+simple-integer-marshaling code will automatically handle the degenerate length
+``variable'' in fixed-length arrays (see \texttt{mu\_mapping\_direct.cc}).
+
+The PBE support library assumes that code generation can be done by traversing
+the type trees in a certain ``natural order'':
+
+\begin{cidentifierlist}
+  \item[MINT_STRUCT] Marshal each element of the struct in the same
+  order in which the elements appear in the \cidentifier{MINT_STRUCT}.
+
+  \item[MINT_UNION] Marshal the union discriminator first, then
+  marshal the selected union case.
+
+  \item[MINT_ARRAY] First marshal the array's length (if
+  non-constant), then marshal each element in order, lowest-indexed element
+  first.
+\end{cidentifierlist}
+
+There is quite a bit of flexibility available, however, and these rules can be
+bent or broken occasionally as the needs of particular transport mechanisms
+dictate.  For example, just because the type graphs are traversed in the order
+specified above doesn't mean the data must always appear in memory in exactly
+this order; it's just easiest to write the back end if it is.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{PBE\_MEM}  % XXX
+
+The \texttt{mem\_mu\_state} class is an extension of the basic
+\texttt{mu\_state} class, intended for use by typical back ends where
+parameters are marshaled (at least partly) into variable-length memory buffers
+of some kind.  It deals with things like buffer management, alignment, endian
+conversion, etc.
+
+For code optimization purposes, marshaled messages are logically divided into
+\emph{globs}, then subdivided into \emph{chunks}.
+
+A chunk is a sequence of bytes in the marshaled message that whose length and
+internal format is constant (i.e., can be determined completely at compile
+time).  For example, a fixed-length array of bytes could be one big chunk; a
+variable-length array of bytes would not be a chunk, but each individual byte
+in that array would be.  Chunks are used primarily for optimization of data
+packing/unpacking code: once a chunk is started, no alignment checks or pointer
+adjustments need to be done between successive primitives in the chunk.
+
+A glob is part of a message whose \emph{maximum possible length} is a
+``smallish'' compile-time constant, even though the \emph{actual} length may
+not be constant.  For example, a variable-length array of bytes with a maximum
+length of 32 bytes would be a good candidate for being lumped into a single
+glob, whereas a variable-length array with an unlimited length would not be:
+instead each individual element of the array would be a separate glob in that
+case.  (The definition of ``smallish'' is defined by the back end: each back
+end defines some maximum glob size, usually on the order of a few kilobytes.)
+Globs are used to optimize marshaling buffer management: once ``enough'' buffer
+memory is allocated at the beginning of a glob, the marshaling code within the
+glob can simply bump through with a pointer without having to worry about
+buffer space again until the next glob.
+
+\paragraph{Chunkification}  % XXX
+
+Any time \texttt{align\_bits} must be increased (i.e., we need a larger
+alignment than we can guarantee at compile time at this point), a new chunk
+must be started with a run-time alignment check at its beginning.
+
+\paragraph{Globification} % XXX
+
+Macros used by the generated code: All of these macros can safely contain
+multiple statements separated by semicolons (i.e., they don't need to use a
+\texttt{do \{ \} while} kludge or GCC's \texttt{(\{ \})} construct), and all
+macro parameters may be evaluated more than once without ill effects.
+
+\begin{cprototypelist}
+  \item[mom_BE_msg_new_glob(msg, max_size)]
+  %
+  Indicates that a new glob is being started, with a maximum possible size of
+  \texttt{max\_size} (a constant).  It is guaranteed that \texttt{max\_size}
+  will never be greater than the maximum glob size defined by the back end.
+  This function is typically responsible for ensuring enough buffer space is
+  available, and allocating more if necessary.
+
+  \item[mom_BE_msg_end_glob(msg, max_size)]
+  %
+  Invoked at the end of each glob, with the same \texttt{max\_size} parameter
+  as was supplied in the corresponding \texttt{mom\_\emph{BE}\_new\_glob} call.
+
+  \item[mom_BE_msg_new_chunk(msg, size),
+  mom_BE_msg_new_chunk_align(msg, size, needed_align, known_align,
+                                  known_ofs)]
+  %
+  One of these is invoked at the beginning of every chunk.
+  \texttt{new\_chunk()} just indicates that a new chunk of the given (constant)
+  size is coming, and no alignment requirements need be met beyond the
+  alignment that was in effect when the last chunk was ended.
+  \texttt{new\_chunk\_align()} starts a new chunk and produces a runtime
+  alignment check.  \texttt{needed\_align} indicates the new alignment required
+  (the offset is almost always 0, indicating a natural boundary).
+  \texttt{known\_align} and \texttt{known\_ofs} are the alignment parameters
+  known at the end of the last chunk; they are provided in case their presence
+  might allow a more optimal implementation of the alignment check.
+
+  \item[mom_BE_msg_end_chunk(msg, size)]
+  %
+  This is invoked at the end of every chunk, with the size of the chunk just
+  finished.  Typically it just bumps some pointer by the given amount.
+
+  \item[mom_BE_msg_encode_signedN(msg, ofs),
+  mom_BE_msg_encode_unsignedN(msg, ofs)]
+  %
+  Macros to extract/deposit integers of various sizes in the stream, doing any
+  appropriate endianness conversion or other simple transformations in the
+  process.  N is a power of two specifying the size of the primitive (e.g., 8,
+  16, 32, 64).  \texttt{ofs} is the byte offset within the current chunk where
+  the given primitive is to be deposited/extracted.
+\end{cprototypelist}
+
+\paragraph{Mach4 Back End} % XXX
+
+The maximum glob size is the size of the server's message buffer.  \RPC{}s in
+which both the sent and received messages fit into one glob are ``simple.''
+XXX what about exceptions?
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

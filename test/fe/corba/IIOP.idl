@@ -1,0 +1,86 @@
+struct Version 
+{
+  char	major;
+  char	minor;
+};
+
+module IOP 
+{
+  typedef unsigned long			ServiceID;
+  struct ServiceContext {
+    ServiceID		context_id;
+    sequence<octet>	context_data;
+  };
+  typedef sequence<ServiceContext>	ServiceContextList;
+  const ServiceID			TransactionServer = 0;
+};
+
+module GIOP
+{
+  interface Principal;	
+
+  enum MsgType {
+    Request, Reply, CancelRequest,
+    LocateRequest, LocateReply,
+    CloseConnection, MessageError
+  };
+  
+  struct MessageHeader {
+    char		magic[4];	// 'GIOP'
+    Version		GIOP_version;	// 1.0
+    boolean		byte_order;	// true = little endian
+    octet		message_type;	// MsgType value
+    unsigned long	message_size;	// Size of the REST of the msg
+  };
+
+  struct RequestHeader {
+    IOP::ServiceContextList	service_context;	// Make this empty
+    unsigned long		request_id;		// A SeqNum of sorts...
+    boolean			response_expected;	// !one_way
+    sequence<octet>		object_key;		// the server location?
+    string			operation;		// The op name (UNSCOPED!)
+    Principal			requesting_principal;	// Make this empty
+  };
+  
+  enum ReplyStatusType {
+    NO_EXCEPTION,
+    USER_EXCEPTION,
+    SYSTEM_EXCEPTION,
+    LOCATION_FORWARD
+  };
+  
+  struct ReplyHeader {
+    IOP::ServiceContextList	server_context;
+    unsigned long		request_id;
+    ReplyStatusType		reply_status;
+  };
+  
+  struct CancelRequestHeader {
+    unsigned long	request_id;
+  };
+  
+  struct LocateRequestHeader {
+    unsigned long	request_id;
+    sequence<octet>	object_key;
+  };
+  
+  enum LocateStatusType {
+    UNKNOWN_OBJECT,
+    OBJECT_HERE,
+    OBJECT_FORWARD
+  };
+  struct LocateReplyHeader {
+    unsigned long	request_id;
+    LocateStatusType	locate_status;
+  };
+};
+
+module IIOP 
+{
+  struct ProfileBody {
+    Version		iiop_version;
+    string		host;
+    unsigned short	port;
+    sequence<octet>	object_key;
+  };
+};

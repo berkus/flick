@@ -1,0 +1,6 @@
+This directory contains a ``generic'' AOI-to-C presentation generator.  The
+generic mapping is largely but not entirely CORBA-like; some of the more
+complicated mapping procedures are simplified and more `rpcgen'-like.  All C
+and C++ language presentation generators (except the MIG presentation generator
+in `fe/mig') are derived from this generic presentation generator base class,
+either directly or indirectly.

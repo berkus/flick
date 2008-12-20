@@ -1,0 +1,3 @@
+This directory contains the Fluke/MOM presentation generator for C language
+stubs.  The Fluke language mapping is for the most part like the CORBA C
+language mapping, but with all the generated stubs and type names changed.

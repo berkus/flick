@@ -1,0 +1,582 @@
+#
+# Copyright (c) 1995, 1996, 1997, 1998, 1999 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+#### Start of configuration section ####
+
+SRCDIR	= @top_srcdir@
+#OBJDIR	= @top_objdir@
+OBJDIR	= .
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+include $(OBJDIR)/GNUmakeconf
+
+##### End of configuration section #####
+
+TRUE		= true
+
+SUBDIRS		= @flick_subdirs@
+
+# `RUNTIME_SUBDIRS' lists all the runtime directories we could build.  We must
+# be careful, however, to build only the runtime directories appropriate to the
+# current platform and OS.  We determine the set of runtime directories that we
+# *will* build by first removing all the `RUNTIME_SUBDIRS' from `MAKE_SUBDIRS',
+# and then adding back those that `configure' has detected to be appropriate
+# --- see `MAKE_RUNTIME_SUBDIRS', defined below.
+
+RUNTIME_SUBDIRS =	$(filter runtime%,$(SUBDIRS))
+
+# `MAKE_RUNTIME_SUBDIRS' lists the runtime libraries we should build on this
+# platform.  We let the `configure' script (conservatively) determine which can
+# be built on this platform.  (However, `runtime/headers' is always built.
+
+MAKE_RUNTIME_SUBDIRS += runtime/headers
+
+ifeq (@build_iiop_lib@,yes)
+MAKE_RUNTIME_SUBDIRS +=	runtime/libraries/link/iiop
+endif
+ifeq (@build_khazana_lib@,yes)
+MAKE_RUNTIME_SUBDIRS +=	runtime/libraries/link/khazana
+endif
+ifeq (@build_mach3mig_lib@,yes)
+MAKE_RUNTIME_SUBDIRS +=	runtime/libraries/link/mach3mig
+endif
+ifeq (@build_suntcp_lib@,yes)
+MAKE_RUNTIME_SUBDIRS +=	runtime/libraries/link/suntcp
+endif
+ifeq (@build_trapeze_lib@,yes)
+MAKE_RUNTIME_SUBDIRS +=	runtime/libraries/link/trapeze
+endif
+
+# `DOC_SUBDIRS' lists the directories that contain Flick's documentation.  When
+# compiling Flick (e.g., with `make all'), we do not normally make the docs.
+# Use `make doc' to process the documentation.
+
+DOC_SUBDIRS =		$(filter doc%,$(SUBDIRS))
+
+# `TEST_SUBDIRS' lists the directories that contain Flick's regression tests.
+# When compiling Flick (e.g., with `make all'), we do not automatically compile
+# any of the tests.  Use `make test' to build Flick *and* run the tests.
+
+TEST_SUBDIRS =		$(filter test%,$(SUBDIRS))
+
+# `DIST_SUBDIRS' lists the directories associated with making distributions of
+# Flick.  We remove these from the list of directories that are normally built
+# as part of Flick (e.g., by `make all').
+
+DIST_SUBDIRS =		$(filter dist%,$(SUBDIRS))
+
+# `SUPPORT_SUBDIRS' lists the directories containing support files for various
+# platforms.  These are not built with Flick.  Rather, the user is responsible
+# for determining which need to be built and/or installed for Flick and/or
+# Flick-generated code to work.
+
+SUPPORT_SUBDIRS =	$(filter support%,$(SUBDIRS))
+
+# `BROKEN_SUBDIRS' lists deprecated, out-of-date, or unmaintained directories.
+
+BROKEN_SUBDIRS =	html c/libcparse c/pbe/local c/pbe/mach3 \
+			c/pbe/mach4 fe/corba
+
+# Assume everything not broken is part of Flick.
+
+FLICK_SUBDIRS :=	$(filter-out $(BROKEN_SUBDIRS), $(SUBDIRS))
+
+# By default, we don't make the documentation, test, distribution, or support
+# subdirectories.
+#
+# Also, we make only the runtime directories specified by `configure'.
+
+MAKE_SUBDIRS :=		$(filter-out $(RUNTIME_SUBDIRS) $(DOC_SUBDIRS) \
+				     $(TEST_SUBDIRS) $(DIST_SUBDIRS) \
+				     $(SUPPORT_SUBDIRS), \
+				     $(FLICK_SUBDIRS)) \
+			$(MAKE_RUNTIME_SUBDIRS)
+
+###############################################################################
+
+# How to recursively descend into subdirectories to make general targets such
+# as `clean'.
+#
+%.MAKE:
+	@$(MAKE) -C $(dir $@) $(basename $(notdir $@))
+%-subdirs: $(addsuffix /%.MAKE,$(MAKE_SUBDIRS))
+	@$(TRUE)
+
+# By default, make any target by descending into subdirectories.
+%: %-subdirs
+	@$(TRUE)
+
+.PHONY: all test doc verify distclean configure
+
+all:	$(MAKE_SUBDIRS)
+
+verify: all test/verify.MAKE
+
+distclean: distclean-subdirs test/distclean.MAKE
+	rm -f GNUmakefile GNUmakeconf config.status \
+	      $(addsuffix /GNUmakefile,$(SUBDIRS))
+	rm -rf bin lib
+
+configure: $(SRCDIR)/configure
+	@$(TRUE)
+
+$(SRCDIR)/configure: $(SRCDIR)/configure.in
+	(cd $(SRCDIR); autoconf)
+
+.PHONY: TAGS
+TAGS:
+	(cd $(SRCDIR); \
+	 rm -f TAGS; \
+	 find . \( -name \*.c  -o -name \*.h  -o \
+		   -name \*.cc -o -name \*.hh \) -print | \
+	   xargs etags -a)
+
+###############################################################################
+#
+# Here are Flick's subdirectory dependencies.  These allow us to do parallel
+# `make' jobs (e.g., `make -j').
+
+.PHONY:		$(FLICK_SUBDIRS)
+
+# Flick libraries:
+libaoi:			mom $(OBJDIR)/lib
+libcompiler:		mom $(OBJDIR)/lib
+libmint:		mom $(OBJDIR)/lib
+libmeta:		mom $(OBJDIR)/lib
+c/libcast:		mom $(OBJDIR)/lib
+c/libpres_c:		mom $(OBJDIR)/lib
+c/pfe/lib:		mom $(OBJDIR)/lib
+c/pfe/libcorba:		mom $(OBJDIR)/lib
+c/pfe/libcorbaxx:	mom $(OBJDIR)/lib
+c/pbe/lib:		mom $(OBJDIR)/lib
+
+# We define FLICK_STD_LIBS here so the dependencies below look a little neater.
+# These libs are required for almost every Flick component.
+FLICK_STD_LIBS =	libcompiler libaoi libmint c/libcast c/libpres_c \
+			libmeta
+
+# Flick components:
+fe/mig:			$(FLICK_STD_LIBS) $(OBJDIR)/bin
+fe/newcorba:		libcompiler libmeta libaoi $(OBJDIR)/bin
+fe/sun:			libcompiler libmeta libaoi $(OBJDIR)/bin
+c/pfe/fluke:		$(FLICK_STD_LIBS) c/pfe/lib c/pfe/libcorba \
+				$(OBJDIR)/bin
+c/pfe/corba:		$(FLICK_STD_LIBS) c/pfe/lib c/pfe/libcorba \
+				$(OBJDIR)/bin
+c/pfe/corbaxx:		$(FLICK_STD_LIBS) c/pfe/lib c/pfe/libcorbaxx \
+				$(OBJDIR)/bin
+c/pfe/sun:		$(FLICK_STD_LIBS) c/pfe/lib $(OBJDIR)/bin
+c/pbe/fluke:		$(FLICK_STD_LIBS) c/pbe/lib $(OBJDIR)/bin
+c/pbe/iiop:		$(FLICK_STD_LIBS) c/pbe/lib $(OBJDIR)/bin
+c/pbe/iiopxx:		$(FLICK_STD_LIBS) c/pbe/lib $(OBJDIR)/bin
+c/pbe/khazana:		$(FLICK_STD_LIBS) c/pbe/lib $(OBJDIR)/bin
+c/pbe/mach3mig:		$(FLICK_STD_LIBS) c/pbe/lib $(OBJDIR)/bin
+c/pbe/sun:		$(FLICK_STD_LIBS) c/pbe/lib $(OBJDIR)/bin
+c/pbe/trapeze:		$(FLICK_STD_LIBS) c/pbe/lib $(OBJDIR)/bin
+
+# Utilities:
+c/pdl:			$(FLICK_STD_LIBS) $(OBJDIR)/bin
+util/aoid:		libcompiler libaoi libmeta $(OBJDIR)/bin
+util/presd:		$(FLICK_STD_LIBS) $(OBJDIR)/bin
+
+# Tests:
+test:			all
+
+# Documentation:
+doc:			$(filter-out doc,$(DOC_SUBDIRS))
+
+
+# General rule (build everything in each subdirectory):
+$(FLICK_SUBDIRS):
+	@$(MAKE) -C $@
+
+# These directories must be made for many of Flick's components.
+# (We create links in these directories that point to the actual components.)
+$(OBJDIR)/lib $(OBJDIR)/bin:
+	mkdir $@
+
+
+###############################################################################
+#
+# The following targets are used by by `flest', the Flux Project's automated
+# testing script.
+
+.PHONY: compiletests check testsum
+
+compiletests: all
+
+check:
+	$(MAKE) -C testsuite $@
+
+testsum:
+	$(MAKE) --no-print-directory -C testsuite $@
+
+###############################################################################
+###############################################################################
+####
+#### Here are the rules for making various distribution packages.
+####
+###############################################################################
+###############################################################################
+
+# `FLICK_VERSION' is defined in `$(SRCDIR)/GNUmakerules', but we don't include
+# that file.
+
+FLICK_VERSION = 2.1
+
+# `DISTDIR' is the directory in which we will build a distribution.  This name
+# must not end with a `/' --- the rules below require that $(notdir $(DISTDIR))
+# result in a useful name.
+
+DISTDIR = $(SRCDIR)/flick-$(FLICK_VERSION)
+
+# `RPM_RELEASE' is the release number for RPMs.  Normally, this would always be
+# 1, but it may be higher if we make new RPMs (e.g., patch updates) of a single
+# Flick version.  See the `rpm' program documentation for more info.
+
+RPM_RELEASE = 1
+
+# `DIST_SRC_NAME' is the root filename for a source distribution.
+# `DIST_ARCHETYPES_NAME' is the root filename for the regression tests output.
+# `DIST_BIN_NAME' is the root filename for a binary distribution.
+# `DIST_RPM_NAME' is the root filename for RPMs (both source and binary).
+#
+# Note that these are the filename *roots*.  Extensions will be added as part
+# of the distribution creation process (e.g., `.tar.gz').
+
+DIST_SRC_NAME		= flick-$(FLICK_VERSION)-src
+DIST_ARCHETYPES_NAME	= flick-$(FLICK_VERSION)-tests
+DIST_BIN_NAME		= flick-$(FLICK_VERSION)-bin-@target@
+DIST_RPM_NAME		= flick-$(FLICK_VERSION)-$(RPM_RELEASE)
+
+# `DIST_BROKEN_SUBDIRS' is the list of directories that we remove from the
+# Flick source tree before distribution.
+
+DIST_BROKEN_SUBDIRS =	$(BROKEN_SUBDIRS) \
+			c/pdl \
+			dist \
+			runtime/daemon \
+			runtime/libraries/link/khazana \
+			testsuite
+
+###############################################################################
+
+# The `dist' rule makes a source distribution tarball.
+#
+# The `-x' options tell `hier' not to copy certain files into the `DISTDIR'.
+# Written as shell-style filename patterns, the ignored files are these:
+#
+#   CVS          .cvsignore   .#*          *~           #*
+#   TAGS         tags         .glimpse_*
+#   *.old        *.bak        *.BAK        *.orig       *.rej
+#   *.a          *.o          *.so
+#   *.aoi        *.aod        *.prc        *.prd
+#   core
+#   Archetypes
+#
+# Finally, `hier' is told not to copy the `DISTDIR' itself!  (`Archetypes' is
+# the name of the directories that contain saved copies of the files produced
+# by the Flick tests.  Those files will be copied from the current object tree,
+# not the source tree.)
+#
+# When we make the distribution, we include:
+#
+#   + all of the files that must be created with `rpcgen' (because the end user
+#     might not have `rpcgen'); and
+#   + a `TAGS' file for the distribution.
+#
+# We used to include:
+#
+#   + archetype files and directories for all of the tests.
+#
+# But because those can be large, we now put them in a separate `archetypes'
+# tarball.  (See the `dist-archetypes' rule below).
+#
+.PHONY: dist
+
+dist:
+	hier -PA -Sn \
+	     -xCVS -x\\.cvsignore -x\^\\.\# -x~\$$ -x\^\# \
+	     -xTAGS -xtags -x\^\\.glimpse_ \
+	     -x\\.old\$$ -x\\.bak\$$ -x\\.BAK\$$ -x\\.orig\$$ -x\\.rej\$$ \
+	     -x\\.a\$$ -x\\.o\$$ -x\\.so\$$ \
+	     -x\\.aoi\$$ -x\\.aod\$$ -x\\.prc\$$ -x\\.prd\$$ \
+	     -xcore \
+	     -xArchetypes \
+	     -xflick-$(FLICK_VERSION) \
+	     cp $(SRCDIR) $(DISTDIR)
+	chmod -R +w $(addprefix $(DISTDIR)/,$(DIST_BROKEN_SUBDIRS))
+	rm -rf $(addprefix $(DISTDIR)/,$(DIST_BROKEN_SUBDIRS))
+	$(MAKE) -C mom all
+	cp mom/*.h $(DISTDIR)/mom
+	$(MAKE) -C libaoi aoi_xdr.c
+	cp libaoi/aoi_xdr.c $(DISTDIR)/libaoi/aoi_xdr.c
+	$(MAKE) -C libmeta meta_xdr.c
+	cp libmeta/meta_xdr.c $(DISTDIR)/libmeta/meta_xdr.c
+	$(MAKE) -C libmint mint_xdr.c
+	cp libmint/mint_xdr.c $(DISTDIR)/libmint/mint_xdr.c
+	$(MAKE) -C c/libcast cast_xdr.c
+	cp c/libcast/cast_xdr.c $(DISTDIR)/c/libcast/cast_xdr.c
+	$(MAKE) -C c/libpres_c pres_c_xdr.c
+	cp c/libpres_c/pres_c_xdr.c $(DISTDIR)/c/libpres_c/pres_c_xdr.c
+	$(MAKE) -C doc/guts
+	cp doc/guts/guts.ps $(DISTDIR)/doc/guts/guts.ps
+	$(MAKE) -C doc/usersguide
+	cp doc/usersguide/user.ps $(DISTDIR)/doc/usersguide/user.ps
+#	$(MAKE) -C test archetype
+#	find test -name Archetypes -type d -exec \
+#		  hier -D0 exec {} \
+#		       'hier -PA -Sn cp %f $(DISTDIR)/%f' \;
+	(cd $(DISTDIR); \
+	 find . -name Archetypes -prune -o \
+		\( -name \*.c  -o -name \*.h  -o \
+		   -name \*.cc -o -name \*.hh \) -print | \
+	   xargs etags -a)
+	(cd $(DISTDIR); \
+	 find . \( -type f -exec chmod uog-w {} \; \) -o \
+		\( -type d -exec chmod 775 {} \; \) )
+	(cd $(dir $(DISTDIR)); \
+	 tar cf $(DIST_SRC_NAME).tar $(notdir $(DISTDIR)); \
+	 gzip --best $(DIST_SRC_NAME).tar )
+	chmod -R +w $(DISTDIR)
+	rm -rf $(DISTDIR)
+
+###############################################################################
+
+# The `dist-archetypes' rule makes an `archetypes' tarball.
+#
+# An archetypes tarball contains all of the files created by Flick when Flick
+# is run against the tests in the `tests' tree.  This includes (1) the AOI
+# files generated by the front ends, (2) the PRES_C files created by the
+# presentation generators, and (3) the `.c'/`.cc' and `.h' files produced by
+# the back ends.
+#
+# These files can be used by others in order to verify that Flick is working
+# correctly on their systems.  A user can unpack the `archetypes' tarball on
+# top of the source tarball, build Flick, and then `make verify' in the `test'
+# tree.
+#
+# NOTE that the archetypes tarball does *not* contain the IDL source inputs,
+# test driver programs, or the various Makefiles.  All of those files are part
+# of the source tarball produced by the `dist' rule above.  An `archetypes'
+# tarball is therefore only useful as an addition to a source tarball.
+#
+.PHONY: dist-archetypes
+
+dist-archetypes:
+	$(MAKE) -C test archetype
+	mkdir $(DISTDIR)
+	hier -PA -Sn -Td \
+	     -xCVS \
+	     cp $(SRCDIR)/test $(DISTDIR)/test
+	find test -name Archetypes -type d -exec \
+		  hier -D0 exec {} \
+		       'hier -PA -Sn cp %f $(DISTDIR)/%f' \;
+	(cd $(DISTDIR); \
+	 find . \( -type f -exec chmod uog-w {} \; \) -o \
+		\( -type d -exec chmod 775 {} \; \) )
+	(cd $(dir $(DISTDIR)); \
+	 tar cf $(DIST_ARCHETYPES_NAME).tar $(notdir $(DISTDIR)); \
+	 gzip --best $(DIST_ARCHETYPES_NAME).tar )
+	chmod -R +w $(DISTDIR)
+	rm -rf $(DISTDIR)
+
+###############################################################################
+
+# The `dist-bin' rule makes a binary distribution tarball.
+#
+# A binary tarball contains the minimum amount of stuff required to use Flick:
+# the compiled (stripped) binaries, the (stripped) libraries, the runtime
+# header files, the documentation, and any support that may be necessary to use
+# Flick or Flick generated code on the target OS.
+#
+# A binary tarball includes a simple configure script and Makefile, so one can
+# `make install' to install Flick in a ``well-known place'' on a system.
+# However, because the binary files are stripped, they aren't useful for
+# debugging.
+#
+# The reason this is not written to use `hier' is so that binary distributions
+# can be made for Windows 95/NT.  `hier' has not been ported to that platform.
+#
+.PHONY: dist-bin
+
+# The standard set of files excluded from a distribution.
+DIST_FIND_EXCLUDES = \
+		\! -name "*.in" \! -path "*CVS*" \! -name ".cvsignore" \
+		\! -name ".\#*" \! -name "*~" \! -name "\#*" \
+		\! -name TAGS \! -name tags \! -name ".glimpse_*" \
+		\! -name "*.old" \! -name "*.bak" \! -name "*.BAK" \
+		\! -name "*.orig" \! -name "*.rej" \
+		\! -name "*.a" \! -name "*.o" \! -name "*.so" \
+		\! -name "*.aoi" \! -name "*.aod" \
+		\! -name "*.prc" \! -name "*.prd" \! -name "core"
+
+dist-bin:	all
+	mkdir $(DISTDIR)
+	mkdir $(DISTDIR)/bin
+	find bin \! -name "core" \! -type d -exec cp {} $(DISTDIR)/bin \;
+	mkdir $(DISTDIR)/lib
+	find runtime -name \*.a -exec cp {} $(DISTDIR)/lib \;
+	(cd $(DISTDIR); \
+	 find . -type f \( \( -name \*.a -exec strip -g {} \; \) -o \
+			   \( -perm -100 -exec strip {} \; \) \) )
+	mkdir $(DISTDIR)/runtime
+	mkdir $(DISTDIR)/runtime/headers
+	mkdir $(DISTDIR)/runtime/headers/flick
+	mkdir $(DISTDIR)/runtime/headers/flick/encode
+	mkdir $(DISTDIR)/runtime/headers/flick/link
+	mkdir $(DISTDIR)/runtime/headers/flick/pres
+	find $(SRCDIR)/runtime/headers/flick \
+	     $(OBJDIR)/runtime/headers/flick -type f \
+	     $(DIST_FIND_EXCLUDES) \
+	     \( \( -path "*runtime/headers/flick/encode*" \
+		-exec cp {} $(DISTDIR)/runtime/headers/flick/encode \; \) -o \
+	     \( -path "*runtime/headers/flick/link*" \
+		-exec cp {} $(DISTDIR)/runtime/headers/flick/link \; \) -o \
+	     \( -path "*runtime/headers/flick/pres*" \
+		-exec cp {} $(DISTDIR)/runtime/headers/flick/pres \; \) \)
+	$(MAKE) -C doc/usersguide
+	mkdir $(DISTDIR)/doc
+	mkdir $(DISTDIR)/doc/usersguide
+	cp $(SRCDIR)/doc/BUGS $(SRCDIR)/doc/announce.text \
+	   $(DISTDIR)/doc
+	cp $(OBJDIR)/doc/usersguide/user.ps $(DISTDIR)/doc/usersguide
+	mkdir $(DISTDIR)/test
+	mkdir $(DISTDIR)/test/examples
+	mkdir $(DISTDIR)/test/examples/phone
+	mkdir $(DISTDIR)/test/examples/phone/corba
+	mkdir $(DISTDIR)/test/examples/phone/oncrpc
+	mkdir $(DISTDIR)/test/examples/phone/tao-corbaxx
+	mkdir $(DISTDIR)/test/examples/phone/trapeze
+	find $(SRCDIR)/test/examples/phone/corba \
+	     $(SRCDIR)/test/examples/phone/oncrpc \
+	     $(SRCDIR)/test/examples/phone/tao-corbaxx \
+	     $(SRCDIR)/test/examples/phone/trapeze -type f \
+	     $(DIST_FIND_EXCLUDES) \
+	     \! -name "*-client.*" \! -name "*-server.*" \
+	     \( \( -path "*test/examples/phone/corba*" \
+		-exec cp {} $(DISTDIR)/test/examples/phone/corba \; \) -o \
+	     \( -path "*test/examples/phone/oncrpc*" \
+		-exec cp {} $(DISTDIR)/test/examples/phone/oncrpc \; \) -o \
+	     \( -path "*test/examples/phone/tao-corbaxx*" \
+		-exec cp {} $(DISTDIR)/test/examples/phone/tao-corbaxx \; \) \
+	     -o \
+	     \( -path "*test/examples/phone/trapeze*" \
+		-exec cp {} $(DISTDIR)/test/examples/phone/trapeze \; \) \)
+ifeq ($(findstring cygwin,@target_os@),cygwin)
+	$(MAKE) -C $(SRCDIR)/support/cygwin32/libnsl
+	$(MAKE) -C $(SRCDIR)/support/cygwin32/tcp_wrappers
+	$(MAKE) -C $(SRCDIR)/support/cygwin32/portmap
+	mkdir $(DISTDIR)/support
+	mkdir $(DISTDIR)/support/cygwin32
+	mkdir $(DISTDIR)/support/cygwin32/libnsl
+	mkdir $(DISTDIR)/support/cygwin32/portmap
+	cp -r $(SRCDIR)/support/cygwin32/include $(DISTDIR)/support/cygwin32
+	find $(DISTDIR)/support/cygwin32/include \! \( \
+	     $(DIST_FIND_EXCLUDES) \
+	     \) \( \( -type d -exec rmdir -f {} \; \) -o \
+	     \( -type f -exec rm -f {} \; \) \)
+	cp $(SRCDIR)/support/cygwin32/libnsl/libnsl.a \
+	   $(DISTDIR)/support/cygwin32/libnsl
+	find $(SRCDIR)/support/cygwin32/portmap -type f \
+	     $(DIST_FIND_EXCLUDES) \
+	     \! -name "*.c" \! -name "*.h" \! -name "Makefile" \
+	     -exec cp {} $(DISTDIR)/support/cygwin32/portmap \;
+	cp $(SRCDIR)/support/cygwin32/README $(DISTDIR)/support/cygwin32
+endif
+	find $(SRCDIR)/dist/bin -type f \
+	     \( -name "*.in" -o $(DIST_FIND_EXCLUDES) \) \
+	     -exec cp {} $(DISTDIR) \;
+	cp $(SRCDIR)/install-sh $(DISTDIR)
+	cp $(SRCDIR)/config.sub $(DISTDIR)
+	cp $(SRCDIR)/config.guess $(DISTDIR)
+	cp $(SRCDIR)/COPYING $(DISTDIR)
+	cp $(SRCDIR)/COPYRIGHT $(DISTDIR)
+	cp $(SRCDIR)/runtime/COPYING $(DISTDIR)/runtime
+	(cd $(DISTDIR); \
+	 find . \( -type f -exec chmod uog-w {} \; \) -o \
+		\( -type d -exec chmod 775 {} \; \) )
+	(cd $(dir $(DISTDIR)); \
+	 tar cf $(DIST_BIN_NAME).tar $(notdir $(DISTDIR)); \
+	 gzip --best $(DIST_BIN_NAME).tar )
+	chmod -R +w $(DISTDIR)
+	rm -rf $(DISTDIR)
+
+###############################################################################
+
+# The `dist-rpm' rule makes source and binary RPMs (Red Hat Package files).
+#
+# This results in two files: the binary RPM and the source SRPM.  The RPM is
+# essentially a snapshot of an installed version of the binary distribution
+# (see target `dist-bin').  The SRPM (Source RPM) contains the standard Flick
+# source distribution (see target `dist').
+#
+.PHONY: dist-rpm
+
+# `arch' is used by the `dist-rpm' rule below.  Intel (and compatible)
+# processors are often detected by configure as `i386', `i486', `i586', etc.
+# The `rpm' program may assume that all of these are really just an i386 as far
+# as the RPM is concerned, so we allow for that behavior here.
+
+arch =	$(patsubst i%86,i386,@target_cpu@)
+
+dist-rpm:
+	@if test \! -f $(dir $(DISTDIR))$(DIST_SRC_NAME).tar.gz; then \
+		echo "Please make a source distribution (.tar.gz) first."; \
+		false; \
+	fi
+	mkdir $(DISTDIR)
+	mkdir $(DISTDIR)/rpm.root
+	mkdir $(DISTDIR)/rpm.root/SOURCES
+	mkdir $(DISTDIR)/rpm.root/BUILD
+	mkdir $(DISTDIR)/rpm.root/SRPMS
+	mkdir $(DISTDIR)/rpm.root/RPMS
+	mkdir $(DISTDIR)/rpm.root/RPMS/$(arch)
+ifneq ($(arch),@target_cpu@)
+	mkdir $(DISTDIR)/rpm.root/RPMS/@target_cpu@
+endif
+	mkdir $(DISTDIR)/rpm.root/SPECS
+	cp $(dir $(DISTDIR))$(DIST_SRC_NAME).tar.gz $(DISTDIR)/rpm.root/SOURCES
+	sed -e "s/@VERSION@/$(FLICK_VERSION)/g" \
+	    -e "s/@RELEASE@/$(RPM_RELEASE)/g" \
+	    -e "s/@DISTSRC@/$(DIST_SRC_NAME).tar.gz/g" \
+	    $(SRCDIR)/dist/rpm/flick.spec \
+	 > $(DISTDIR)/rpm.root/SPECS/flick-$(FLICK_VERSION)-$(RPM_RELEASE).spec
+	sed -e "s/@DISTDIR@/$(subst /,\/,$(DISTDIR))/g" \
+	    $(SRCDIR)/dist/rpm/rpmrc > $(DISTDIR)/rpmrc
+	sed -e "s/@DISTDIR@/$(subst /,\/,$(DISTDIR))/g" \
+	    $(SRCDIR)/dist/rpm/rpmmacros > $(DISTDIR)/rpmmacros
+	rpm -ba --rcfile $(DISTDIR)/rpmrc --buildroot $(DISTDIR)/fake.root \
+	   $(DISTDIR)/rpm.root/SPECS/flick-$(FLICK_VERSION)-$(RPM_RELEASE).spec
+	find $(DISTDIR)/rpm.root/RPMS/ \
+	     \( -name "$(DIST_RPM_NAME).$(arch).rpm" -o \
+	        -name "$(DIST_RPM_NAME).@target_cpu@.rpm" \) \
+	   -exec mv -f {} $(dir $(DISTDIR))/$(DIST_RPM_NAME).@target@.rpm \;
+	mv -f $(DISTDIR)/rpm.root/SRPMS/$(DIST_RPM_NAME).src.rpm \
+	   $(dir $(DISTDIR))
+	rm -rf $(DISTDIR)
+
+###############################################################################
+
+## End of file.
+

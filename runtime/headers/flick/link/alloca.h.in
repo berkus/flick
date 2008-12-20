@@ -1,0 +1,84 @@
+/*
+ * Copyright (c) 1999 The University of Utah and
+ * the Computer Systems Laboratory at the University of Utah (CSL).
+ * All rights reserved.
+ *
+ * Permission to use, copy, modify and distribute this software is hereby
+ * granted provided that (1) source code retains these copyright, permission,
+ * and disclaimer notices, and (2) redistributions including binaries
+ * reproduce the notices in supporting documentation.
+ *
+ * THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ * IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ * ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+ *
+ * CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ * improvements that they make and grant CSL redistribution rights.
+ */
+
+#ifndef _flick_link_alloca_h_
+#define _flick_link_alloca_h_
+
+/*
+ * Flick-generated stubs may include calls to `alloca', but different C/C++
+ * compilers handle `alloca' in different ways.  Thus, we need to figure out
+ * how to declare `alloca' properly for Flick-generated code.  That task is
+ * handled by this header.
+ *
+ * Handling `alloca' is problematic in general.  We currently do our `alloca'
+ * configuration when Flick itself is configured, *not* when the generated stub
+ * code is compiled!  In effect, at `configure' time, we are trying to learn
+ * something about the C/C++ compiler that will ultimately compile the stubs.
+ *
+ * In practice, however, our `configure'-time approach is not a problem.  If it
+ * is a problem for you, you can edit the installed version of this header for
+ * your system.
+ *
+ * The documentation for Autoconf 2.13 suggests the following code to declare
+ * `alloca' across a variety of systems:
+ *
+ * #ifndef __GNUC__
+ * #  if HAVE_ALLOCA_H
+ * #    include <alloca.h>
+ * #   else
+ * #    ifdef _AIX
+ *  #pragma alloca
+ * #    else
+ * #      ifndef alloca
+ * char *alloca ();
+ * #      endif
+ * #    endif
+ * #  endif
+ * #endif
+ *
+ * The `#pragma' directive is indented so that pre-ANSI C compilers will ignore
+ * it rather than choke on it.  Our code below is based on this structure.
+ */
+
+#define FLICK_HAVE_ALLOCA_H (@have_alloca_h@) /* Determined by `configure'. */
+
+#ifndef __GNUC__
+#  if FLICK_HAVE_ALLOCA_H
+#    include <alloca.h>
+#  else
+#    ifdef _AIX
+ /* Indentionally indented: see comment above. */
+ #pragma alloca
+#    else
+#      ifndef alloca
+#        ifdef __cplusplus
+extern "C" {
+#        endif
+void *alloca(size_t);
+#        ifdef __cplusplus
+}
+#        endif
+#      endif /* alloca */
+#    endif /* _AIX */
+#  endif /* HAVE_ALLOCA_H */
+#endif /* __GNUC__ */
+
+#endif /* _flick_link_alloca_h_ */
+
+/* End of file. */
+

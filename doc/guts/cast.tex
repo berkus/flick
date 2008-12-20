@@ -1,0 +1,1419 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1995, 1996, 1999 The University of Utah and the Computer
+%% Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{C Abstract Syntax Tree (CAST) Representation}
+\label{cha:CAST}
+
+The C Abstract Syntax Tree (\CAST{}) intermediate language is a collection of
+data structures built to provide an internal representation of C/C++ source
+code.  This representation allows Flick to generate code as it goes along
+and then make modifications to the code after some analysis has been done.  The
+definitions of the \CAST{} data structures are contained in
+\filename{mom/cast.x} and the library code can be found in \filename{c/libcast}
+and its header file is in \filename{mom/c/libcast.h}.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{CAST Overview}
+\label{sec:CAST:CAST Overview}
+
+The \CAST{} data structures are designed to represent the various aspects of
+C/C++ source code.  At the root there is the \ctype{cast_scope} which
+corresponds to a lexical scope, so it contains all declarations and
+definitions.  These declarations and definitions are then represented by
+\ctype{cast_def}s which contains any information needed to produce the correct
+source code.  Then, beneath the \ctype{cast_def}s there can be types,
+expressions, and other things representing their counterparts in C/C++ source
+code.  These \CAST{} trees can then be printed out using the
+\cfunction{cast_w_*} functions in the \CAST{} library (described in
+Section~\ref{sec:CAST:The CAST Library}), although it is easiest to just call
+\cfunction{cast_w_scope} on the root scope to get everything printed out.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{CAST Data Structures}
+\label{sec:CAST:CAST Data Structures}
+
+The following descriptions of the data structures show the C type definitions
+followed by a simple representation of what output they generate.  This
+representation is pretty simple: just think of the stuff between the angle
+brackets as code to be executed, or as variable names to be referenced.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Scoped Names}
+\label{subsec:CAST:Scoped Names}
+
+\CAST{} uses a \ctype{cast_scoped_name} to hold any information about a fully
+scoped name in C++.  The structure is made up of an array of
+\ctype{cast_name_s} structures which hold a name and an array of template
+arguments for that name.  Each template argument can either be another name, a
+type, or an expression.
+
+\begin{verbatim}
+typedef struct cast_name_s cast_scoped_name<>;
+
+enum cast_template_arg_kind
+{
+  CAST_TEMP_ARG_NAME    = 1,
+  CAST_TEMP_ARG_TYPE    = 2,
+  CAST_TEMP_ARG_EXPR    = 3
+};
+union cast_template_arg_u
+switch(cast_template_arg_kind kind)
+{
+  case CAST_TEMP_ARG_NAME:  cast_scoped_name  name;
+  case CAST_TEMP_ARG_TYPE:  cast_type         type;
+  case CAST_TEMP_ARG_EXPR:  cast_expr         expr;
+};
+struct cast_name_s
+{
+  string                   name<>;
+  cast_template_arg_array  args;    /* C++ Only */
+};
+\end{verbatim}
+
+The \CAST{} library functions for scoped names are built to pass the
+\ctype{cast_scoped_name} structure by value if it is not going to be changed or
+it is newly created, otherwise they are passed by pointer.  For example, the
+\cfunction{cast_new_scoped_name} constructs a new \ctype{cast_scoped_name} from
+a null-terminated \cidentifier{varargs} list of strings and then returns the
+new scoped name by value.  However, the \cfunction{cast_add_scope_name}
+function takes a pointer to a scoped name since it will be changing the
+structure.  Here is a full list of the pertinent \filename{libcast} functions:
+
+\begin{cprototypelist}
+  \item[void cast_add_scope_name(cast_scoped_name *scname, char
+  *name, cast_template_arg_array args)] Adds another name and set of template
+  arguments to a scoped name.
+
+  \item[void cast_del_scope_name(cast_scoped_name *name)] Deletes
+  the last name in the given scoped name.
+
+  \item[void cast_prepend_scope_name(cast_scoped_name *scname, char
+  *name, cast_template_arg_array args)] Adds the given scope name to the front
+  of a scoped name.
+
+  \item[int cast_cmp_scoped_names(const cast_scoped_name *scn1,
+  const cast_scoped_name *scn2)] Compares two scoped names, just like a
+  regular \cfunction{strcmp}.  Note: this does not yet compare the template
+  arguments so it is possible to get a false positive.
+
+  \item[cast_scoped_name cast_new_scoped_name(const char *name,
+  ...)] Constructs a new \ctype{cast_scoped_name} from a null terminated list
+  of strings.  For example, \cprototype{cast_new_scoped_name("CORBA",
+  "Boolean", NULL)} would result in the name \cliteral{"CORBA::Boolean"}.
+
+  \item[cast_scoped_name cast_set_scoped_name(cast_scoped_name *scname, char
+  *name, cast_template_arg_array args, ...)] This is a more flexible version of
+  \cfunction{cast_new_scoped_name} which allows one to construct a name with
+  template arguments.  It works by setting the values of \cidentifier{scname}
+  or constructing a new one if it is null.  The varargs are tuples of strings
+  for the names, and the template arguments for that name, terminated by a
+  null.
+
+  \item[int cast_scoped_name_is_empty(cast_scoped_name *scname)]
+  Returns TRUE if \cidentifier{scname} is empty.
+
+  \item[cast_scoped_name cast_copy_scoped_name(cast_scoped_name
+  *name)] Returns a copy of \cidentifier{name}.
+\end{cprototypelist}
+%
+The \CAST{} library also defines some handy global variables:
+
+\begin{cprototypelist}
+  \item[extern cast_scoped_name null_scope_name] This is a
+  \ctype{cast_scoped_name} initialized with zero length and value.  This
+  variable is usually used to initialize other \ctype{cast_scoped_name}s
+  created on the stack.
+
+  \item[extern cast_scoped_name empty_scope_name] This is a
+  \ctype{cast_scoped_name} initialized with an empty string as its only name.
+\end{cprototypelist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Types}
+\label{subsec:CAST:Types}
+
+Any C/C++ types in \CAST{} are represented in the \ctype{cast_type_u} union and
+usually referenced by \ctype{cast_type} which is a pointer to a
+\ctype{cast_type_u}.
+
+\subsubsection{Primitive Types}
+
+The \ctype{cast_primitive_type} structure is able to represent any primitive
+types like booleans, characters, integers, and floats, as well as any modifiers
+for those types.  The \cidentifier{name} field is a bit of a hack so that it
+can be treated internally as a primitive, but when output, the string in
+\cidentifier{name} will be printed rather than the primitive name.
+
+\begin{verbatim}
+enum cast_primitive_kind
+{
+  CAST_PRIM_CHAR    = 1,
+  CAST_PRIM_INT     = 2,
+  CAST_PRIM_FLOAT   = 3,
+  CAST_PRIM_DOUBLE  = 4,
+  CAST_PRIM_BOOL    = 5  /* C++ Only */
+};
+typedef unsigned cast_primitive_modifier;
+const CAST_MOD_SIGNED      = 0x0001;
+const CAST_MOD_UNSIGNED    = 0x0002;
+const CAST_MOD_SHORT       = 0x0010;
+const CAST_MOD_LONG        = 0x0020;
+const CAST_MOD_LONG_LONG   = 0x0040;
+struct cast_primitive_type
+{
+  cast_primitive_kind  kind;
+  cast_primitive_modifier  mod;
+  cast_scoped_name  name;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<if name is null>
+  <mod> <kind>
+<else>
+  <name>
+\end{verbatim}
+
+\subsubsection{Enumerations}
+
+The \ctype{cast_enum_type} represents an enumeration with a list of names
+and their value(s), as well as the name of the enumeration itself.
+
+\begin{verbatim}
+struct cast_enum_field
+{
+  /* The name of the slot */
+  string name<>;
+
+  /* The value (should probably be a literal primitive */
+  cast_expr val;
+};
+struct cast_enum_type
+{
+  /* Enum tag. */
+  cast_scoped_name name;
+
+  /* value and name of each slot */
+  cast_enum_field  slots<>;
+};
+\end{verbatim}
+
+\begin{verbatim}
+enum <name> {
+  <slots[0].name> = <slots[0].val>,
+  ...,
+  <slots[n].name> = <slots[n].val>
+}
+\end{verbatim}
+
+\subsubsection{Arrays}
+
+The \ctype{cast_array_type} can represent an array of a certain length and
+type.
+
+\begin{verbatim}
+struct cast_array_type
+{
+  /* Constant expression that determines the array's length.
+     Can be omitted if outside of anything or at the end of a structure;
+     means array is variable-length.  */
+  cast_expr    length;
+
+  /* Type of each element.  */
+  cast_type    element_type;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<element_type> [<length>]
+\end{verbatim}
+
+\subsubsection{Pointers}
+
+The \ctype{cast_pointer_type} adds a level of pointer indirection and points
+to the real type.
+
+\begin{verbatim}
+struct cast_pointer_type
+{
+  /* What the pointer points to.  */
+  cast_type    target;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<target> *
+\end{verbatim}
+
+\subsubsection{References}
+
+The \ctype{cast_reference_type} adds a level of C++ variable reference.
+
+\begin{verbatim}
+struct cast_reference_type
+{
+  /* What the reference refers to. */
+  cast_type    target;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<target> &
+\end{verbatim}
+
+\subsubsection{Functions}
+
+The \ctype{cast_func_type} represents a function and any related attributes,
+such as parameters, exceptions, initializers in constructors, and various
+flags.  The parameters are an array of \ctype{cast_param}s which contain
+the type, name, and default value of the parameters.
+
+Also, there is a flag field to specify options for the parameter.  Currently,
+there is only the \cidentifier{CAST_PARAM_IMPLICIT} flag which means that the
+parameter is implicit and should not be part of the function prototype.  An
+example usage of this flag is the \cidentifier{this} variable in a member
+function of a C++ class, or a global variable, like \cidentifier{errno}, which
+a function might be using.
+
+\begin{verbatim}
+typedef unsigned cast_param_spec;
+const CAST_PARAM_IMPLICIT  = 0x0001;
+struct cast_param
+{
+  cast_param_spec  spec;
+  string           name<>;
+  cast_type        type;
+  cast_init        default_value;  /* C++ Only */
+};
+
+typedef cast_param cast_func_param;
+typedef unsigned cast_func_spec;
+const CAST_FUNC_VIRTUAL    = 0x0001;  /* Prepends 'virtual' to the prototype */
+const CAST_FUNC_PURE       = 0x0002;  /* Appends '= 0' to make it pure */
+const CAST_FUNC_INLINE     = 0x0004;  /* Prepends 'inline' */
+const CAST_FUNC_EXPLICIT   = 0x0008;  /* Prepends 'explicit' */
+const CAST_FUNC_CONST      = 0x0010;  /* Appends 'const' */
+const CAST_FUNC_OPERATOR   = 0x0020;  /*
+                                       * Prepends 'operator' to the cast_def
+                                       * name unless it's empty, in case it
+                                       * is printed before the return type,
+                                       * so you can do type cast operators.
+                                       */
+struct cast_func_type
+{
+  cast_func_param    params<>;
+  cast_type          return_type;
+  cast_func_spec     spec;             /* C++ Only */
+  cast_type_array    exception_types;  /* C++ Only */
+  cast_expr_array    initializers;     /* C++ Only */
+};
+\end{verbatim}
+
+\begin{verbatim}
+<spec & CAST_FUNC_VIRTUAL|CAST_FUNC_INLINE|CAST_FUNC_EXPLICIT> <return_type>
+(<if !implicit><params[0].type and params[0].name> = <params[0].default_value>,
+ ...
+ <if !implicit><params[n].type and params[n].name> = <params[n].default_value>
+)
+<spec & CAST_FUNC_CONST>
+throw(<exception_types[0], ..., <exception_types[n]>)
+: <initializers[0]>, ..., <initializers[1]>
+<spec & CAST_FUNC_PURE>
+\end{verbatim}
+
+\subsubsection{Aggregate Types}
+
+The \ctype{cast_aggregate_type} is used for compound types, things like unions,
+structures, and classes.  Members are then added to the \ctype{cast_scope} just
+like adding a global variable to the root scope.  Of course, other declarations
+and definitions can be added to the scope if it is C++, as well as parents in
+the \cidentifier{parents}.
+
+\begin{verbatim}
+typedef unsigned cast_parent_flags;
+const CAST_PARENT_PUBLIC     = 0x0001;
+const CAST_PARENT_PROTECTED  = 0x0002;
+const CAST_PARENT_PRIVATE    = 0x0004;
+const CAST_PARENT_VIRTUAL    = 0x0008;
+struct cast_parent_spec
+{
+  cast_parent_flags  flags;
+  cast_scoped_name   name;
+};
+
+enum cast_aggregate_kind
+{
+  CAST_AGGREGATE_STRUCT = 1,
+  CAST_AGGREGATE_UNION  = 2,
+  CAST_AGGREGATE_CLASS  = 3
+};
+struct cast_aggregate_type
+{
+  cast_aggregate_kind  kind;
+  cast_scoped_name     name;
+  cast_parent_spec     parents<>;  /* C++ Only */
+  cast_scope           scope;      /* Adding things besides vars is C++ Only */
+};
+\end{verbatim}
+
+\begin{verbatim}
+<kind> <name> : <parents[0].flags> <parents[0].name>,
+                ...,
+                <parents[n].flags> <parents[n].name>
+{
+  <scope>
+};
+\end{verbatim}
+
+\subsubsection{Qualifiers}
+
+The \ctype{cast_qualified_type} is used to attach any qualifiers, const and
+volatile, to a type.
+
+\begin{verbatim}
+typedef int cast_type_qualifier;
+const CAST_TQ_CONST       = 0x01;
+const CAST_TQ_VOLATILE    = 0x02;
+struct cast_qualified_type
+{
+  cast_type_qualifier qual;
+  cast_type           actual;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<qual> <actual>
+\end{verbatim}
+
+\subsubsection{Templates}
+
+The \ctype{cast_template_type} is used to declare a template type with a
+certain set of parameters.
+
+\begin{verbatim}
+enum cast_template_param_kind
+{
+  CAST_TEMP_PARAM_TYPE      = 1,
+  CAST_TEMP_PARAM_CLASS     = 2,
+  CAST_TEMP_PARAM_TYPENAME  = 3,
+  CAST_TEMP_PARAM_TEMPLATE  = 4
+};
+union cast_template_param_u
+switch(cast_template_param_kind kind)
+{
+  case CAST_TEMP_PARAM_TYPE:      cast_type              type_param;
+  case CAST_TEMP_PARAM_CLASS:     void;
+  case CAST_TEMP_PARAM_TYPENAME:  void;
+  case CAST_TEMP_PARAM_TEMPLATE:  cast_template_param_t  params<>;
+};
+struct cast_template_param
+{
+  string                 name<>;
+  cast_template_param_u  u;
+  cast_template_arg      default_value;
+};
+
+typedef unsigned cast_template_flags;
+const CAST_TEMP_EXPORT    = 0x0001;
+struct cast_template_type
+{
+  cast_template_flags  flags;
+  cast_template_param  params<>;
+  cast_type            def;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<flags>
+template < <params[0].u and params[0].name> = <params[0].default_value>,
+           ...,
+           <params[n].u and params[n].name> = <params[n].default_value> >
+  <def>
+\end{verbatim}
+
+\subsubsection{Named Types}
+
+Referencing types through their name is done by using a set of different kinds
+which get output in slightly different ways:
+
+\begin{cidentifierlist}
+  \item[CAST_TYPE_NAME] A plain name, usually from a
+  \cidentifier{typedef}.
+
+  \item[CAST_TYPE_STRUCT_NAME] A name for a structure, it will
+  print \cidentifier{struct} before the scoped name.
+
+  \item[CAST_TYPE_UNION_NAME] A name for a union, it will print
+  \cidentifier{union} before the scoped name.
+
+  \item[CAST_TYPE_ENUM_NAME] A name for an enumeration, it will
+  just print the scoped name.
+
+  \item[CAST_TYPE_CLASS_NAME] A forward class declaration, it will
+  print \cidentifier{class} before the scoped name, so this cannot be used like
+  a regular type.
+\end{cidentifierlist}
+
+\subsubsection{Voids}
+
+Void types are handled simply by setting the kind of the \ctype{cast_type} to
+\cidentifier{CAST_TYPE_VOID}.
+
+\subsubsection{Nulls}
+
+Null types are used for the return type of C++ constructors and destructors.
+They are handled by setting the kind of the \ctype{cast_type} to
+\cidentifier{CAST_TYPE_NULL}.
+
+\subsubsection{Union of All Types}
+
+All of the specific types are brought together under the umbrella of the
+cast_type_u union which holds them all and a few simple ones.
+
+\begin{verbatim}
+enum cast_type_kind
+{
+  CAST_TYPE_NAME        = 1,
+  ...
+  CAST_TYPE_TEMPLATE    = 17   /* C++ Only */
+};
+union cast_type_u
+switch (cast_type_kind kind)
+{
+  case CAST_TYPE_NAME:        cast_scoped_name      name;
+  case CAST_TYPE_PRIMITIVE:   cast_primitive_type   primitive_type;
+  case CAST_TYPE_POINTER:     cast_pointer_type     pointer_type;
+  case CAST_TYPE_ARRAY:       cast_array_type       array_type;
+  case CAST_TYPE_FUNCTION:    cast_func_type        func_type;
+  case CAST_TYPE_ENUM:        cast_enum_type        enum_type;
+  case CAST_TYPE_STRUCT_NAME: cast_scoped_name      struct_name;
+  case CAST_TYPE_UNION_NAME:  cast_scoped_name      union_name;
+  case CAST_TYPE_ENUM_NAME:   cast_scoped_name      enum_name;
+  case CAST_TYPE_VOID:        void;
+  case CAST_TYPE_NULL:        void;
+  case CAST_TYPE_QUALIFIED:   cast_qualified_type   qualified;
+  case CAST_TYPE_AGGREGATE:   cast_aggregate_type   agg_type;
+  case CAST_TYPE_CLASS_NAME:  cast_scoped_name      class_name;
+  case CAST_TYPE_REFERENCE:   cast_reference_type   reference_type;
+  case CAST_TYPE_TYPENAME:    cast_scoped_name      typename_name;
+  case CAST_TYPE_TEMPLATE:    cast_template_type    template_type;
+};
+\end{verbatim}
+
+There are a number of functions in the \CAST{} library for constructing and
+initializing these structures.  There are also some functions and variables
+dealing with \ctype{cast_type_array}s which can be used whenever an array of
+\CAST{} types is needed.
+
+\begin{cprototypelist}
+  \item[cast_type_array cast_set_type_array(cast_type_array *array,
+  cast_type type, ...)] Sets the values of \cidentifier{array} (or construct a
+  new one if it is NULL) with the array of values passed in the null-terminated
+  argument list.
+
+  \item[int cast_add_type_array_value(cast_type_array *array,
+  cast_type type)] Adds another element to \cidentifier{array}, initializing it
+  with \cidentifier{type}, and then return the index of the new element.
+
+  \item[extern cast_type_array null_type_array] This is a global
+  that can be used for initializing other \ctype{cast_type_array}s to be empty.
+\end{cprototypelist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Expressions}
+\label{subsec:CAST:Expressions}
+
+\subsubsection{Literal Primitives}
+
+A \ctype{cast_lit_prim} represents a primitive literal value of a primitive
+type.
+
+\begin{verbatim}
+union cast_lit_prim_u
+switch (cast_primitive_kind kind)
+{
+  case CAST_PRIM_CHAR:   char    c;
+  case CAST_PRIM_INT:    long    i; /* XXX long long */
+  case CAST_PRIM_FLOAT:  float   f;
+  case CAST_PRIM_DOUBLE: double  d; /* XXX long double */
+  case CAST_PRIM_BOOL:   char    b; /* C++ Only */
+};
+struct cast_lit_prim
+{
+  cast_primitive_modifier  mod;
+  cast_lit_prim_u          u;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<mod> <u>
+\end{verbatim}
+
+\subsubsection{Function Calls}
+
+A \ctype{cast_expr_call} represents a function call with a set of arguments.
+
+\begin{verbatim}
+struct cast_expr_call
+{
+  cast_expr        func;
+  cast_expr_array  params;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<func>(<params[0]>, ..., <params[n]>)
+\end{verbatim}
+
+\subsubsection{Member Selection}
+
+A \ctype{cast_expr_sel} represents the selection of a member of an aggregate
+type.
+
+\begin{verbatim}
+struct cast_expr_sel
+{
+  cast_expr         var;
+  cast_scoped_name  member;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<var>.<member>
+\end{verbatim}
+
+\subsubsection{Unary Operations}
+
+A \ctype{cast_unary_expr} represents a unary operation on another expression.
+
+\begin{verbatim}
+enum cast_unary_op
+{
+  CAST_UNARY_DEREF     = 1,  /* * (unary) */
+  CAST_UNARY_ADDR      = 2,  /* & (unary) */
+  CAST_UNARY_NEG       = 3,  /* - (unary) */
+  CAST_UNARY_LNOT      = 4,  /* ! (unary) */
+  CAST_UNARY_BNOT      = 5,  /* ~ (unary) */
+  CAST_UNARY_PRE_INC   = 6,  /* ++foo */
+  CAST_UNARY_PRE_DEC   = 7,  /* --foo */
+  CAST_UNARY_POST_INC  = 8,  /* foo++ */
+  CAST_UNARY_POST_DEC  = 9   /* foo-- */
+};
+struct cast_unary_expr
+{
+  cast_unary_op  op;
+  cast_expr      expr;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<op><expr>
+\end{verbatim}
+
+\subsubsection{Binary Operations}
+
+A \ctype{cast_binary_expr} represents a binary operation over two expressions.
+
+\begin{verbatim}
+enum cast_binary_op
+{
+  CAST_BINARY_MUL    = 1,   /* * (binary) */
+  CAST_BINARY_DIV    = 2,   /* / */
+  CAST_BINARY_MOD    = 3,   /* % */
+  CAST_BINARY_ADD    = 4,   /* + (binary) */
+  CAST_BINARY_SUB    = 5,   /* - (binary) */
+  CAST_BINARY_SHL    = 6,   /* << */
+  CAST_BINARY_SHR    = 7,   /* >> */
+
+  CAST_BINARY_LT     = 8,   /* < */
+  CAST_BINARY_GT     = 9,   /* > */
+  CAST_BINARY_LE     = 10,  /* <= */
+  CAST_BINARY_GE     = 11,  /* >= */
+  CAST_BINARY_EQ     = 12,  /* == */
+  CAST_BINARY_NE     = 13,  /* != */
+
+  CAST_BINARY_BAND   = 14,  /* & */
+  CAST_BINARY_BXOR   = 15,  /* ^ */
+  CAST_BINARY_BOR    = 16,  /* | */
+
+  CAST_BINARY_LAND   = 17,  /* && */
+  CAST_BINARY_LOR    = 18,  /* || */
+
+  CAST_BINARY_ASSIGN = 19,  /* = */
+
+  CAST_BINARY_COMMA  = 20   /* , */
+};
+struct cast_binary_expr
+{
+  cast_binary_op  op;
+  cast_expr       expr[2];
+};
+\end{verbatim}
+
+\begin{verbatim}
+<expr[0]> <op> <expr[1]>
+\end{verbatim}
+
+\subsubsection{Type Casting}
+
+A \ctype{cast_expr_cast} represents a type cast on another expression.
+
+\begin{verbatim}
+struct cast_expr_cast
+{
+  /* Expression to cast.  */
+  cast_expr  expr;
+
+  /* Type to cast it to.  */
+  cast_type  type;
+};
+\end{verbatim}
+
+\begin{verbatim}
+(<type>)<expr>
+\end{verbatim}
+
+\subsubsection{Conditional Expressions}
+
+A \ctype{cast_cond_expr} represents a conditional expression with a test
+expression and its positive and negative results.
+
+\begin{verbatim}
+struct cast_cond_expr
+{
+  cast_expr  test;
+  cast_expr  true_expr;
+  cast_expr  false_expr;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<test> ? <true_expr> : <false_expr>
+\end{verbatim}
+
+\subsubsection{The new Operator}
+
+A \ctype{cast_op_new_expr} represents a usage of the \cidentifier{new}
+operator.
+
+\begin{verbatim}
+struct cast_op_new_expr
+{
+  cast_expr  placement;
+  cast_type  type;
+  cast_init  init;
+};
+\end{verbatim}
+
+\begin{verbatim}
+new (<placement>) <type><init>
+\end{verbatim}
+
+\subsubsection{The delete Operator}
+
+A \ctype{cast_op_delete_expr} represents a usage of the \cidentifier{delete}
+operator.
+
+\begin{verbatim}
+struct cast_op_delete_expr
+{
+  long       array;
+  cast_expr  expr;
+};
+\end{verbatim}
+
+\begin{verbatim}
+delete <if array>[]</if> <expr>
+\end{verbatim}
+
+\subsubsection{Variable Names}
+
+Variable names and other name expressions are a \ctype{cast_expr} set to
+\cidentifier{CAST_EXPR_NAME} with a scoped name.
+
+\subsubsection{String Literals}
+
+A string literal is simply a \ctype{cast_expr} set to
+\cidentifier{CAST_EXPR_LIT_STRING} and a C string set in the \ctype{cast_expr}
+structure.
+
+\subsubsection{The sizeof Operator}
+
+A \cidentifier{sizeof} is done by setting the kind of the \ctype{cast_expr} to
+\cidentifier{CAST_EXPR_SIZEOF_EXPR} or \cidentifier{CAST_EXPR_SIZEOF_TYPE} and
+then setting the value of what is to be evaluated.
+
+\subsubsection{The typeid Operator}
+
+A \cidentifier{typeid} is done by setting the kind of the \ctype{cast_expr} to
+\cidentifier{CAST_EXPR_TYPEID_EXPR} or \cidentifier{CAST_EXPR_TYPEID_TYPE} and
+then setting the value of what is to be evaluated.
+
+\subsubsection{Types as Expressions}
+
+Sometimes it is necessary to use a type as an expression, such as in a macro
+call.  This can be done by using the kind \cidentifier{CAST_EXPR_TYPE}.
+
+\subsubsection{Union of All Expressions}
+
+\begin{verbatim}
+enum cast_expr_kind
+{
+  CAST_EXPR_NAME              = 1,
+  ...
+  CAST_EXPR_TYPE              = 22
+};
+union cast_expr_u
+switch (cast_expr_kind kind)
+{
+  case CAST_EXPR_NAME:              cast_scoped_name     name;
+  case CAST_EXPR_LIT_PRIM:          cast_lit_prim        lit_prim;
+  case CAST_EXPR_LIT_STRING:        string               lit_string<>;
+  case CAST_EXPR_CALL:              cast_expr_call       call;
+  case CAST_EXPR_SEL:               cast_expr_sel        sel;
+
+  case CAST_EXPR_UNARY:             cast_unary_expr      unary;
+  case CAST_EXPR_CAST:              cast_expr_cast       cast;
+  case CAST_EXPR_SIZEOF_EXPR:       cast_expr            sizeof_expr;
+  case CAST_EXPR_SIZEOF_TYPE:       cast_type            sizeof_type;
+
+  case CAST_EXPR_BINARY:            cast_binary_expr     binary;
+  case CAST_EXPR_OP_ASSIGN:         cast_binary_expr     op_assign;
+  case CAST_EXPR_COND:              cast_cond_expr       cond;
+  case CAST_EXPR_CONST_NAME:        cast_scoped_name     const_name;
+  case CAST_EXPR_CONST_CAST:        cast_expr_cast       c_cast;
+  case CAST_EXPR_DYNAMIC_CAST:      cast_expr_cast       d_cast;
+  case CAST_EXPR_REINTERPRET_CAST:  cast_expr_cast       r_cast;
+  case CAST_EXPR_STATIC_CAST:       cast_expr_cast       s_cast;
+  case CAST_EXPR_OP_NEW:            cast_op_new_expr     op_new;
+  case CAST_EXPR_OP_DELETE:         cast_op_delete_expr  op_delete;
+  case CAST_EXPR_TYPEID_EXPR:       cast_expr            typeid_expr;
+  case CAST_EXPR_TYPEID_TYPE:       cast_type            typeid_type;
+  case CAST_EXPR_TYPE:              cast_type            type_expr;
+};
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Statements}
+\label{subsec:CAST:Statements}
+
+\subsubsection{Statement Blocks}
+
+A \ctype{cast_block} represents a block of executable statements.
+
+\begin{verbatim}
+typedef unsigned cast_block_flags;
+/* The statements in the block are in reverse order */
+const CAST_BLOCK_REVERSE   = 0x00000001;
+/* The statements in the block should be treated as if they were
+   inlined with the rest of the statements in the parent block.
+   (e.g. there is no '{' when printed) */
+const CAST_BLOCK_INLINE    = 0x00000002;
+
+struct cast_block
+{
+  /* Variable declarations and such at beginning of block.  */
+  cast_scope        scope;
+
+  /* Statements following decls, but preceeding "regular" code.
+     (Mainly useful for initializing temporary vars, etc.) */
+  cast_stmt         initials<>;
+  
+  /* Statements following them ("regular" code).  */
+  cast_stmt         stmts<>;
+  cast_block_flags  flags;
+};
+\end{verbatim}
+
+\begin{verbatim}
+{
+  <scope>
+
+  <initials[0]>
+  ...
+  <initials[n]>
+
+<if !reverse>
+  <stmts[0]>
+  ...
+  <stmts[n]>
+  <else>
+  <stmts[n]>
+  ...
+  <stmts[0]>
+}
+\end{verbatim}
+
+\subsubsection{If Statements}
+
+A \ctype{cast_if} represents an if statement and its true and false branches.
+
+\begin{verbatim}
+struct cast_if
+{
+  cast_expr    test;
+  cast_stmt    true_stmt;
+  cast_stmt    false_stmt;  /* optional */
+};
+\end{verbatim}
+
+\begin{verbatim}
+if( <test> )
+  <true_stmt>
+else
+  <false_stmt>
+\end{verbatim}
+
+\subsubsection{While and Do/While Loops}
+
+A \ctype{cast_while} can be used to represent both \cidentifier{while} and
+\cidentifier{do}/\cidentifier{while} loops, depending on the
+\ctype{cast_stmt_kind}.
+
+\begin{verbatim}
+struct cast_while
+{
+  cast_expr    test;
+  cast_stmt    stmt;
+};
+\end{verbatim}
+
+\begin{verbatim}
+while( <test> )
+  <stmt>
+
+do
+  <stmt>
+while( <test> )
+\end{verbatim}
+
+\subsubsection{For Loops}
+
+A \ctype{cast_for} represents a \cidentifier{for} loop.
+
+\begin{verbatim}
+struct cast_for
+{
+  cast_expr    init;  /* optional */
+  cast_expr    test;  /* optional */
+  cast_expr    iter;  /* optional */
+  cast_stmt    stmt;
+};
+\end{verbatim}
+
+\begin{verbatim}
+for( <init>; <test>; <iter> )
+  <stmt>
+\end{verbatim}
+
+\subsubsection{Switch Statements}
+
+A \ctype{cast_switch} represents a \cidentifier{switch} statement.  The stmt
+slot is used as the body so it should be a \ctype{cast_block} with a number
+of \ctype{cast_case}s for each branch.
+
+\begin{verbatim}
+struct cast_switch
+{
+  cast_expr    test;
+  cast_stmt    stmt;
+};
+\end{verbatim}
+
+\begin{verbatim}
+switch( <test> )
+  <stmt>
+\end{verbatim}
+
+\subsubsection{Statement Labels}
+
+A \ctype{cast_label} attaches a label to a statement.  The \cidentifier{users}
+slot is used internally to track the number of times this label has been used,
+if the count is zero then this label will not be printed, but the statement
+will still be output.
+
+\begin{verbatim}
+struct cast_label
+{
+  string      label<>;
+  cast_stmt   stmt;
+  int         users;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<if users><label>:</if>
+  <stmt>
+\end{verbatim}
+
+\subsubsection{Case Statements}
+
+A \ctype{cast_case} represents a case branch in a switch statement.
+
+\begin{verbatim}
+struct cast_case
+{
+  cast_expr    label;
+  cast_stmt    stmt;
+};
+\end{verbatim}
+
+\begin{verbatim}
+case <label>:
+  <stmt>
+\end{verbatim}
+
+\subsubsection{Catch Blocks}
+
+A \ctype{cast_catch} represents a \cidentifier{catch} block in C++.
+
+\begin{verbatim}
+/* C++ Only */
+struct cast_catch
+{
+  cast_type    type;
+  string       name<>;
+  cast_stmt    block;
+};
+\end{verbatim}
+
+\begin{verbatim}
+catch( <type and name> )
+  <block>
+\end{verbatim}
+
+\subsubsection{Try Blocks}
+
+A \ctype{cast_try} represents a \cidentifier{try} block in C++.
+
+\begin{verbatim}
+/* C++ Only */
+struct cast_try
+{
+  cast_stmt     block;
+  cast_catch    handlers<>;
+};
+\end{verbatim}
+
+\begin{verbatim}
+try
+  <block>
+<handlers[0]>
+...
+<handlers[n]>
+\end{verbatim}
+
+\subsubsection{Break Statements}
+
+Setting the \ctype{cast_stmt} kind to \cidentifier{CAST_STMT_BREAK} will make a
+break statement.  Since there is nothing else associated with a break
+statement, it has no structure
+
+\subsubsection{Continue Statements}
+
+Setting the \ctype{cast_stmt} kind to \cidentifier{CAST_STMT_CONTINUE} will
+make a continue statement.  Since there is nothing else associated with a
+continue statement, it has no structure
+
+\subsubsection{Null Statements}
+
+Setting the \ctype{cast_stmt} kind to \cidentifier{CAST_STMT_NULL} will make a
+null statement which just prints out a `;'
+
+\subsubsection{Empty Statements}
+
+Setting the \ctype{cast_stmt} kind to \cidentifier{CAST_STMT_EMPTY} will make a
+completely empty statement, nothing will be printed.  This is useful for
+deleting statements in the middle of blocks without having to move all of the
+following statements back one.
+
+\subsubsection{Union of All Statements}
+
+\begin{verbatim}
+enum cast_stmt_kind
+{
+  CAST_STMT_EXPR      = 1,
+  ...
+  CAST_STMT_DECL      = 20   /* C++ Only */
+};
+union cast_stmt_u
+switch (cast_stmt_kind kind)
+{
+  case CAST_STMT_EXPR:      cast_expr     expr;
+  case CAST_STMT_BLOCK:     cast_block    block;
+  case CAST_STMT_IF:        cast_if       s_if;
+  case CAST_STMT_WHILE:     cast_while    s_while;
+  case CAST_STMT_DO_WHILE:  cast_while    s_do_while;
+  case CAST_STMT_FOR:       cast_for      s_for;
+  case CAST_STMT_SWITCH:    cast_switch   s_switch;
+  case CAST_STMT_BREAK:     void;
+  case CAST_STMT_CONTINUE:  void;
+  case CAST_STMT_GOTO:      string        goto_label<>;
+  case CAST_STMT_LABEL:     cast_label    s_label;
+  case CAST_STMT_CASE:      cast_case     s_case;
+  case CAST_STMT_DEFAULT:   cast_stmt     default_stmt;
+                                          /* optional: */
+  case CAST_STMT_RETURN:    cast_expr     return_expr;
+  case CAST_STMT_TEXT:      string        text<>;
+  case CAST_STMT_NULL:      void;
+  case CAST_STMT_EMPTY:     void;
+  case CAST_STMT_TRY:       cast_try      try_block;
+  case CAST_STMT_THROW:     cast_expr     throw_expr;
+  case CAST_STMT_DECL:      cast_scope    decl;
+};
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Definitions and Declarations}
+\label{subsec:CAST:Definitions and Declarations}
+
+\subsubsection{Function Definitions}
+
+A \ctype{cast_func_def} represents a function definition.  The
+\cidentifier{type} slot should be a function type that is usable in a
+definition, and the \cidentifier{block} slot is the function body.
+
+\begin{verbatim}
+struct cast_func_def
+{
+  cast_func_type  type;
+  cast_block      block;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<type>
+<block>
+\end{verbatim}
+
+\subsubsection{Variable Definitions}
+
+A \ctype{cast_var_def} represents a variable definition for a function.
+
+\begin{verbatim}
+enum cast_init_kind
+{
+  CAST_INIT_EXPR       = 1,
+  CAST_INIT_AGGREGATE  = 2,
+  CAST_INIT_CONSTRUCT  = 3  /* C++ Only */
+};
+union cast_init_u
+switch (cast_init_kind kind)
+{
+  case CAST_INIT_EXPR:       cast_expr        expr;
+  case CAST_INIT_AGGREGATE:  cast_init_array  subs;
+  case CAST_INIT_CONSTRUCT:  cast_expr_array  exprs;
+};
+struct cast_var_def
+{
+  cast_type  type;
+
+  /* Optional - if present, specifies the variable's initializer.  */
+  cast_init  init;
+};
+\end{verbatim}
+
+\subsubsection{Include Directives}
+
+A \ctype{cast_include} represents an include directive for the C preprocessor.
+
+\begin{verbatim}
+struct cast_include
+{
+  string    filename<>;
+  bool      system_only;
+};
+\end{verbatim}
+
+\begin{verbatim}
+<if system_only>
+  #include <<filename>>
+<else>
+  #include "<filename>"
+\end{verbatim}
+
+\subsubsection{Using Directives}
+
+A \ctype{cast_using_kind} indicates the type of scope that is to be `used'.
+
+\begin{verbatim}
+/* C++ Only */
+enum cast_using_kind
+{
+  CAST_USING_NAME       = 1,
+  CAST_USING_TYPENAME   = 2,
+  CAST_USING_NAMESPACE  = 3
+};
+\end{verbatim}
+
+\begin{verbatim}
+using <cast_using_kind>
+\end{verbatim}
+
+\subsubsection{Direct Code}
+
+A \ctype{cast_direct} is used to inject any string into the current scope.
+For example, one can insert comments or preprocessor directives using this
+structure.
+
+\begin{verbatim}
+struct cast_direct
+{
+  string    code_string<>;
+};
+\end{verbatim}
+
+\subsubsection{Union of All Definitions}
+
+The \ctype{cast_def} structure brings everything together.
+
+\begin{verbatim}
+enum cast_storage_class
+{
+  CAST_SC_NONE      = 0,
+  CAST_SC_AUTO      = 1,
+  CAST_SC_STATIC    = 2,
+  CAST_SC_EXTERN    = 3,
+  CAST_SC_REGISTER  = 4,
+  CAST_SC_MUTABLE   = 5  /* C++ Only */
+};
+enum cast_def_kind
+{
+  CAST_TYPEDEF     = 0x00000001,
+  ...
+  CAST_FRIEND      = 0x00001000   /* C++ Only */
+};
+union cast_def_u
+switch (cast_def_kind kind)
+{
+  case CAST_TYPEDEF:      cast_type         typedef_type;
+  case CAST_TYPE:         cast_type         type;
+  case CAST_FUNC_DECL:    cast_func_type    func_type;
+  case CAST_FUNC_DEF:     cast_func_def     func_def;
+  case CAST_VAR_DECL:     cast_type         var_type;
+  case CAST_VAR_DEF:      cast_var_def      var_def;
+  case CAST_DEFINE:       cast_expr         define_as;
+  case CAST_INCLUDE:      cast_include      include;
+  case CAST_DIRECT_CODE:  cast_direct       direct;
+  case CAST_NAMESPACE:    cast_scope       *new_namespace;
+  case CAST_USING:        cast_using_kind   using_scope;
+  case CAST_LINKAGE:      cast_scope       *linkage;
+  case CAST_FRIEND:       cast_type         friend_decl;
+};
+
+/* C++ Only */
+enum cast_def_protection {
+     CAST_PROT_NONE       = 0,
+     CAST_PROT_PUBLIC     = 1,
+     CAST_PROT_PROTECTED  = 2,
+     CAST_PROT_PRIVATE    = 3
+};
+
+struct cast_def
+{
+  /* C identifier of type (or whatever) to be declared/defined.
+     Length 0 if none.  */
+  cast_scoped_name    name;
+
+  /* Storage class for the declaration/definition.  */
+  cast_storage_class  sc;
+
+  /* Description of definition.  */
+  cast_def_u          u;
+
+  /* The data_channel this definition is a part of */
+  data_channel_index  channel;
+
+  cast_def_protection  protection;  /* C++ Only */
+};
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{The CAST Library}
+\label{sec:CAST:The CAST Library}
+
+\begin{cprototypelist}
+  \item[cast_new_*] Many constructor functions are available so
+  one does not have to build the structures manually.
+
+  \item[int cast_find_def(cast_scope **scope, const
+  cast_scoped_name name, int kind)] Locates a definition with
+  \cidentifier{name} in \cidentifier{scope}.  The return value is either -1, if
+  it was not found, or the index of the definition in \cidentifier{scope}.  If
+  the name is scoped then it will try to descend down into child scopes, and
+  then set \cidentifier{scope} to the child scope where the definition was
+  located.  The \cidentifier{kind} parameter is a bitmask that causes the
+  function to only match on definition kinds that are set in the mask.
+
+  \item[int cast_find_def_pos(cast_scope **scope, int scope_pos,
+  					  const cast_scoped_name name,
+					  int kind)]
+  %
+  Similar to \cfunction{cast_find_def} except it allows one to start searching
+  at a specific position.  This is useful in case a definition match, but it
+  was not the correct one.  For example, a forward class declaration would
+  match, but if one were searching for the actual class definition, one would
+  have to do another \cfunction{cast_find_def}.
+
+  \item[cast_type cast_find_typedef_type(cast_scope *scope,
+  cast_type name_ctype)] Returns the real definition of a
+  \cidentifier{typedef}.
+
+  \item[cast_enum_type *cast_find_enum_type(cast_scope *scope,
+  cast_type ctype)] Returns the \ctype{cast_enum_type} that was specified with
+  the passed in enumeration named type.
+
+  \item[cast_aggregate_type *cast_find_struct_type(cast_scope
+  *scope, cast_type ctype)] Returns the \ctype{cast_aggregate_type} that was
+  specified with the passed in struct named type.
+
+  \item[cast_aggregate_type *cast_find_union_type(cast_scope
+  *scope, cast_type ctype)] Returns the \ctype{cast_aggregate_type} that was
+  specified with the passed in union named type.
+
+  \item[cast_aggregate_type *cast_find_class_type(cast_scope
+  *scope, cast_type ctype)] Returns the \ctype{cast_aggregate_type} that was
+  specified with the passed in class named type.
+
+  \item[void cast_block_absorb_stmt(cast_block *b, cast_stmt st)]
+  Adds the statement to the \ctype{cast_block}.  If the statement is also a
+  \ctype{cast_block} then it will transfer any statements and declarations to
+  the parent block.
+
+  \item[int cast_find_label(cast_block *block, const char *label)]
+  Returns the index of the \ctype{cast_label} in the block that matches given
+  label
+
+  \item[extern cast_expr_array null_expr_array] A global
+  expression array available for initializing to an empty expression array.
+
+  \item[cast_expr_array cast_set_expr_array(cast_expr_array *array, cast_expr
+  expr, ...)] Set, or create if \cidentifier{array} is null, the values in an
+  expression array.
+
+  \item[extern cast_init_array null_init_array] Similar to
+  null_expr_array, except for \ctype{cast_init}s.
+
+  \item[cast_init_array cast_set_init_array(cast_init_array *array,
+  cast_init, ...)] Similar to the \ctype{cast_expr} version.
+
+  \item[extern cast_template_arg_array null_template_arg_array]
+  Similar to null_expr_array, except for template arguments.  This is handy for
+  passing to a \cfunction{cast_add_scope_name} since it requires a template
+  argument array.
+
+  \item[cast_template_arg_array
+  cast_set_template_arg_array(cast_template_arg_array *array, cast_template_arg
+  template_arg, ...)]
+  Similar to the \ctype{cast_expr} version.
+
+  \item[cast_check(cast_scope *scope)] Check the data structures to ensure they
+  have valid data.  This is done before \CAST{} is written to a file or after
+  it has been read from a file, usually as part of \cfunction{pres_c_check}.
+
+  \item[int cast_expr_const(cast_expr expr)] Returns true if
+  \cidentifier{expr} is a constant expression, very helpful when trying to do
+  optimizations.
+
+  \item[cast_expr aoi_const_to_cast_expr(aoi_const c)] Converts an
+  \ctype{aoi_const} to a \ctype{cast_expr}.
+
+  \item[int cast_cmp_type(cast_type a, cast_type b)] Returns zero if the two
+  types are the same, less than zero if type \cidentifier{a} is ``less than''
+  \cidentifier{b}, or greater than zero if type \cidentifier{a} is ``greater
+  than'' \cidentifier{b}.  The exact notion of lesser and greater are not
+  exactly clear in all cases (e.g., if the types are completely different, the
+  scalar difference between the two \cidentifier{kind} enumerations is
+  returned).  For similar (read ``same'') types, a more intelligent
+  ``difference'' can be taken (e.g., two \cidentifier{CAST_TYPE_TYPENAME}s
+  return the ``string difference'', similar to \cfunction{strcmp}, of the two
+  typenames).
+
+  \item[int cast_cmp_expr(cast_expr a, cast_expr b)] Returns zero if the two
+  expressions are the same, or nonzero based on a similar lesser/greater
+  relationship as \cfunction{cast_cmp_type}, above.
+
+  \item[int cast_cmp_init(cast_init a, cast_init b)] Returns zero if the two
+  initializers are the same, or nonzero based on a similar lesser/greater
+  relationship as \cfunction{cast_cmp_type}, above.
+
+  \item[cast_w_*()] Uses the \cfunction{w_printf} functions to
+  output the various \CAST{} structures.
+\end{cprototypelist}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Summary and Comments}
+\label{sec:CAST:Summary and Comments}
+
+\CAST{} was originally restricted to exactly the syntax of C, with minor
+accommodations for comments and preprocessor directives.  Over time, \CAST{}
+was extended to describe C++, and was also enhanced with certain
+pseudo-syntactic features such as implicit function arguments
+(\idl{CAST_PARAM_IMPLICIT}), types used as expressions (\idl{CAST_EXPR_TYPE},
+so that types can be passed as arguments to macros), and label reference counts
+(so that unused labels can be silently dropped during output).  These
+extra-syntactic features make it significantly easier to create \PRESC{}
+descriptions of stubs.
+% ...but are perhaps not in keeping with the original spirit of the language.
+
+\CAST{} allows Flick to create and modify C/C++ code at a fine-grain level,
+before it is output.  This is an important feature that allows Flick to create
+code in ways that would be difficult to accomplish through other means such as
+template instantiation.  Unfortunately, \CAST{}'s fine-grained nature also makes
+\CAST{} an inconvenient data structure for some tasks, such as instantiating
+big blocks of mostly predetermined code.  For code-building tasks that are not
+suited to \CAST{}, Flick uses a separate intermediate representation called
+\SCML{}, described in Chapter~\ref{cha:SCML}.
+
+A second problem inherent to \CAST{} it that --- by design --- it is tied to C
+and C++.  \CAST{} originally supported only C and was later extended for C++,
+but it would likely be infeasible to extend \CAST{} to languages that are very
+unlike C\@.  If Flick were extended to such languages, it would be useful to
+replace \CAST{} with a more abstract code description language, designed around
+the logical organization of code (e.g., flow control) rather than around any
+specific language syntax.  Flick would then map this abstract language onto
+concrete programming languages.  This mapping could even be user-customizable.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

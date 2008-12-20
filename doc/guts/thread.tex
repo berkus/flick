@@ -1,0 +1,336 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1996, 1999 The University of Utah and the Computer Systems
+%% Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\com{%
+
+Basic types of programs:
+
+* Clients (apps) - only use services, don't provide them.
+
+        Likely internal threading/object models:
+
+        A Single-threaded, Unix-style application.
+          Maps to a single Mach4 thread.
+          Good for small apps that can't be highly parallelized internally.
+
+        B Kernel-multithreaded, using multiple Mach 4 kernel threads.
+          Low-level Mach 4 IPC used to implement blocking synchronizers.
+          CAS or atomic sequences highly desirable
+          for implementing the synchronization primitives.
+
+          Flavors:
+
+                1 Single Mach 4 thread used as a synchronization server.
+                  Threads that need to block CALL the server,
+                  and the server RESUMEs them when needed.
+
+                2 One synchronization server per primitive (mutex, cond).
+                  Better parallelism, but greater storage requirements.
+                  Only this flavor supports proper priority inheritance
+                  among client threads.
+
+                3 Some compromise between the above two methods
+                  (e.g., `n' randomly assigned primitives per server).
+
+        C User-mulithreaded, using all user-level threading/synchronization.
+          Like many Unix threads packages.
+          Uses one Mach4 thread.
+          Non-preemptive; no "unexpected" thread switches.
+          Mutexes and condition variables don't need lower-level synch.
+          Threads package must interpose on voluntary out-calls.
+          Involuntary exceptions cause the whole shebang to stop (bad).
+
+        D User-multithreaded, user-level, one scheduler activation (UP).
+          As above, but threads package is given a chance
+          to fire off another kernel thread when one blocks involuntarily.
+          Threads package needs to be able to force the old one to stop
+          and call the scheduler when it unblocks.
+          Preemptive environment.
+
+        E User-and-kernel-multithreaded.
+          Many user-level threads multiplexed on several kernel threads.
+          This is what's typically done in Mach.
+          Able to take advantage of SMPs directly.
+          Similar to B in the implementation of low-level synchronizers,
+          except that blocking no longer necessarily means
+          blocking an underlying kernel thread.
+
+        F User-and-kernel-multithreaded, multiple scheduler activations (SMP).
+          As above, but allows scheduler to regain control
+          when a thread blocks involuntarily due to a trap.
+          Also, might need a way to notify the user-level scheduler
+          when a processor is taken away from a kernel thread.
+          Probably a job for a high-level scheduler;
+          it wouldn't do to invoke the user-level scheduler
+          every time an interrupt occurs on any processor.
+
+        Possible notation for these threading models:
+
+                u = user threads
+                k = kernel threads
+                s = scheduler  activations
+
+                A -
+                B k
+                C u
+                D us
+                E uk
+                F uks
+
+                k, u, us, uk, and uks are multithreaded environments (m).
+                k, us, uk, and uks are preemptive environments (p).
+
+        Additional pseudo-threading model modifier:
+
+                d = include thread debugging mechanisms
+
+        How to decide:
+
+                Sometimes m is required for deadlock avoidance.
+                Otherwise the choice is based on performance characteristics.
+
+* Servers - provide services as well as using others.
+  Must have some provision for incoming requests on objects.
+  Implies that some kind of object model is generally needed.
+
+        M Single-threaded, single-object server.
+          Contains only one Mach4 thread.
+          If it uses any other objects, it invokes other servers by IPC\@.
+          No internal synchronization needed at all.
+          Processes one request at a time.
+
+        N Single-threaded, multi-object server. 
+          Same as above, but possibly exports multiple objects at once.
+          Key data fields used to differentiate on incoming requests.
+          Still no internal synchronization needed; one request at a time.
+          Big single-threaded servers have severely limited parallelism.
+
+        O Multithreaded, single-object server.
+          Multiple requests on "the" object can be serviced at once.
+          (For example, multiple outstanding read/write requests on a file.)
+
+          If multithreading model C is used,
+          then there are no unexpected preemptions,
+          so other threads can only run when a blocking operation is done.
+          I believe this model is common in QNX\@.
+          In other multithreading models (B,D-F),
+          service threads must lock the object in some way while using it.
+
+        P Multithreaded, multi-object server; any thread services any object.
+          This is the common practice in Mach servers.
+          Any threading model B-F may be used to provide multithreading.
+          One central "dispatcher" Mach4 thread receives requests
+          and fires off other threads to service them.
+          Service threads must lock internal objects before using them.
+          Creates a possible entry bottleneck (just like Mach).
+          May create object creation/destruction races (just like Mach).
+
+        Q Multithreaded, multi-object server, thread/object groups.
+          As above, but only certain threads service certain objects.
+          Threads and objects are divided into sets,
+          and any thread in a particular set
+          can service any object in its corresponding object set.
+          This reduces the entry bottleneck.
+          Some Mach servers, such as OSF/1 I think,
+          use this technique by assigning objects to different port sets,
+          each containing multiple service threads.
+          The Mach4 equivalent would be to have several dispatcher threads,
+          each keeping track of a different set of service threads.
+          (However, unlike in Mach 3, objects could not be reassigned.)
+
+        R Multithreaded, multi-object server, one kernel thread per object.
+          Generally no internal synchronization mechanisms needed,
+          because the kernel threads provide inter-object synchronization.
+          This is basically a group of single-threaded, single-object servers,
+          except that all the objects exist in the same address space,
+          permitting optimized invocations between them
+          that don't always have to pass through the kernel.
+          Each object can perhaps still be user-multithreaded in model C.
+
+
+        How a particular object can be accessed:
+
+                e = Exported to other protection domains
+                f = Foreign threads can shortcut into the object
+                m = Multiple dedicated service threads can service invocations
+                s = Object shares a pool of service threads
+                    with other objects (on a port set)
+                p = Priority inheritance works properly.
+                    Always true if !m and !f?
+
+                Every object must be either e or f
+                in order to be accessible by anyone.
+
+                If both e and f, then object's threading model includes k.
+
+        Assignments:
+
+                M = ep
+                N = esp
+                O = em{uks}
+                P = ems{uks}
+                Q = ems{uks}
+                R = emf{uks}
+
+                p can optionally be present in O-R,
+                depending on the implementation of synchronizers.
+
+        How to decide:
+
+                Sometimes e is required, obviously.
+                Sometimes m is required for deadlock avoidance.
+                Sometimes p is required for correct real-time behavior.
+                Otherwise the choice is based on performance characteristics.
+
+
+Thread model implementations that should be available in Mach 4:
+
+* - (no multithreading):
+        pthread operations are unavailable.
+        pthread_mutex and pthread_cond get compiled out.
+
+* u:
+        Everything done in user space; non-preemptive environment.
+        Low-level synchronizers in implementation of mutex and cond
+        get compiled to nothing.
+        Needs to interpose on blocking calls, to use proxy threads.
+
+* k:
+        pthread operations correspond to thread control operations
+        mutex and cond have multiple possible implementations,
+        all based on the Mach4 IPC primitives.
+
+* uk:
+        Like Mach cthreads.
+
+* us:
+        Like u, but talks to the scheduler.
+        Don't need to interpose on blocking operations.
+        Scheduler and threads package coordinate
+        to ensure that more than one scheduler activation doesn't run at once.
+        Server: when object is unlocked, must not be running
+                on the thread that services the object.
+
+* uks:
+        Like us, but multiple scheduler activations can run at once.
+        Does it make a difference?
+        The environment is preemptive anyway\ldots{}
+        Perhaps if page faults and other unexepcted exceptions
+        can be avoided during primitive pthread operations,
+        the threads package would be simpler under us than uks.
+
+
+Object model implementations that should be available:
+
+* e:
+        Object only accessed through IPC,
+        even if being accessed from the same domain.
+        Object is not multithreaded, so no locking need be done.
+
+* f: 
+        Object only accessed directly, never through IPC\@.
+        Locking on invocation done by a simple mutex.
+        Object's threading model is foreigners' model.
+
+* ef:
+        Object accessed both directly and through IPC\@.
+        Object's thread model is its own | foreigners' | k.
+
+
+Differentiate between:
+
+* Objects exported only (not used internally)
+        Always need a kernel thread to provide a start key.
+
+* Objects used internally only
+        Kernel thread per-object needed only for priority inheritance.
+
+* Objects used both internally and externally
+        Kernel thread per-object needed,
+        but other threads in the same protection domain
+        might be able to lock and access the object directly
+        without invoking the object's kernel thread.
+
+
+
+Different ways to implement multithreading:
+
+
+Other threads \emph{may} be allowed to run:
+        1 never
+        2 only at ``may_switch'' points
+        3 any time
+
+Other threads \emph{must} be allowed to run:
+        1 never
+        2 only at ``must_switch'' points
+        3 any time
+
+For any given environment, must <= may.
+
+Combinations:
+
+11      Pure single-threaded environment.
+
+21      Example use: a file system server written in a BSD-kernel-like model.
+        Multithreading is optional:
+        if present, multiple requests can be serviced at one time;
+        otherwise, only one request at once.
+        (But what are the may_switch points?  Device accesses?  Guess so.)
+
+31      Parallelism is available,
+        but correctness doesn't require that it be used.
+        This is probably typical for scientific computing applications.
+
+22      BSD kernel-like environment.
+        Threads interact with each other closely
+        and rely on switches happening at must_switch points;
+        otherwise system would deadlock.
+
+32      Arbitrary multithreading allowed
+        (i.e., locks are in place and working),
+        but can be disabled as long as threads will still switch
+        during blocking operations.
+        Good for running MP apps on a UP, for example.
+
+33      Full multithreaded environment.
+
+
+
+
+
+One of the properties of our original migrating threads implementation is that
+a given activation must reply to one request before it can receive another.
+This allows reply-right generation/consumption to be optimized away.  However,
+multiple outstanding requests could still be allowed without losing any of that
+optimization by treating a thread's return link as a ``special internal
+capability register'' that can only be accessed with special insert/extract
+operations.  Similar to the PC register on RISC machines --- separate for
+performance, not for cleanliness reasons.
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

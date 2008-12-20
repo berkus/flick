@@ -1,0 +1,150 @@
+This announces version 2.1 of Flick, the Flexible IDL Compiler Kit, from our
+DARPA-supported Flux Project at the University of Utah.  Flick generates code
+that runs significantly faster than code from other IDL compilers, supports
+3 IDLs, 6 transports, and has been tested on many UNIX variants and Windows.
+
+    <http://www.cs.utah.edu/flux/flick/>
+
+CHANGES SINCE FLICK 2.0
+-----------------------
+
+Flick 2.1 incorporates several new features, bug fixes, and a major new
+document on Flick's internals.  Most notably:
+
+  + Flick now generates optimized C++ stubs that work with TAO version 1.0, the
+    real-time, open source ORB from Washington University in St. Louis.  (The
+    previous release of Flick supported TAO 0.3.23.)  You will need to acquire
+    a copy of TAO 1.0 in order to make use of Flick's C++ stubs.  For
+    information about TAO, see <http://www.cs.wustl.edu/~schmidt/TAO.html>.
+
+  + Flick's generated C and C++ files are now smaller --- often much smaller!
+    Flick now eliminates unnecessary functions (internal marshal and unmarshal
+    functions) from generated code.
+
+  + The Flick Programmer's Manual (a.k.a. ``The Guts Manual'') has been
+    completely rewritten and expanded.  This manual is essential reading for
+    anyone who wants to hack on Flick or create new Flick compiler components.
+
+WHAT IS FLICK?
+--------------
+
+Flick is an interface definition language (IDL) compiler ("stub generator")
+supporting remote procedure call (RPC) and remote method invocation (RMI) for
+client/server or distributed object systems.  What sets it apart from other IDL
+compilers is that it is highly optimizing while also supporting several IDLs,
+message formats, and transport mechanisms.  Flick currently has front ends for
+the CORBA, Sun ONC RPC, and Mach MIG IDLs, and middle and back ends that
+support CORBA IIOP, ONC/TCP, MIG-style Mach messages, Duke's gigabit "Trapeze"
+protocol, and the Fluke microkernel IPC.  (See the Flick Web page for
+references.)  Flick produces C stubs for all IDLs and both C and C++ stubs for
+CORBA IDL.  Substantial user and programmer manuals are provided.
+
+Flick is designed to be a "kit": the user picks the IDL, language mapping, and
+transport components that are required for any particular system.  Our goal is
+to make it straightforward to add new components to the kit to process new
+IDLs, language mappings, and transports.  (Collaborators welcome!)  Flick's
+framework can also be used to support interface annotation.  Full source for
+the Flick compiler is distributed under the terms of the GNU General Public
+License; source for the Flick runtime is distributed under a separate license
+(BSD-style, but without the advertising clause).
+
+Our PLDI '97 paper (see <http://www.cs.utah.edu/flux/flick/>) showed that
+Flick-generated marshal and unmarshal code can run between 2 and 17 times as
+fast as code produced by many other IDL compilers, both commercial and free.
+On stock hardware and operating systems, Flick-generated stubs can increase
+end-to-end client/server throughput by factors between 1.2 and 3.7 or more.
+Please read our PLDI '97 paper for the full presentation of these results.
+
+Full regression tests and their outputs are provided.  Flick has been compiled
+and tested on the following platforms:
+
+    FreeBSD 3.0-CURRENT		(Intel Pentium II, gcc/g++ 2.95.1)
+    FreeBSD 3.0-CURRENT		(Intel Pentium II, gcc/g++ 2.7.2.1)
+    Linux 2.2.12		(Intel Pentium II, egcs 1.1.2)
+    SunOS 5.7 (Solaris)		(Sun 4u SPARC, gcc/g++ 2.8.0)
+    SunOS 5.7 (Solaris)		(Sun 4u SPARC, Sun WorkShop C/C++ 5.0)
+    SunOS 5.7 (Solaris)		(Sun 4u SPARC, Sun WorkShop C/C++ 4.2)
+    4.3+ BSD			(HP 9000/J210XC PA-RISC 1.1, gcc/g++ 2.7.2)
+    IRIX64 6.5			(SGI Origin 2000, MIPSpro 64-bit C/C++ 7.30)
+    Windows 95			(egcs 1.1 w/Cygnus' Cygwin library b20.1)
+    Windows NT 4.0		(egcs 1.1 w/Cygnus' Cygwin library b20.1)
+
+Flick has not been compiled on these platforms, but Flick-generated stubs have
+been tested and work:
+
+    Mach 3.0/Lites		(x86)
+    Fluke OS			(x86)
+
+(In addition to supporting standard operating systems and protocols, Flick is
+also the IDL compiler for our "Fluke" kernel and operating system.  See
+<http://www.cs.utah.edu/flux/>.)
+
+WHAT FLICK IS NOT
+-----------------
+
+Flick is not a complete CORBA ORB.  Flick has an *extremely* minimal ORB-like
+runtime, and further, Flick cannot currently replace the IDL compiler that is
+part of any commercial ORB --- although Flick *does* generate optimized stubs
+for TAO, the real-time ORB from Washington University in St. Louis.  Similarly,
+Flick is not (yet) a drop-in replacement for `rpcgen' or MIG.  The details can
+be found in the distribution documentation.
+
+GETTING FLICK
+-------------
+
+Flick is available from <http://www.cs.utah.edu/flux/flick/> and from
+<ftp://flux.cs.utah.edu/flux/flick/>.  The Flick 2.1 distribution is divided
+into two parts: full source (`flick-2.1-src.tar.gz', 1.8MB compressed, 9.0MB
+uncompressed) and regression test output (`flick-2.1-tests.tar.gz', 5.4MB
+compressed, 96.0MB uncompressed).
+
+MAILING LISTS
+-------------
+
+We welcome comments and technical discussion from users and collaborators.  If
+you start using Flick, please let us know by subscribing to our mailing list of
+Flick users.  Send mail to <flick-users-request@cs.utah.edu> with the message
+body containing the line
+
+	subscribe flick-users
+
+to get on the mailing list.  Send bugs and fixes to <flick-bugs@cs.utah.edu>.
+
+CREDITS
+-------
+
+Thanks to a fine team of staff and students who have produced Flick, including
+Eric Eide, James Simister, Tim Stack, Eric Pabst, Kevin Frei, and Bryan Ford.
+The work is primarily sponsored by DARPA, with additional support by Novell and
+IBM.
+
+Jay Lepreau <lepreau@cs.utah.edu>
+Eric Eide <eeide@cs.utah.edu>
+University of Utah Computer Science Dept.
+
+-------------------------------------------------------------------------------
+Flick LSM entry:
+
+Begin3
+Title:		Flick
+Version:	2.1
+Entered-date:	15NOV99
+Description:	Flick is a flexible, optimizing IDL compiler kit that supports
+		multiple IDLs (CORBA IDL, Sun ONC RPC `rpcgen' IDL, Mach MIG
+		IDL), multiple language mappings (CORBA-style, ONC RPC-style,
+		and MIG-style), and multiple RPC/RMI transport mechanisms
+		(CORBA IIOP, ONC/TCP, Mach 3.0 messages, Trapeze, and Fluke
+		IPC).  Flick produces marshal/unmarshal code that is
+		significantly faster than equivalent code produced by other IDL
+		compilers.
+Keywords:	IDL interface definition language compiler RPC RMI CORBA ONC
+		rpcgen MIG
+Author:		flick@cs.utah.edu (Utah Flick Team)
+Maintained-by:	flick-bugs@cs.utah.edu (Flick Bugs List)
+Primary-site:	flux.cs.utah.edu /flux/flick/2.1
+		1839k	flick-2.1-src.tar.gz
+		5537k	flick-2.1-tests.tar.gz
+Platforms:	C, C++, UNIX
+Copying-policy:	GPL for compiler, BSD without advertising clause for runtime
+End
+-------------------------------------------------------------------------------

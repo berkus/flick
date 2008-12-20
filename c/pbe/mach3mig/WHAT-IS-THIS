@@ -1,0 +1,2 @@
+This directory contains code to generate Mach 3 transport stubs that emulate
+the MIG message format.

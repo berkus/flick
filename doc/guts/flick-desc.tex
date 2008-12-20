@@ -1,0 +1,656 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1996, 1999 The University of Utah and the Computer Systems
+%% Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{The Flick Narrative}
+\label{cha:The Flick Narrative}
+
+This is an edited transcript of Bryan Ford's description of Flick to Kevin
+Frei.  The content, while casual and choppy, may help the reader gain insight
+into how this all fits together.  Eventually this will be split into pieces,
+edited, and merged into the appropriate sections.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Front Ends}
+
+The front end parser for Sun \ONCRPC{} is derived from Sun's \rpcgen{} program,
+which is a hand coded parser.  The \CORBA{} \IDL{} front end data structures use lex.
+Both Sun and \CORBA{} Flick front ends contain translation code that take the
+parser-produced AST and convert them to \AOI{}\@.  Flick Sun code is in the
+\texttt{xlate.c} file (in the process of being updated).  Flick \CORBA{} code is
+in the \texttt{be\_produce.cc} file.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Presentation Front Ends}
+
+Hopefully, that code shouldn't have to be messed with.  Let's start in pfe
+[Presentation Front End], which should eventually be called the presentation
+generator.  \CORBA{} works --- most of the actual code in is the \texttt{lib}
+directory.  The \texttt{lib} directory should contain only the generic code,
+but there's a lot of \CORBA{} specific stuff in the \texttt{lib} directory
+currently.  That will be moved out to the \CORBA{} directory.  Start at
+\texttt{main.cc}.  There's a standard command line syntax that is use for all
+of the files.  It's described elsewhere in the Flick user document.
+\texttt{--client} and \texttt{--server} options indicate only generate a
+client, or only generate a server stub.  That's generally what should be done.
+Occasionally there's a use for generating both client stubs and server stubs in
+the same run.  In that case flick has to do something special to disambiguate
+them (PDL), so the server stubs don't just turn around and recursively call the
+client stubs and send a message to themselves.  This has actually happened in
+the Mach stuff.  One of the more obscure and horrendous bugs encountered was
+one where we got some particular stubs going where they'd send a message, call
+the stub using an \RPC{} recursively, then the server stub called the client stub,
+and so on.  So, in general, generate only server or only client, unless you use
+PDL to disambiguate the server and client stubs.
+
+There (\texttt{mom/c/pfe/lib/main.cc)} is where we read the \AOI{} file.
+\texttt{aoi\_readfh} is a function in the library \texttt{libaoi} which uses
+basic \XDR{} routines to open the \AOI{} file and load it.  \texttt{inaoi} is the
+name of the variable it's read into.  \texttt{pg\_state} represents the state
+of the presentation generator, at least some of it.  The stuff that is
+initialized there just simulates global variables --- \texttt{pg\_state} isn't
+the best designed of all objects.  All data structures in \texttt{pg\_state}
+are \XDR{}, except for the flags.  It's done in two stages, first the \AOI{} is
+reduced into a \MINT{} representation, so \texttt{mint.x} is the next logical
+place to look.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{MINT}
+
+\MINT{} doesn't have any names.  \emph{Many of those things are old and should be
+deleted.  Including these: \texttt{mint\_interface}, a number of others should
+to, like \MINT{} name and \MINT{} procedure, I'm pretty sure need to be delete, and
+\texttt{mint\_any}, and probably \texttt{mint\_var}.  And almost certainly
+\texttt{mint\_name}, and \texttt{mint\_procedure}.}  The only things that are
+relevant are the simple data types.  It contains representations of the
+messages that a procedure call produces.  Those messages consist of a code
+indicating which procedure you're calling and the marshaled also provide a code
+for the reply.  In \CORBA{}, there's a code indicating whether it's a normal
+return or an exception.  If it's an exception it sends back an exception name
+string, so those messages are basically a struct.  Basically, \MINT{} removes the
+semantics, just leaving the structure, because \MINT{} has no names.
+
+\MINT{} does not represent structs as nested types.  Rather, they're represented
+as a list of slots, where each slot is a reference to another item in the \MINT{}
+array.  This allows self-referential types to be easily represented --- simply
+reference the slot that is currently used as the pointer to self.  Arrays are
+represented as a length and a range.  The length is a references to a simple
+integer type, which indicates the possible values of the length.  If it's an
+unbounded array, with a 32 bit length, it would be minimum 0, range 4 billion.
+If it's an array of elements 0 to 5, then the minimum is 0, and range is 5.  If
+it's a fixed array, it will be minimum 5, range 0.  If range is 0, and minimum
+is 5, that means it will be 5 elements long, as opposed to a minimum of 0.
+That would have 0 to the maximum number of elements.  If the minimum is 0 and
+the range is some number, then it's a variable length up to the range.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{AOI to MINT Translation}
+
+From here, move to the \texttt{translate\_aoi\_to\_mint} function.  That's in
+\texttt{libaoi}.  It just goes through each \AOI{} definition, which defines a
+name, and creates a new \MINT{} entry.  Notice that the
+\texttt{a(i).<function/data-access>} is a macro to quickly lookup that index
+number in the current \AOI{} file.  There is only one file open?
+
+Give a name and the \AOI{} type that's bound to it.
+\texttt{translate\_aoi\_to\_mint} translates that.  It's just the beginning of
+a big recursive tree that descends into the \AOI{} structure.
+
+Start with simple things first: find a routine that just returns a
+\texttt{mint\_ref}.  It translates the appropriate \AOI{} type into a \MINT{} entry,
+and adds an entry to the \MINT{} array.  \emph{The index number of that entry as a
+new entry in the \MINT{} file.}  It just allocates the new definition.  For simple
+things like this, it involves copying the analogous fields.  That's the same
+for all of the basic types.  Then there's composite one.  They're basically the
+same.  \texttt{tam\_aoi\_type} is recursively called, and the \MINT{} struct
+definition receives \MINT{} refs in the ``slots'' of the structure.
+
+Before addressing interface, an explanation of typedefs is probably
+necessary.  Actually, there is no typedef.  The \AOI{} that we're
+iterating through is, for \MINT{}'s purpose, a list of typedefs.  You can
+view each \AOI{} entry as one typedef --- a binding from a name to an \AOI{} type.
+As each is translated, an element is added to an array to translate from \AOI{}
+indices to the corresponding \MINT{} indices that are generated.  In general there
+will be more \MINT{} index numbers than \AOI{}, because generally, most \AOI{} types are
+composite.  A \texttt{char~***}, or a \texttt{typedef char~***}, in \AOI{}, will
+be one entry.  In \MINT{}, however, there will be several entries, all related to
+that type.
+
+\begin{figure}
+  \begin{center}
+    \includegraphics[width=0.75\columnwidth]{aoi2mint.eps}
+  \end{center}
+  \caption{Contrasted \AOI{} and \MINT{} Structure Mappings.}
+  \label{aoi2mint}
+\end{figure}
+
+In \MINT{} everything is represented with indices into the \MINT{} array, or as
+concrete, atomic data types --- int, char, float, etc.  The \AOI{} to \MINT{}
+association array is used to link the nested types in \AOI{} to the indices in
+\MINT{}\@.  In a sense, \MINT{} is a flattened \AOI{}\@.
+
+As a more difficult example, use an interface.  Each \IDL{} has its own variant of
+a top level union.  So Sun \RPC{} might have the identifier 1, \CORBA{}'s \IDL{} might
+be number 2, etc.  Each variant of this discriminated union is another
+discriminated union.  One variant for each interface defined.  An interface is
+essentially translated into a discriminated union.  Translating the interface
+into a \MINT{} type essentially builds a message that gets passed from client to
+server, then another message that gets passed from server to client.  In order
+to support different procedures, you have to have some kind of type message or
+code as previously mentioned that differentiates the procedures and their
+associated parameters.  The discriminator is the code representing which
+procedure we're calling.  The variants of that union are the messages for the
+individual procedures --- each procedure has two unique variants (and
+discriminators) --- one for a request (the parameters passed) and one for the
+reply (the values returned, and any exceptions/errors encountered).  So the
+interface is represented as a discriminator, followed by a number of entries
+(or variants), one for each procedure.  As an example:
+
+\begin{figure}
+  \begin{center}
+    \includegraphics[width=0.75\columnwidth]{idl-union.eps}
+  \end{center}
+  \caption{Union of All \IDL{}s.}
+  \label{idl-union}
+\end{figure}
+
+The corresponding union would have 4 variants.  The first two are for the
+discriminator value \texttt{add}'s request and reply.  The second two are for
+the discriminator value \texttt{sub}'s request and reply.  The variant for each
+discriminated type is the message that gets passed when that procedure gets
+called or returns.
+
+It always generates three levels of union, before you actually get to the
+procedure.  Level one is just the \IDL{} type, which is basically global.  Level
+two is the interface, different unions for \CORBA{} interfaces, or Sun interfaces,
+or any other \IDL{} being used.  In \CORBA{}, interfaces have names (\texttt{math}),
+but in Sun interfaces are numbered (the program number), just like procedures
+are numbers, so the discriminator of this level depends on the \IDL{} you're
+working in.  I.e., there's a different union and interface union type for each
+\IDL{}\@.  So we get a union of all the interfaces that are \AOI{} interfaces.
+
+In the \AOI{} file, an interface is just a typedef.  It's a name definition, bound
+to a type.  The whole interface, with the procedures and data members, etc., is
+just the type that gets bound to that name.  When an \AOI{} interface in
+encountered, we find the top level union.  Each time we hit it, we'll see a
+constant --- the \IDL{} identifier, \CORBA{} or Sun, it needs to create a union
+member for that new interface, whose discriminating type will be the name of
+the interface, or the program number, for Sun \IDL{}\@.  Then we get to level 3,
+which is the union of all operations, or procedures/methods.  The \AOI{} interface
+contains an array of operations for that interface, then we just iterate
+through that array.  For each procedure, we create 2 variants on the 3rd level
+union --- one for the request and one for the reply.  The request message ---
+the variant of the union for the request discriminator --- will contain all the
+out and inout parameters.  The reply message --- the variant of the union for
+the reply discriminator --- will all the out, inout and return parameters, as
+well as any error messages necessary.  I believe that for \MIG{} the user reply is
+100 greater than the request.  As for Sun and \CORBA{}, I'm not sure.  There
+probably isn't a convention for Sun yet, because it's not done yet.  An
+exception is just a struct of all possible error messages and exceptions that
+can be thrown.
+
+In \AOI{} a name can be bound to a constant, using const.  In \MINT{}, however,
+there's no need or reason to do that.  Because it essentially puts all the
+constants into the actual \MINT{}, there are no entries for constants.  Anywhere
+there is a need for a constant, we just find that value, and add it inline.  If
+in the \AOI{}, the maximum length of the array was represented as an indirection
+to a const definition, then we just collapse that --- find the value and plug
+it in.  \MINT{} has no names, therefore it doesn't need to keep track of name
+indirection.  A void is merely a type representing no data.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{PRES\_C, CAST, MINT, and How They Relate}
+
+The next logical place to go is where we build the other part of \PRESC{},
+which is the presentation, and the mappings to the stubs.  That is in
+\texttt{gen.cc}.  We loop through the \AOI{} and build all non-interfaces before
+all interfaces.  That is how \rpcgen{} structures are built, and it makes most
+sense --- the data structures will be needed before the interfaces.  That's
+also to support self-referential data types, so we could have a structure
+containing a forward reference to another structure.  For that case, you need
+to add typedefs which reference pointers to structs.  In C, you're very limited
+as to what kind of self-referential data types you can define.  You've got to
+use pointers because a C struct is assumed to have a specific length, so you
+can't insert an arbitrary length array in the middle of a structure, but in a
+message, you can do that without any problem.  So the representation of a
+nested arbitrary length structure is a pointer to that data structure.  You can
+also convert them to fixed length arrays, or other things.  That's defined in
+the language mapping.  Currently, however, the presentation generator doesn't
+support self-referential types properly.  This needs to be fixed.  Basically
+for each \AOI{} definition, we're just descending into another big recursive parse
+tree.
+
+Let's look at \texttt{cast.x}.  This should be fairly understandable --- it's
+just an abstract syntax tree for C, much like \AOI{} is an AST for \CORBA{} and Sun
+\IDL{}\@.  This stuff is a little kludgy, but it works.  Basically a C file is
+represented as an array of definitions --- function definitions, type
+definitions, const definitions, etc.  There are some inherent kludges --- we
+can generate a \texttt{\#include} as a ``magic'' definition.  But in general
+the \IDL{} is a set of definitions.  Code is another little kludge.  It's there to
+support verbatim text.  Declarations are found in the header, and definitions
+are where the function is defined.  Declaration is ``extern'' definition of the
+code.  They just represent the function prototype.  Definitions are where the
+code of the function is found.  There is a partial C parser to go along with
+this, to parse actual C code it into a \CAST{}, for verification of the data
+structure.
+
+\CAST{} is almost a parse tree for the C language.  A function type is the type of
+the return value, and the type of the parameters.  The parse tree would look
+very different in C\@.  A C parse tree would essentially look inverted or
+reversed when compared to what you see here.  If you have a pointer to a
+function taking an \texttt{int} parameter and returning an \texttt{int} value,
+a C parse tree is going to have a ``function'' at the top level.  \CAST{} is
+organized to link \MINT{} to the C code, so it will have the return and request
+parameters at the top level, and a ``function'' at the bottom.  While this
+makes sense for what we're doing, this makes no sense for manipulating a C
+source programmatically.
+
+Next should be \texttt{mom\_pres\_c.x}.  In retrospect, this is is sort of an
+AST for a language that doesn't exist.  An abstract stub definition language.
+It basically describes how to generate a stub.  It provides a complete
+description for an \RPC{} stub as the C language programmer should interface to
+it.  Different languages could be defined for different target languages, but
+this is transport independent, so it could be over \TCP{} Mach 3 messages, or Sun
+\RPC{}, or anything else.  It's actually much more transport independent than
+existing \RPC{} system that ``support multiple transports.''  They really only
+support one, but they can send the encoded bits over \TCP{} or \UDP{}\@.  In this
+system, you can actually encode the bits however you want, independent from the
+presentation.  So the stubs as you specify them here are independent of the
+bits, the on-the-wire encoding.  So you could take a given stub defined in this
+language, i.e., a Sun \RPC{} stub wire encoding, you could use it over Mach 3
+messages, using Mach Message encoding, all of the elements are specifically
+typed, where the kernel does endian conversion and stuff like that, or you can
+use GIOP from \CORBA{}, in which you have bi-endian.
+
+The \PRESC{} file is a transport independent template for a final C file
+that we're going to produce for transport specific stubs.  The final
+\texttt{.c} file contains the stubs implementations.  The \PRESC{} would say this
+is how this should look, but doesn't say how we're actually going to
+move the struct onto the wire, or how were going to return it.  It
+just defines how it should look to the C programmer.  It just
+creates the interface to the user.  It doesn't contain anything about
+implementation of the wire encoding.  A \PRESC{} contains 3 elements at
+the top level:
+
+\begin{enumerate}
+  \item The \MINT{}, which defines high level aspects of the on-the-wire
+  interface.  The basic data types, like a struct, it contains the elements of
+  the struct, and what you're transporting, but the low level encoding details
+  are left up to the back end.  (It does contain certain information about the
+  on the wire encoding, but we have to have that in order to do anything.)
+
+  \item The \CAST{}, which is the direct representation of the header file that
+  will be written out for the programmers to use.  That includes all the type
+  definitions, the function prototypes for all the stub functions themselves
+  for the client stubs, or if we're generating server skeleton, it contains the
+  function prototypes for the functions that the programmer needs to write and
+  provide.
+
+  \item The stub array, which defines the stubs themselves.  Each of element
+  defines a single C function.  There's a client stub and a server skeleton.
+\end{enumerate}
+
+We have the \MINT{} on one side and the \CAST{} on the other: the wire interface and
+code interface.  In the stub, we're just figuring out how they relate to each
+other.  We provide a starting point on each side --- it points to the function
+prototype for the stub in the \CAST{}, and the \MINT{} top level union on the other.
+
+The \texttt{pres\_c\_inline} is what we actually use to start descending into
+the \MINT{} and \CAST{} and figuring out how to map.  That's where things get real
+interesting.  There are 2 modes of operation as we're descending.  One is the
+\texttt{pres\_c\_inline}.  As we go up, the whole first part of this file is a
+number of different variants of \texttt{pres\_c\_inline}.
+\texttt{pres\_c\_inline} is just a discriminated union, which is one of a
+number of possible types of \texttt{pres\_c\_inline}'s.
+
+A \texttt{pres\_c\_inline} does mapping between one \MINT{} node --- a \MINT{} char,
+or whatever --- and a set of C ``slots'' of some kind.  The C structure that
+we're mapping to is either a struct or a function.  If it's a struct, then the
+things that we map to are the slots in the structure.  If it's a function, the
+things that we map to are the parameters and the return values.
+
+So \texttt{pres\_c\_inline} is a many to one mapping, in a sense.
+\texttt{pres\_c\_mapping}, which we won't really get to until later, is just a
+one to one --- one \MINT{} type to one C type.  We're mapping between a \MINT{} char
+and a \CAST{} char, or a \MINT{} array and a C array.  They are for atomic types,
+while \texttt{pres\_c\_inline}'s are for compound types.  At the very top level
+we map between the top level \MINT{} and the top level stub function prototype.
+We always start out at the function, and map between that and the parameters of
+the function.
+
+In order to marshal the request properly there are \emph{two} ``itypes'' and
+\emph{two} \texttt{pres\_c\_inlines}.  One is to map the request, one to map
+the reply.  The request will need to descend through the \MINT{} tree, through all
+those layers of unions to collect the proper procedure.  Once we get down to
+the bottom level, that struct should contain the parameters.  For \CORBA{}, it
+will have 2 integers --- those into the second and third parameters in the
+corresponding C function.  The first parameter (the \texttt{Object} reference)
+won't be mapped anywhere in either of those structures.  It won't be used at
+all in mapping the request or reply, but instead it will be used in mapping the
+target, the target of \texttt{pres\_c\_inline} indicates how to derive the
+target for the \RPC{} from the parameters you pass.  This is the target that will
+tell us how to map from that object into a \texttt{mint\_ref} --- a server
+reference, or object reference, which will be used by the stub, to figure out
+where to send the message to.
+
+For the stub to work properly, it needs to know not only what message to send,
+but where to send it to.  The \texttt{request\_i} determines how it figures out
+what to send.  The \texttt{target\_i} determines how to figure out where to
+send it.  Because the inlines are basically statements in this definition
+language, if we go into \texttt{request\_i} of the \texttt{pres\_c\_inline}
+there's a bunch of options.  It eventually generates something simple like
+\texttt{p\_integer} or something similar.  So, in all of the presentation
+generator stuff, we're generating a relatively fixed default presentation based
+on specific rules defined by the \AOI{}\@.  We're reusing the names provided by
+the \AOI{} to generate the names we're going to use in the C function prototypes.
+We're not dealing with procedures yet, at all.  The default presentation of a
+typedef is just a C typedef, so we just need to create a \CAST{} typedef ---
+basically C typedef.  What we assign to the C type of that typedef is what we
+produce deeper in the call stack of the generator.
+
+This is where we go down into the translation of an \AOI{} type that this typedef
+actually refers to.  That is done by generating a presentation for the type,
+which produces a C type.  The default presentation for that \AOI{} type, and a
+mapping, which is \texttt{pres\_c\_mapping}, which represents the one to one
+relationship of how to map between the \MINT{} type that we produce, and the \CAST{}
+type.  So \texttt{p\_type} is something you'll see real often.  Calls to that
+function, generally to take an \AOI{} type and present a C type and a mapping.
+
+Once we get that we just plug the C type into the typedef statement that's
+being produced, assign the name, and then actually, this is getting into
+mappings, which we probably shouldn't get into\ldots{}.  Basically a mapping
+stub, don't worry about that for now.  Let's just assume we don't do anything
+with the mapping, we do do something with it.  If we go into \texttt{p\_type},
+so see what actually happens in the type, we deal with the type itself, this is
+where we get to split into all the different types of types.  We know how to
+generate a default presentation for each standard type.  So maybe, go into
+\texttt{p\_integer\_type}, basically we just create a primitive C type, which
+is a runtime based on the range that we need.  So the mapping, mapping an
+integer is really simple, There's just this magic \texttt{pres\_c\_mapping}
+direct which is just sort of a statement, it's an assertion that we're at a
+point where the mapping is obvious.  That's obviously a standard C type --- do
+the assignment statement, or whatever.  Once the mapping is obvious, we just
+end it with a \texttt{pres\_c mapping}.  Tell me when you've had enough for one
+day.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Presentation Back Ends}
+
+To sum up: the client stub is the abstract syntax tree of the stub itself and
+the associated code.  The \texttt{request\_i} is the code that marshals the
+request, sends the \MINT{} message, and whatnot.  The reply is the same thing,
+only for reply messages.  They are just \texttt{mint\_ref}s to the actual
+messages the way that the messages are actually flattened onto the wire.
+
+The marshal and unmarshal stubs have to do with marshaling and unmarshaling
+self-referential data types.  It represents a stub that can take a data type
+and marshal it to and from a stream.  Client and server stubs call marshal and
+unmarshal stubs as necessary to handle self-referential data types.  Marshal
+and unmarshal stubs can call themselves, or call other stubs, and other marshal
+or unmarshal stubs recursively.
+
+Send and reply stubs aren't used yet.  They're intended to be support for one
+way \RPC{}'s.  They're also for supporting a server side model where you receive a
+request and send a reply as separate functions.  You'll receive the request,
+but then you call a function to send the reply rather than just returning.
+That supports continuation model programming, or event model.  Asynchronous
+stuff.  It lets you go back for more messages before you finish handling one
+message, but it's not implemented yet.
+
+Moving on to \texttt{pres\_c.x}.  First, recall that a
+\texttt{pres\_c\_mapping} is a one to one \MINT{} to \CAST{}\@.  Given a \MINT{} and a
+\CAST{}, it indicates how they map to each other.  Once we get to a mapping, we
+already know where the \CAST{} type and the \MINT{} type are.  The only thing that we
+need to know is how they relate to each other.
+\texttt{pres\_c\_mapping\_direct} is the basic type --- it says the mapping
+should be obvious.  There are other types that go into ``inline mode'' or do
+other tasks, such as dealing with array mappings.
+
+Inline mode maps one \MINT{} to either the slots in a structure or the parameters
+and return value of a function.  It implies that at the \CAST{} level, we are at a
+structure or a C function type, while at the \MINT{} we might be anywhere.
+\texttt{pres\_c\_inline\_atom} simply means we're selecting one of these
+structure elements or function parameters, and we're saying that this \MINT{} type
+or \MINT{} node maps to that particular function parameter or slot number.  Then,
+if you go up to \texttt{pres\_c\_inline\_atom}, it has the slot index, which is
+the slot number in a C structure, or the parameter number in a C function.  The
+\texttt{pres\_c\_mapping} indicates that we have that association between one
+\MINT{} node, and one C type.  Then we go back into one to one mapping mode.  We
+use that \texttt{pres\_c\_mapping} to map those two together appropriately.
+
+As a example, see the interface \texttt{math} above.  It has \texttt{add} and
+\texttt{subtract} methods.  In the \MINT{}, we already established that this
+produces a \MINT{} union --- the union of all \IDL{}'s.  We have \CORBA{}, Sun, \MIG{},
+whatever, then we go to a union of interfaces.  Specifically, this example is
+\CORBA{}\@.  Following the \CORBA{} branch of that union, then the example interface
+would be in the \texttt{math} branch of the union of interfaces.  Then we hit a
+union of procedures/methods/operations.  Say we are working on the \texttt{add}
+method.  First the \texttt{add} request or reply branch of the top level \CORBA{}
+union must be found.  The variant of that union is a struct containing the
+request parameters, \texttt{int~a}, \texttt{int~b}, or contain the reply ---
+\texttt{int~result}, depending on which branch we choose.  That's what needs
+mapped.  On the C type side, all we have is
+\texttt{math\_add(object~\&o,~environment~\&e,~int~a,~int~b)}.  Actually, the
+object would be of type \texttt{math} in \CORBA{}\@.  So that's the C type.  When
+we start out, that top level \texttt{pres\_c\_inline} in the stub that you saw,
+for marshaling the whole request message, is where we start.  We have to do a
+depth first traversal of the entire \MINT{} tree in order to produce the request
+message.  Of course in each of these union branches we'll only go down one
+particular branch.  \texttt{pres\_c\_inline\_atom} is what we do once we get
+down to the actual request or reply message.  When we get to the point of one
+of these specific integers, i.e., \cidentifier{MINT_INT}, the
+\texttt{pres\_c\_inline\_atom} is what we'll use to map those.
+
+The \texttt{pres\_c\_client\_stub} contains a reference to the \CAST{} function,
+the reference to the request and reply types involved with the client stub of a
+function.  The request and reply types involved are represented as collapsed
+unions.  A collapsed union represents only a particular branch of a union.  In
+other words, we collapse it to one branch.  In that specific case, the
+\texttt{pres\_c\_inline} collapsed union contains a \MINT{} constant --- the
+discriminator value, indicating which branch of the union we're interested, and
+a \texttt{pres\_c\_inline} to go to the next union level.  The next level would
+be another collapsed union to get down to the third level of the union.  Then
+the variant chosen is a \texttt{pres\_c\_inline\_struct}, which contains the
+parameters the message takes.
+
+At this point a clarification is necessary.  There's a
+\texttt{pres\_c\_mapping\_struct} and a \texttt{pres\_c\_inline\_struct}, and
+they're quite different, although they're often used with each other.
+\texttt{pres\_c\_inline\_struct} means we're dealing with a \MINT{} struct ---
+we're descending thru a \MINT{} struct.  \texttt{pres\_c\_mapping\_struct} means
+that we're descending into a \CAST{} struct, regardless of what happens to be in
+the \MINT{} type.
+
+So, back to the \texttt{math.add} example.  The \MINT{} struct representing the
+message sent by the request needs to be dealt with.  That is done using a
+\texttt{pres\_c\_inline\_struct} which contains an array of further
+\texttt{pres\_c\_inline}'s, one for each slot in the \MINT{} struct.  They each
+eventually break down to \texttt{pres\_c\_inline\_atom}s.
+
+In general, \texttt{pres\_c\_inline}s are for the \MINT{} messages and
+\texttt{pres\_c\_mapping}s are for the \CAST{} data structures.  While in inline
+mode, a lot of descending on the \MINT{} side occurs, without really moving
+anywhere in the \CAST{} side until a \texttt{pres\_c\_inline\_atom}.
+\texttt{pres\_c\_mapping} generally descends both, or sometimes just the C
+type.
+
+Not all of these are used, yet.  A few of these are cool ideas I had.
+\texttt{struct\_union} is actually the primary union presentation for
+\emph{real} unions.  For real \CORBA{} unions, or whatnot.  A struct union
+basically means, that given a C type struct, we're mapping a union, a \MINT{}
+union, in such a way that one of the elements in the C structure is the
+discriminator --- an atom that is the discriminator, and then another one of
+the elements is a C union type, for each possible branch in the \MINT{} unions,
+there's a branch in the C union.  And there's a \texttt{pres\_c\_mapping} for
+each possible branch, so map one to one between the \MINT{} branches, and the C
+union branches.  This is used in the typical case, like in \CORBA{}, where a union
+is mapped as a \texttt{struct~\{int~\_d;~union~\_u\}} or something similar, and
+then the branches.  Of course in this \texttt{pres\_c\_inline} presentation
+this doesn't require or assume that the discriminator and the union itself are
+the only things in the C type we're dealing with at this point, for example
+these two thing things could be placed right into the parameter list of the
+stub.
+
+The data structures used in \PRESC{} require some explanation.  Collapsed
+unions have already been explained.  Expanded unions are represented as
+structs.  The union is ignored and each of the union branches become a separate
+top level field in the structure (or function).  They occupy separate space.
+This is useful when you have a union representing an optional piece of data,
+which is a simple case where you have a flag --- ``Is it present or not?'' ---
+followed by the actual data, which is only valid if it's present.  Or if you
+have one of a number of options where only one or two of them have any data,
+it's easier to do it that way.  Just separate them out.
+
+Counted arrays are used to create \CORBA{} variable length arrays.  Terminated
+arrays are for \CORBA{} strings --- null terminated arrays.
+
+That's the \PRESC{} data structure.  Continuing with
+\texttt{c/pfe/main.cc}\ldots{}.
+
+All that it does is create the \MINT{} part of the \PRESC{} and generate the
+presentation.  The work is done in \texttt{gen.cc} (and below).
+\texttt{gen.cc} just calls \texttt{p\_def} for each of the definitions.
+
+\texttt{p\_typedef} calls \texttt{p\_type}, which is a fundamental backbone
+routine for the generation of the presentation.  It takes an \AOI{} type and
+produces a C type and a presentation mapping.  Storage class is like
+\texttt{auto}, \texttt{register}, or \texttt{static}.
+
+This is something mentioned and skipped previously: a marshal stub and an
+unmarshal stub, \XDR{} encoding and decoding routines for a typedef.  It uses the
+C type name, the name reference rather than the type itself.  This is necessary
+to be sure that each usage of the typedef doesn't rdefine the contents of the
+typedef, but rather uses the name associated with the typedef.
+
+Within \texttt{p\_type}, we're dealing with an \AOI{} struct --- mapping it to a C
+struct (by default).  We create a new C structure node with the appropriate
+name, and a \texttt{pres\_c\_mapping\_struct}.  The
+\texttt{pres\_c\_mapping\_struct} moves from mapping to inline mode ---
+basically descending into that C structure.  Each slot in the
+\texttt{pres\_c\_mapping} struct is another type, created using
+\texttt{pres\_c\_inline}s.
+
+There is a set of \texttt{p\_inline} functions which create
+\texttt{pres\_c\_inline}'s.  These routines all take an \AOI{} type as an
+argument, and, depending on the \AOI{} type, create an inline struct or an inline
+union.  They also takes a \CAST{} type, which will be a function prototype, a
+\texttt{cast\_func}, or a \texttt{cast\_struct}, but it's just a generic \CAST{}
+type that can refer to either.  The job of this routine is to build the
+\texttt{inl\_c\_type} (the \texttt{inl\_c\_type} is initially zero), add
+entries to it --- add slots as necessary in order to fill it out.  They fill
+the \texttt{inl\_c\_type}, producing a corresponding \texttt{pres\_c\_inline}
+necessary to map the \MINT{} struct nodes to the C struct nodes that are being
+dealt.  Previously it created a \texttt{pres\_c\_mapping\_struct}, but now it's
+creating a \texttt{pres\_c\_inline\_struct} to descend into the \MINT{} struct
+that was produced from the \AOI{} struct passed in.  That
+\texttt{pres\_c\_inline\_struct} contains an entry for each of the slots, then
+it is iterated through, calling \texttt{p\_inline\_type} for each of those
+slots with the same \texttt{inl\_c\_type}.  \texttt{p\_inline\_type}, or
+something below it will cause the actual entries to be added to the C structure
+if necessary, and mapped to it.
+
+It defers the work, just getting down through the \MINT{} struct.  It passes the
+work of adding the actual atoms to whatever is called subsequently.  This is
+the default implementation of \texttt{c\_inline\_type}.  It could do different
+things, and should for different language mappings.  The default
+implementation, for any \AOI{} type we may be dealing with, is to create a new
+atom in the C structure or function or whatever, create a new slot, switch to
+mapping mode, create a one to one mapping between that atom; i.e., create a C
+type, make that element in this structure or function a slot of that type, and
+then do a one to one mapping.  What this routine could do instead, and does do
+in alternate presentations (like \MIG{}) is, for some types, actually inline the
+type we're descending into into the current \texttt{inl\_c\_type}, rather than
+producing a new level.  What that amounts to, is, in \CORBA{} we have a function
+\texttt{foo} that takes a \texttt{bar} structure, and struct \texttt{bar}, or
+maybe this is an array, the structure is represented by a length, and a
+pointer.  Now this is the presentation that this default would produce.  When
+that \AOI{} array in encountered, it would create a new atom representing the
+array, which would be of type \texttt{bar}.  Then it would descend into that
+creating a separate C type for the array.  What this could do instead, and does
+in the case of \MIG{}, is descend directly, without creating an atom at that
+point, and simply inline the length and data parameters.  So you're no longer
+passing a compound data structure, you're passing atomic data structures as the
+parameters themselves, so instead of creating one parameter, it would actually
+creates two parameters.  That is the \MIG{} style of presentation.  This has an
+inherent weakness of not allowing self-referential types.  \MIG{} doesn't deal
+with self-referential structures, not even structures containing other
+structures.  Then new \texttt{pres\_c\_inline\_atom}s are created as
+appropriate.
+
+Interface is where collapsed union presentations types are created.  For each
+interface, the client and/or server stub is generated.  The client stub
+consists of several separate function declarations/definitions.  The server
+skeleton, on the other hand, is composed of only one function, within which
+there is a switch statement that figures out which glue function to call.
+Basically the client stub multiplexes, while the server stub demultiplexes.
+
+Presentation back end is the final major piece of the puzzle.  The output file
+is opened, the input file is read, the header file is written, then the C file
+is written.  The header file is trivial to generate.  In the source file,
+instead of \texttt{\#include}'ing the header file, we produce a separate copy
+of the header file in the C file.  The primary reason is that it's difficult to
+know where the header file is going to be when the C file gets compiled.
+Should it be included with \texttt{<>}'s or \texttt{""}'s, does it need a
+directory prefix?  That seems like that should be a command line option, not
+a copy and paste of the include file.
+
+Currently marshal stubs and unmarshal stubs aren't supported because right now
+they're always inlined into the client and server stub code.  But in order to
+deal with self-referential types, this must be fixed.
+
+\texttt{client\_stub} is one of the transport specific stubs.  Most of the
+\texttt{w\_client\_routines} are somewhat kludgy.  They don't produce proper
+\CAST{}'s before printing.  They just operate by using \texttt{printf}'s.  That's
+easier than having to customize the PFE, because this code is virtually
+identical.  Rather than dealing with the PFE code, it's easier to do it inline.
+
+An \texttt{mu\_state} is an object representing the current state of the
+marshal/unmarshal code generation.  \texttt{sun\_mu\_state} is a child class of
+\texttt{mu\_state}, which overrides some functions and provides methods.  The
+encoding code for that presentation is being generated using certain
+assumptions.  Assumptions aren't currently used, but they're intended to be for
+things like whether the stub is allowed to trust the other side in certain
+ways, such as the correctness of the other side.  If we're generating stubs for
+interfacing between the lites emulator and the Lites server, the emulator can
+always trust the server code, because the server is god.  That allows for some
+optimizations to be done.  For example, you don't have to save all the
+registers.  Those kind of things are optimizations based on assumptions
+declared to be valid.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{End of Narrative, So Far}
+
+The remaining pieces of information include how parameters are dealt with
+(Bryan says this is where it gets really fun), and PDL\ldots{}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

@@ -1,0 +1,1439 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1999 The University of Utah and the Computer
+%% Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{Source Code Markup Language (SCML)}
+\label{cha:SCML}
+
+The Source Code Markup Language (\SCML{}) is a formatting language that can be
+used to create templates for source code that needs to be output by Flick.  For
+example, the \CORBA{} C++ mapping requires a number of C++ classes and functions
+to be generated alongside the actual defined types.  These extra classes and
+functions are only there for the sake of presentation and do not need any
+special analysis or optimization so generating them is usually just a matter of
+plugging the right strings into a template.  This phase of code generation can
+be done with a series of \cfunction{printf}s, however, a more data oriented and
+externalized approach is more flexible and possibly easier to maintain.
+Therefore, \SCML{} was created so that the user could write the implementations of
+these functions as a template and data created by Flick would fill in the
+holes.
+
+The use of \SCML{} code in Flick is currently limited to the functions and methods
+for the \CORBA{} C++ classes created for the TAO implementation, although it would
+be nice to begin using it for other code which is currently done with
+\cfunction{printf}s.  This code is read in and executed at start up so that it
+can define a number of new commands that are used to generate the appropriate
+output.  As a Flick back end then processes the \PRESC{} and defers to the \SCML{}
+code whenever it encounters a presentation function declaration.
+
+\section{The Language}
+
+\subsection{Introduction}
+
+The syntax of the language was based on SGML in an attempt to make it more
+accessible to people in general since many are already familiar with its most
+popular descendent, HTML\@.  An example code section might be the best way to
+start.
+
+The following \SCML{} code is taken from
+\filename{runtime/headers/flick/pres/std_defines.scml}:
+
+\begin{verbatim}
+<ifndef name="STD_DEFINES_SCML">
+<define name="STD_DEFINES_SCML" kind="static-variable" value=true>
+
+<!-- These are the standard set of defines used in SCML -->
+
+<define name="scope" kind="bracket-tag" value="c-scope-handler"
+        rparams={name:string}>
+<define name="macro" kind="bracket-tag" value="c-macro-handler"
+        rparams={name:string} oparams={close:bool=false
+                                       rparams:tag_list={}
+                                       oparams:tag_list={}}>
+...
+</ifndef>
+\end{verbatim}
+
+Anything within angle brackets is a command name followed by the arguments
+for the command.  So the first command is \scmlcommand{ifndef}, which is
+basically the same thing as a C preprocessor's `\#ifndef', it checks to see if
+name has been declared or not and executes the block if it is not defined.  The
+second command, \scmlcommand{define}, creates a static variable in the
+current scope with the given name and value.  From there we have a comment
+and then create some more commands for the system using define and then we
+terminate the \scmlcommand{ifndef} block with \scmlcode{</ifndef>}.   So this
+basically corresponds to the organization of a header file in C.
+
+\subsection{Types}
+
+Now that we know basically what a command looks like lets look a little deeper
+at the rest of the command.  When executing a command there are a series of
+assignments after it that set the values of some variables.  These assignments
+are setting the values of the parameters for the command.  Each parameter has a
+name, which is the name used in the assignment, a type, which is specified in
+the definition, and finally a default value. A name can be any string, but only
+C style identifiers can be used regularly, otherwise one must surround the name
+with single quotes (').  The type of a parameter is currently limited to:
+
+\begin{itemize}
+  \item \textbf{any}
+  %
+  any supported type
+
+  \item \textbf{arrays}
+  %
+  simple array types
+
+  \item \textbf{bool}
+  %
+  a boolean value (e.g., ``true'' or ``false'')
+
+  \item \textbf{int}
+  %
+  a signed integer
+
+  \item \textbf{float}
+  %
+  a single precision floating point number
+
+  \item \textbf{string}
+  %
+  a string
+
+  \item \textbf{tag\_list}
+  %
+  a tag\_list
+
+  \item \textbf{cmd}
+  %
+  a scoped reference to a command name
+
+  \item \textbf{scml}
+  %
+  scml code
+
+  \item \textbf{stream}
+  %
+  An I/O stream, this is a bit of a hack at the moment, try and avoid using it
+\end{itemize}
+
+\subsection{Values}
+
+The format for declaring the tag that represents this parameter is the tag
+name, a colon, and an equal sign followed by a literal value to set the
+default.  For example, \scmlcode{num:int=5} makes an integer tag named `num'
+and sets its value to 5, of course if this tag is not added to a list, it cannot
+be accessed and is lost, which is why all parameter declarations are
+tag\_lists.
+
+The set of literal values for these types are:
+
+\begin{itemize}
+  \item \textbf{bool}
+  %
+  true, false
+
+  \item \textbf{int}
+  %
+  regular and hex, uh, do not try to negate anything\ldots{}
+
+  \item \textbf{float}
+  %
+  as one would expect, again do not negate
+
+  \item \textbf{strings} 
+  %
+  ``put some text here'', it also supports C style escapes, except
+  for octal values. (Note: one can also build strings
+  with \CAST{} stuff from Flick-generated tags, but do not try to use
+  it for tag names or anything other than printing.  It will
+  barf.)
+
+  \item \textbf{tag\_list}
+  %
+  \scmlcode{\braceleft{} fname:string="John" lname:string="Doe" \braceright{}}
+
+  \item \textbf{cmd}
+  %
+  struct::var::'T operator=(T \&)'
+
+  \item \textbf{scml}
+  %
+  Nothing other than the builtin contents tag which is created for block
+  commands.
+\end{itemize}
+
+\SCML{} also supports simple expressions for most of its types:
+
+\begin{itemize}
+  \item \textbf{arrays}
+  %
+  [] (indexing, as in a[5])
+  
+  \item \textbf{bool}
+  %
+  \&\&, $||$, ==, !=, !
+
+  \item \textbf{int/float}
+  %
+  +, -, /, *, \%, (), !, ==, !=, $<$, $<=$, $>$, $>=$, $<<$, $>>$
+
+  \item \textbf{strings}
+  %
+  + (concat)
+
+  \item \textbf{tag\_list}
+  %
+  . (dereference), $|$ (append)
+
+  \item \textbf{cmd}
+  %
+  none
+
+  \item \textbf{scml}
+  %
+  none
+\end{itemize}
+
+\subsection{Commands}
+
+In order to allow this language to be flexible enough to handle any type of
+presentation it has only a minor set of builtin commands from which all others
+are created.  They are \scmlcommand{define}, \scmlcommand{undef},
+\scmlcommand{rename}, \scmlcommand{ifdef}, \scmlcommand{ifndef}, and
+\scmlcommand{include}, although define is really the only one that is needed,
+the others are just there to be nice.  Define is basically the hook that is used
+to add other objects into the system.  It lets one create local variables,
+static variables, commands, and escape sequence for regular text.  The
+parameters of the \scmlcommand{define} command are:
+
+\begin{itemize}
+  \item \scmlparam{name:string}
+  %
+  the name of the object
+
+  \item \scmlparam{kind:string}
+  %
+  the type of the object, needs to be one of:
+  \begin{itemize}
+    \item \textbf{``variable''}
+    %
+    a local variable
+
+    \item \textbf{``static-variable''}
+    %
+    a static variable
+
+    \item \textbf{``tag''}
+    %
+    a command (e.g., \scmlcode{<define name....})
+
+    \item \textbf{``bracket-tag''}
+    %
+    a block command (e.g., \scmlcode{<ifndef name="..."></ifndef>})
+
+    \item \textbf{``escape''}
+    %
+    an escape sequence
+  \end{itemize}
+
+  \item \scmlparam{value:any}
+  %
+  The value for this object.  If it is a variable then it is the type and value of
+  the variable; if it is a command than it is a name corresponding to the internal
+  C handler code; and if it is an escape it is the string that the escape resolves too.
+
+  \item \scmlparam{rparams:tag_list}
+  %
+  The list of required parameters for this command
+
+  \item \scmlparam{oparams:tag_list}
+  %
+  The list of optional parameters for this command
+\end{itemize}
+
+The name, kind, and value parameters are required in order for define to
+work properly.  From define there comes a standard set of commands that
+are useful, and cannot really be used to implement each other since they
+modify some \SCML{} execution state, they are:
+
+\begin{itemize}
+  \item \scmlcommand{scope~\scmlparam{name:string}}
+  %
+  Creates a new lexical scope with given the given name
+
+  \item \scmlcommand{macro \scmlparam{name:string}
+			   \scmlparam{close:bool=false}
+			   \scmlparam{rparams:tag_list=\braceleft{}\braceright{}}
+			   \scmlparam{oparams:tag_list=\braceleft{}\braceright{}}}
+  %
+  macro is able to create commands from \SCML{} code to allow for code
+  reuse, recursion, and other nice things.  Close specifies whether
+  or not this is a block command and the rparams and oparams
+  parameters are similar to define's.
+
+  \item \scmlcommand{if \scmlparam{'test expression'}}
+  %
+  This is a block command that will partition its contents
+  around an \scmlcommand{else} command if there is one, and then execute the
+  one block or the other based on the expr.  (Note: this is sort of
+  a special case.  One does not specify a parameter name because
+  it is silly and annoying, so the first thing after the \scmlcommand{if}
+  needs to be some valid boolean/integer expression.)
+  %
+  \item \scmlcommand{for \scmlparam{iter:string}
+			 \scmlparam{each:string}
+			 \scmlparam{length:int}}
+
+  For will iterate over an array, specified with the each parameter as
+  the tag name, or will loop `length' times.  The `iter' parameter
+  is the name of the tag you want created to hold the iterator number.
+
+  \item \scmlcommand{ignore \scmlparam{'expressions'}}
+  %
+  This will just evaluate the expressions inside
+  the command and not print anything out.
+
+  \item \scmlcommand{pre \scmlparam{indented:bool=true}}
+  %
+  This tells the execution environment to go into preformatting
+  mode. The placement of this tag is important, if it is indented than
+  any of its contents will be shifted to the left by that much.  This is to
+  allow users to give structure to their \SCML{} code without affecting the
+  output.  The \scmlparam{indented} parameter is used to indicate whether
+  any macro calls or \SCML{} code should be indented relative to the
+  indentation of where they are executed.  For example, if indented is set
+  to true than any output from a macro call will be shifted to the right
+  so that all lines will line up with the beginning of the macro call.  If
+  it was set to false then any lines would be indented based only on the
+  indentation inside of the macro.
+
+  \item \scmlcommand{defvar \scmlparam{'tag defs'}}
+  %
+  This will go through the list of tags following the defvar id and declare
+  those tags in the local scope
+
+  \item \scmlcommand{aliascmd \scmlparam{name:string}
+			      \scmlparam{handler:cmd}}
+  %
+  This is used to make a command in a scope without having to actually define
+  it, rather the command is simply a reference to the one specified by handler.
+
+  \item \scmlcommand{create_stream \scmlparam{name:string}
+				   \scmlparam{path:string}}
+  %
+  This is used to create an output stream so that one can send \SCML{} output to a
+  different file.  The `name' argument is used as the name of the static
+  variable to be created.  The `path' argument should be a valid path for the
+  file or empty for standard out.
+
+  \item \scmlcommand{retarget \scmlparam{output:stream}}
+  %
+  This is used to redirect any \SCML{} output to the stream referred to by
+  `output', which was created by \scmlcommand{create_stream}.
+\end{itemize}
+
+In addition to regular style commands with names, there are a number of
+"special" commands which are denoted by some symbol.  They are:
+
+\begin{itemize}
+  \item \scmlcode{<!-- -->}
+  %
+  This is a comment
+
+  \item \scmlcode{<|Some text|>}
+  %
+  This is a verbatim, it prints whatever is between the
+  vertical bars without doing any processing
+
+  \item \scmlcode{<(some_expr)>}
+  %
+  This will print out the value of the expression inside the parentheses
+
+  \item \scmlcode{\&escape_name;}
+  %
+  This is an escape sequence, it can be used in regular
+  text to print some special character.
+\end{itemize}
+
+There is also a special tag which gets added to every block command.  It is
+called `contents' and contains the scml code that is between its start
+and terminating commands.
+
+\subsection{Larger Example}
+
+Now lets look at some useful code:
+
+\begin{verbatim}
+<macro name="idl" close=true rparams={type:string}>
+
+  <scope name=type>
+  
+  <macro name="pres" close=true rparams={type:string}>
+  
+    <scope name=type>
+    
+    <macro name="func" close=true rparams={kind:string}>
+    
+      <macro name=kind oparams={sub_contents:scml=contents}>
+        <pre><(sub_contents)></pre>
+      </macro>
+      
+    </macro>
+    
+    <(contents)> <!-- put the contents of idl here so it can see 'func'-->
+    
+    </scope>
+    
+  </macro>
+
+</macro>
+\end{verbatim}
+
+This code is used to setup some infrastructure that is used to actually
+define function bodies.  The `idl' macro specifies an \IDL{} type (e.g.,
+struct, union, etc.)\ and adds a new scope with that as the name.  Inside
+of this scope it creates the `pres' macro which corresponds to a
+presentation type (e.g., var, out, etc.).  Again a new scope is created
+with this name and we make the `func' macro which will be used to define a
+function body.  Since just putting the contents of `func' right inside of
+the macro would print them out when the file is first being evaluated we
+make a new macro and pass our contents to it.  This way when the Flick
+back end needs to output a function body it just looks up the right scope,
+grabs the macro and then executes it, thus printing out the function body.
+Now let's see this being used:
+
+\begin{verbatim}
+<idl type="struct">
+
+  <pres type="out">
+
+    <func kind="T_out(T_ptr &)">
+      : ptr_(<(parameter[0])>)
+    {
+      this->ptr_ = 0;
+    }
+    </func>
+
+</idl>
+\end{verbatim}
+
+This code makes a macro named `T\_out(T\_ptr \&)' inside of the struct::out
+scope.  The presentation\_impl inside of the back end now writes out the
+function type which it found in the cast and then looks up and executes
+this macro, resulting in the following output.
+
+\begin{verbatim}
+blah_out::blah_out(blah_ptr &p)
+  : ptr_(p)
+{
+  this->ptr_ = 0;
+}
+\end{verbatim}
+
+Notice that everything is spaced just fine.  That is because
+\scmlcommand{func} created the macro with `sub\_contents' surrounded by the
+preformatting tag.  Since preformatting causes indentation artifacts to be
+ignored they were ignored here, the important thing to note is that the
+indentation is based on the indentation of the block command that created
+the contants, not the one that used it.
+
+\section{The SCML interpreter}
+
+\subsection{Introduction}
+
+The \SCML{} interpreter is contained in the C presentation back end library so all
+of the relevant sources are in \filename{c/pbe/lib/scml_*.cc} and the header
+file is \filename{mom/c/scml.hh}.  The interpreter is primarily written in C++
+with classes for the lexxer, parser, execution environment, and support for
+these.  Using the interpreter is simply a matter of constructing lexxer,
+parser, and EE objects with an input file or string and then setting them in
+motion.
+
+\subsection{scml\_stream}
+
+This class is used to hold any information about IO streams used in the code.
+The primary use of the class is for holding the input \SCML{} code in a string
+which is then used by the lexxer.  However, these stream objects can also be
+used in \SCML{} code for setting the output stream with the
+\scmlcommand{create_stream} and \scmlcommand{retarget} commands.
+
+\begin{cprototypelist}
+  \item[char *tag_ref()]
+  %
+  Make a TAG\_REF string that refers to this object
+
+  \item[static struct scml_stream *ptr(char *ref)]
+  %
+  Convert a TAG\_REF string into a \ctype{scml_stream} pointer
+
+  \item[void set_flags(unsigned int the_flags),
+		   unsigned int get_flags()]
+  %
+  Set/get the flags for the stream.  Currently, the only flags are SSF\_INPUT
+  and SSF\_OUTPUT, which correspond to whether the stream will be used for input
+  or output.
+
+  \item[void set_data(char *str), char *get_data()]
+  %
+  Set/get a C string as the stream, this does not work for an output file.
+
+  \item[void set_desc(char *desc), char *get_desc()]
+  %
+  Set/get the description of the stream (e.g., file name)
+
+  \item[void set_include_directory_list(char **dir_list),
+	char **get_include_directory_list()]
+  %
+  Set/get the list of directories in which to find any include files
+
+  \item[int get_length()]
+  %
+  Get the length of the stream
+
+  \item[void set_file(FILE *file), FILE *get_file()]
+  %
+  Set/get a file as the stream, if this is an input stream then it will read
+  the whole file into memory for processing, otherwise it is just stored for
+  later reference.
+\end{cprototypelist}
+
+\subsection{scml\_string}
+
+The scml\_string class is a bit of a hack to get around problems with using
+the \PRESC{} tags as the representation of variables.  The problem has to
+do with the tags being able to hold \CAST{} and \SCML{} not wanting to deal with
+anything language specific: it is only interested in strings, numbers, and the
+like.  So the solution is to treat \CAST{} as ``computed strings'' and just
+place all strings inside of scml\_strings so that we can still process regular
+strings and \CAST{} without too many problems.
+
+\begin{cprototypelist}
+  \item[char *tag_ref(), static struct scml_string *ptr(char *ref)]
+  %
+  Encode/decode this scml\_string object as a TAG\_REF string.
+
+  \item[static char *tag_string(tag_item *ti)]
+  %
+  Attempts to construct a C string from a tag, this is done by getting a
+  string directly from a TAG\_STRING or doing a make\_chars on an encoded
+  scml\_string object.
+
+  \item[tag_data *add_component()]
+  %
+  Adds another component to this strings.  It is just like concatenating a string
+  except it needs to be placed inside of a tag\_data
+
+  \item[void concat(struct scml_string *ss)]
+  %
+  Concatenate an entire scml\_string onto another one
+
+  \item[int cmp(struct scml_string *ss)]
+  %
+  Just like \cfunction{strcmp} except it compares scml\_strings
+
+  \item[char *make_chars()]
+  %
+  Tries to make a C string from this scml\_string, it will fail if any of the
+  components are ``computed strings'' (e.g., \CAST{} structures)
+
+  \item[void print()]
+  %
+  Print the string using w_printf
+\end{cprototypelist}
+
+\subsection{scml\_token}
+
+The scml\_token class is the primitive used to represent \SCML{} code and is used
+by almost every class that is a part of the interpreter.  A token can be one
+of many kinds which may or may not have a value associated with it.  Any
+values are contained within the \cidentifier{value} field of scml\_token.  The
+possible values it may hold are:
+
+\begin{cidentifierlist}
+  \item[b]
+  %
+  A boolean
+
+  \item[i]
+  %
+  An integer
+
+  \item[f]
+  %
+  A float
+
+  \item[id]
+  %
+  An identifier
+
+  \item[str]
+  %
+  An scml\_string
+
+  \item[text]
+  %
+  Regular text
+
+  \item[escape]
+  %
+  The name of an escape sequence
+
+  \item[ti]
+  %
+  A tag\_item
+
+  \item[tl]
+  %
+  A tag\_list
+
+  \item[children]
+  %
+  The list of children for a non-terminal token
+\end{cidentifierlist}
+
+\begin{cprototypelist}
+  \item[void strip()] If the token contains a tag this will try
+  to make the token the same value as the tag.  It can only fail if the tag
+  does not have a corresponding \SCML{} type.  Any other type of demotions, like
+  float to int, need to be done explicitly by the user since information can be
+  lost
+
+  \item[void promote(int required_kind)] This will promote a
+  literal value to a more complex \SCML{} type.  For example, it can promote an
+  integer to a float to make it easier for later stages to process.
+
+  \item[int is_expr()] This will return true if the token
+  represents some expression.  For example, if it were an addition,
+  subtraction, or just a plain value.
+
+  \item[int is_value()] This will return true if the token
+  contains a literal value
+
+  \item[int is_operator()] This will return true if the token
+  represents a mathematical operator
+
+  \item[int is_container()] This will return true if the token
+  represents some container, like a tag list, or an expression in parentheses.
+
+  \item[int get_prec()] If the token represents an operator this
+  will return its precedence
+
+  \item[char *get_identifier()] If the token represents an
+  identifier this will return a C string version.  The possible type of
+  identifiers include regular variable name, escape sequence names, and scoped
+  names.
+
+  \item[void print()] Used for debugging, just prints out the
+  token
+\end{cprototypelist}
+%
+Each token also has a \cidentifier{kind} member which indicates what the token
+represents:
+
+\begin{cidentifierlist}
+  \item[SCML_NONE]
+  %
+  A null token, often used to indicate the end of a list of tokens
+
+  \item[SCML_IGNORE]
+  %
+  A null token, perhaps it once contained something meaningful, but should
+  be ignored now.  Or it is used when a token must be returned, but nothing
+  meaningful was done.
+
+  \item[SCML_ERROR]
+  %
+  An error token, processing has resulted in an error
+
+  \item[SCML_DONE]
+  %
+  Indicates the end of the stream
+
+  \item[SCML_COL_POS]
+  %
+  The column position in the stream is in \cidentifier{i} so that it can
+  be tracked and used in error reporting.
+
+  \item[SCML_ROW_POS]
+  %
+  The row position in the stream is in \cidentifier{i} so that it can
+  be tracked and used in error reporting.
+
+  \item[SCML_TERM_BOOL]
+  %
+  A literal boolean value in \cidentifier{b}
+
+  \item[SCML_TERM_INT]
+  %
+  A literal integer value in \cidentifier{i}
+
+  \item[SCML_TERM_FLOAT]
+  %
+  A literal float value in \cidentifier{f}
+
+  \item[SCML_TERM_STRING]
+  %
+  A literal string value in \cidentifier{str}
+
+  \item[SCML_TERM_TAG]
+  %
+  A tag value in \cidentifier{ti}
+
+  \item[SCML_TERM_TAG_LIST]
+  %
+  A tag list in \cidentifier{tl}
+
+  \item[SCML_TERM_TEXT]
+  %
+  Any text from \SCML{} code that is not an escape sequence or a command is held
+  in \cidentifier{text}
+
+  \item[SCML_TERM_ESCAPE]
+  %
+  The name of an escape sequence is in \cidentifier{escape}
+
+  \item[SCML_TERM_ID]
+  %
+  An identifier string is in \cidentifier{id}
+
+  \item[SCML_TERM_VERBATIM]
+  %
+  Any text within a verbatim command is in \cidentifier{text}
+
+  \item[SCML_TERM_LPAREN]
+  %
+  A left parenthesis
+
+  \item[SCML_TERM_RPAREN]
+  %
+  A right parenthesis
+
+  \item[SCML_TERM_LBRACE]
+  %
+  A left bracket `['
+
+  \item[SCML_TERM_RBRACE]
+  %
+  A right bracket `]'
+
+  \item[SCML_TERM_LCURLY]
+  %
+  A left curly brace
+
+  \item[SCML_TERM_RCURLY]
+  %
+  A right curly brace
+
+  \item[SCML_TERM_SLASH]
+  %
+  A forward slash, `/'.  This token is only created for the forward slash
+  immediately after an `$<$', otherwise an SCML\_NT\_DIV is created.
+
+  \item[SCML_TERM_LT]
+  %
+  A single less than sign, `$<$'.  This token is used to signify the opening of a
+  command, it is not the same as a less than inside an expression in the
+  command.
+
+  \item[SCML_TERM_GT]
+  %
+  A single greater than sign, `$>$'.  This token is used to signify the closing
+  of a command, it is not the same as a greater than inside an expression in
+  the command.
+
+  \item[SCML_NT_COMMAND]
+  %
+  A command with \cidentifier{children} pointing to the contents of the
+  command.  The token is a call to a tag if the first token is a
+  \cidentifier{SCML_NT_NAME} followed by an \cidentifier{SCML_NONE} terminated
+  array of expressions corresponding to the arguments.  If the first token is
+  an \cidentifier{SCML_TERM_SLASH} followed by an \cidentifier{SCML_NT_NAME}
+  then the command is a terminator for the tag with that name.  Otherwise the
+  token can be just be an expression that will be printed later.
+
+  \item[SCML_NT_SET]
+  %
+  A converted \cidentifier{SCML_NT_ASSIGN}.  It is a binary expression that
+  indicates that the value of \cidentifier{children[1]} should be set in
+  \cidentifier{children[0]}
+
+  \item[SCML_NT_ASSIGN]
+  %
+  An equal sign, `='.  This token will be converted to an
+  \cidentifier{SCML_NT_SET} for no real reason; it is legacy and the set should
+  just be killed in favor of this token.
+
+  \item[SCML_NT_PLUS]
+  %
+  A plus sign, `+'.  It is a binary expression so \cidentifier{children[0]} is
+  the left side and \cidentifier{children[1]} is the right.
+
+  \item[SCML_NT_MINUS]
+  %
+  A minus sign, `-'.  Also a binary expression so it is structured like
+  \cidentifier{SCML_NT_PLUS}
+
+  \item[SCML_NT_DIV]
+  %
+  A division sign, `/'.  Also a binary expression so it is structured like
+  \cidentifier{SCML_NT_PLUS}
+
+  \item[SCML_NT_MOD]
+  %
+  A modulus sign, `\%'.  Also a binary expression so it is structured like
+  \cidentifier{SCML_NT_PLUS}
+
+  \item[SCML_NT_MULT]
+  %
+  A multiplication sign, `*'.  Also a binary expression so it is structured like
+  \cidentifier{SCML_NT_PLUS}
+
+  \item[SCML_NT_COLON]
+  %
+  A colon, `:'.  This token will immediately be converted into an
+  \cidentifier{SCML_NT_TAG} when parsed.
+
+  \item[SCML_NT_EQUAL]
+  %
+  A C style equal sign, `=='.  Also a binary expression so it is structured like
+  \cidentifier{SCML_NT_PLUS}
+
+  \item[SCML_NT_NOT_EQUAL]
+  %
+  A C style not equal sign, `!='.  Also a binary expression so it is structured
+  like \cidentifier{SCML_NT_PLUS}
+
+  \item[SCML_NT_LT]
+  %
+  A double less than sign, `$<<$', used in expressions since a single one is
+  already used to demarcate a command.
+
+  \item[SCML_NT_GT]
+  %
+  A double greater than sign, `$>>$', used in expressions since a single one is
+  already used to demarcate a command.
+
+  \item[SCML_NT_LE]
+  %
+  A less than or equal sign, `$<=$'.  Also a binary expression so it is structured
+  like \cidentifier{SCML_NT_PLUS}
+
+  \item[SCML_NT_GE]
+  %
+  A greater than or equal sign, `$>=$'.  Also a binary expression so it is
+  structured like \cidentifier{SCML_NT_PLUS}
+
+  \item[SCML_NT_LAND]
+  %
+  A C style logical and sign, `\&\&'.  Also a binary expression so it is
+  structured like \cidentifier{SCML_NT_PLUS}
+
+  \item[SCML_NT_OR]
+  %
+  An or sign, `$|$', used for doing union operations on tag lists.
+
+  \item[SCML_NT_LOR]
+  %
+  A C style logical or sign, `-'.  Also a binary expression so it is structured
+  like \cidentifier{SCML_NT_PLUS}
+
+  \item[SCML_NT_NOT]
+  %
+  A exclamation mark, `!', that signifies a logical not on
+  \cidentifier{children[0]}
+
+  \item[SCML_NT_DOT]
+  %
+  A dot, `.', used for referencing tags within a tag list.
+
+  \item[SCML_NT_SCOPE_RES]
+  %
+  A C style scope resolution operator, `::'.  Also a binary expression so it is
+  structured like \cidentifier{SCML_NT_PLUS}
+
+  \item[SCML_NT_NAME]
+  %
+  A null token that indicates the token in \cidentifier{children[0]} can be
+  used as a name.
+
+  \item[SCML_NT_EXPR]
+  %
+  A null token that indicates the token in \cidentifier{children[0]} is some
+  kind of an expression
+
+  \item[SCML_NT_TAG]
+  %
+  A tag declaration converted from an \cidentifier{SCML_NT_COLON}.  The tag
+  name is contained in \cidentifier{children[0]} and the name of the type is in
+  \cidentifier{children[1]}
+
+  \item[SCML_NT_SEL]
+  %
+  A slot selection on an array variable.  This token is created from a pair of
+  brackets with \cidentifier{children[0]} expecting to resolve to a tag and
+  \cidentifier{children[1]} evaluating to an integer.
+
+  \item[SCML_NT_COMMA]
+  %
+  A comma, `,', used when separating the elements of a tag list.
+
+  \item[SCML_NT_INIT]
+  %
+  An initialization contained in curly braces.  This is a bit hacky since one
+  can create an array initializer, or a tag list, depending on what kind of
+  data is in the initialization.
+
+  \item[SCML_NT_COND]
+  %
+  A conditional expression similar to the one in C, `$<$test expr$>$ ? $<$expr$>$ :
+  $<$expr$>$', except it is not implemented yet.
+
+  \item[SCML_NT_AND]
+  %
+  An ampersand, `\&', used for to do intersection on a tag list, if it was
+  implemented.
+
+  \item[SCML_NT_XOR]
+  %
+  A carat, `\^{ }', for doing exclusive ors, except it is not implemented.
+\end{cidentifierlist}
+
+\subsection{scml\_token\_sequence}
+
+An \ctype{scml_token_sequence} is used to reference sections of \SCML{} code.  The
+class tracks the position and the origin of the code so it is possible to format
+the code correctly, and point out where any errors are in the source.
+
+\begin{cprototypelist}
+  \item[char *tag_ref(), static struct scml_token_sequence
+  *ptr(char *ref)] These are used to encode and decode the token sequence as a
+  \cidentifier{TAG_REF} style string.  This allows the sequence to be passed
+  around and used in \SCML{} code
+
+  \item[void print()] Used for debugging, just prints the contents
+  of the sequence out
+
+  \item[void set_value(struct scml_token *st), struct scml_token
+  *get_value()] Set/get the array of the tokens that represent the value of
+  this sequence
+
+  \item[void set_length(int len), int get_length()] Set/get the
+  length of the array of tokens in this sequence
+
+  \item[void set_stream_pos(struct scml_stream_pos *ssp), struct
+  scml_stream_pos *get_stream_pos()] Set/get the stream position object used
+  when parsing the tokens in the sequence.  This is mainly here for error
+  reporting when the tokens get processed
+
+  \item[void set_indent(int offset), int get_indent()] Set/get the
+  column based indentation of the tokens.  This allows users of \SCML{} to
+  structure their code with indents without having it affect the way it will
+  eventually be printed, even when preformatted.
+\end{cprototypelist}
+
+\subsection{scml\_token\_stack}
+
+The \ctype{scml_token_stack} is a support class for the parser that just
+maintains a stack of tokens.
+
+\begin{cprototypelist}
+  \item[void push(struct scml_token &st), void pop()] Push/pop a
+  token
+
+  \item[struct scml_token *index(int offset)] Access the token at
+  the given offset from the top of the stack
+
+  \item[int count()] Returns the number of tokens on the stack
+
+  \item[void print()] Used for debugging, just prints out the
+  contents of the stack
+\end{cprototypelist}
+
+\subsection{scml\_stream\_pos}
+
+The \ctype{scml_stream_pos} is used to lex the \SCML{} source and for tracking the
+position during execution.  The class is slightly different from a regular
+lexxer since it needs to operate in two modes, one for the raw text, and one
+for the command tokens.  Additionally, the class also needs to return position
+tokens so that it is possible to accurately track position in the source during
+execution.  Otherwise, the operation of the class is like one would expect, it
+translates text into tokens for others components to process.
+
+\begin{cprototypelist}
+  \item[void set_stream(struct scml_stream *ss), struct scml_stream
+  *get_stream()] Set/get the data stream for lexxing
+
+  \item[void set_flags(unsigned int the_flags),
+		    unsigned int get_flags()] Set/get the flags
+
+  \item[void set_state(int state), int get_state()] Set/get the
+  state
+
+  \item[void set_cursor(char *cursor), char *get_cursor()] Set/get
+  the current position in the \ctype{scml_stream} buffer
+
+  \item[void set_row(int row), int get_row()] Set/get the current
+  row in the stream
+
+  \item[void set_column(int column), int get_column()] Set/get the
+  current column in the stream
+
+  \item[int get_last_row(), int get_last_column()] Get the last
+  row/column that was lexxed in the stream.  This is used in error messages to
+  give the user a range to look for the error
+
+  \item[char *munge_string(char *str)] Convert a string with
+  escape sequences into a standard C string.
+
+  \item[int get_number(struct scml_token *st)] Convert a number in the text
+  stream and store its value in \cidentifier{st}.
+
+  \item[int scan(int kind, const char *str)] Scan forward in the
+  stream until the condition is satisfied, the cursor will then be placed one
+  character after the cause of the stop.
+
+  \item[struct scml_token get_token()] This is the main function
+  for lexxing, it will walk through the stream returning tokens until it hits
+  the end of the stream and returns \cidentifier{SCML_DONE}
+\end{cprototypelist}
+
+\subsection{scml\_parser}
+
+The \ctype{scml_parser} is a simple (and not very good) parser for \SCML{} tokens
+returned by an \ctype{scml_stream_pos}.  It works by giving the class an
+\ctype{scml_stream_pos} and then calling \cfunction{parse}.  If the parse was
+successful a token sequence will be returned which can then be executed.
+
+\begin{cprototypelist}
+  \item[void set_stream_pos(struct scml_stream_pos *ssp), struct
+  scml_stream_pos *get_stream_pos()] Set the stream that the parser should get
+  tokens from.
+
+  \item[struct scml_token_sequence *parse()] The main parsing function, it will
+  ask the stream position object for tokens and then construct an
+  \ctype{scml_token_sequence} from them.
+
+  \item[struct scml_token collapse(struct scml_token_stack *values,
+  struct scml_token *oper)] An internal function used when parsing.  Basically,
+  it just looks at the operator and pulls any operands off of the stack, and
+  then pushes the operator connected to the operands onto the values stack.
+\end{cprototypelist}
+
+\subsection{scml\_handler}
+
+The \ctype{scml_handler} is a structure for binding a name to a C/C++ function,
+making it easy to bind to a function from an \SCML{} level.
+
+\subsection{scml\_handler\_table}
+
+The \ctype{scml_handler_table} class is used for tracking and indexing all of
+the functions available.
+
+\begin{cprototypelist}
+  \item[void add_handler(struct scml_handler *sh),
+		    void rem_handler(cosnt char *name)] Add/remove a handler
+  in the table
+
+  \item[struct scml_handler *find_handler(const char *name)] Find
+  a handler in the table with the given name
+\end{cprototypelist}
+
+\subsection{scml\_cmd\_definition}
+
+The \ctype{scml_cmd_definition} class is used for describing an \SCML{} command,
+its name, parameters, and definition.
+
+\begin{cprototypelist}
+  \item[char *tag_ref(), static struct scml_cmd_definition
+  *ptr(char *ref)] Encode/decode the object as a TAG\_REF compatible string
+
+  \item[void set_name(const char *name), const char *get_name()]
+  Set/get the name of the command
+
+  \item[void set_opt_params(tag_list *tl), tag_list
+  *get_opt_params()] Set/get the list of optional parameters
+
+  \item[void set_req_params(tag_list *tl), tag_list
+  *get_req_params()] Set/get the list of required parameters
+
+  \item[void set_flags(int flags), int get_flags()] Set/get the
+  flags for the object
+
+  \item[void set_handler(struct scml_handler *sh), struct
+  scml_handler *get_handler()] Set/get the handler for this command.
+
+  \item[void set_token_sequence(struct scml_token_sequence *sts),
+  struct scml_token_sequence *get_token_sequence()] Set/get the token sequence
+  that defines this command
+
+  \item[int execute(struct scml_token *st, struct scml_context
+  *sc)] Execute the handler with the token and context
+\end{cprototypelist}
+
+\subsection{scml\_escape/scml\_escape\_table}
+
+The \ctype{scml_escape} class is used for describing an \SCML{} escape, the name
+and value.  The escapes are then tracked in an \ctype{scml_escape_table}.
+
+\begin{cprototypelist}
+  \item[void add_escape(struct scml_escape *se),
+		    void rem_escape(cnst char *name)] Add/remove an escape
+  definition in the table
+
+  \item[void find_escape(const char *name)] Find an escape
+  definition with the given name
+\end{cprototypelist}
+
+\subsection{scml\_scope}
+
+The \ctype{scml_scope} class is used to represent a scope in \SCML{}, it holds
+definitions, child scopes, and escapes.  Static variables and command
+definitions are held in the values tag list, but escapes are held separately.
+
+\begin{cprototypelist}
+  \item[struct scml_scope *get_parent()] Return the parent scope
+
+  \item[void set_name(const char *name), const char *get_name()]
+  Set/get the name of the scope
+
+  \item[void set_escape_table(struct scml_escape_table *setable),
+  struct scml_escape_table *get_escape_table()] Set/get the escape table
+  associated with this scope
+
+  \item[void add_child(struct scml_scope *ss)] Add a child scope
+
+  \item[struct scml_scope *find_child(const char *name)] Find a
+  child scope
+
+  \item[void add_cmd_definition(struct scml_cmd_definition *scd),
+		    void rem_cmd_definition(struct scml_cmd_definition *scd)]
+  Add/remove a command definition in the scope
+
+  \item[struct scml_cmd_definition *find_cmd_definition(struct
+  scml_scope **scope, const char *name)] Return the command definition with
+  the given name or NULL if it was not found.  The scope it was actually found
+  in is set in \cidentifier{scope}.
+
+  \item[tag_list *get_values()] Return the \ctype{tag_list} with
+  the list of global variables
+
+  \item[void print()] Debug printf
+
+  \item[static struct scml_scope *make_root_scope()] Construct an
+  \ctype{scml_scope} that is suitable for use as the root scope.  Basically, it
+  just adds all the builtin command definitions
+\end{cprototypelist}
+
+\subsection{scml\_context}
+
+The \ctype{scml_context} class is used to execute \SCML{} code and actually
+generate the resulting output.  The primary function is
+\cfunction{format_sequence} which takes a token sequence (e.g., from an
+\cfunction{scml_parser::parse()}) and then executes the contents, printing out
+text tokens and evaluating expressions.  Execution of \SCML{} commands will create
+a child context for which the command executes in, of course, if the command is
+implemented by a C function it can manipulate its parent context, allowing for
+great flexibility.
+
+\begin{cprototypelist}
+  \item[void set_flags(int flags), int get_flags()] Set/get the
+  flags for the context
+
+  \item[void set_parent(struct scml_context *parent), struct
+  scml_context *get_parent()] Set/get the parent context
+
+  \item[void set_stream_pos(struct scml_stream_pos *ss), struct
+  scml_stream_pos *get_stream_pos()] Set/get the \ctype{scml_stream_pos}
+  object which was used in lexxing the code
+
+  \item[void set_cmd_def(struct scml_cmd_definition *def), struct
+  scml_cmd_definition *get_cmd_def()] Set/get the command definition
+  associated with this context
+
+  \item[void set_lvalues(tag_list *tl), tag_list *get_lvalues()]
+  Set/get the left hand side values
+
+  \item[void set_rvalues(tag_list *tl), tag_list *get_rvalues()]
+  Set/get the right hand side values
+
+  \item[void set_scope(struct scml_scope *sc), struct scml_scope
+  *get_scope()] Set/get the current scope
+
+  \item[void set_indent_size(int size), int get_indent_size()] Set/get the
+  indent size.  This size corresponds to how much indentation there is before a
+  macro call, so that any preformatted text in the macro will be aligned with
+  the beginning of the call instead completely left justified.
+
+  \item[void set_offset_size(int size), int get_offset_size()] Set/get the
+  offset size.  This size corresponds to the difference between the start of a
+  line and the position of a \scmlcommand{pre} command.  The size is then used
+  to determine when to start printing leading spaces in a line, thus, it is
+  possible to indent \SCML{} code with having the indentation affect the
+  output.
+
+  \item[int print_token(struct scml_token *st)] Prints out the
+  contents of a token.  The token should already have been evaluated so only
+  tokens with literal values should be passed to the function.
+
+  \item[void print_indent(int size)] A simple function to print an indentation
+  of the given size.
+
+  \item[void locate_scope(struct scml_token *st, struct scml_scope
+  **inout_scope, const char **out_id)]
+
+  \item[int equalize_tokens(struct scml_token *dest, struct
+  scml_token *src, int count)] Converts the \cidentifier{count} sized array of
+  tokens into the simplest common type.  The process is to strip all of the
+  tokens in \cidentifier{src} and then try to promote them all to the same
+  type.  If a common type was found, it will be returned and dest will have the
+  converted tokens, otherwise \cidentifier{SCML_ERROR} is returned.
+
+  \item[struct scml_token eval_token(struct scml_token *st)]
+  Evaluate a token expression to produce a token that has a printable value,
+  except for commands, which have to be handled by \cidentifier{exec_token}.
+
+  \item[void token_lvalue(struct scml_token *st, tag_item **out_ti,
+  int *out_index)] Get the lvalue of a token.  Since all variables are really
+  just tags, the result is a pointer to the \ctype{tag_item} and, if it is an
+  array, the index into the array.
+
+  \item[int handle_params(struct scml_token *cmd)] Processes the
+  \cidentifier{SCML_NT_COMMAND} token to evaluate each argument and set its
+  value in the context.
+
+  \item[void tag_type(struct scml_token *t_type, tag_data_kind
+  *out_kind, int *out_size)] Determine the \PRESC{} tag type needed to hold an
+  \SCML{} value.
+
+  \item[struct scml_cmd_definition *find_cmd(struct scml_scope
+  **cmd_scope, struct scml_token *st)] Find the command definition referenced
+  by the token
+
+  \item[void define(struct scml_context *sc)] Handles the
+  \scmlcode{define} command which is used to define other commands, escapes,
+  and variables.  This is executed on the parent context and a child context is
+  passed in which contains all of the arguments.  The method will then pull any
+  arguments of interest from the \cidentifier{sc} context and define the
+  object.
+
+  \item[void undefine(struct scml_context *sc)] Undefine an object
+  that was previously defined.
+
+  \item[void rename(struct scml_context *sc)] Rename an object
+
+  \item[int ifdef(struct scml_context *sc, struct
+  scml_token_sequence *sub, int defined)] Similar to the \cfunction{define}
+  method, this will handle the \scmlcode{ifdef} and \scmlcode{ifndef} builtin
+  commands.  If the \cidentifier{defined} parameter is true then it will act
+  like \scmlcode{ifdef} and execute the contents if the object is defined,
+  otherwise it acts like \scmlcode{ifndef} and executes when it is not defined.
+
+  \item[struct scml_token_sequence *get_contents(struct
+  scml_cmd_definition *def, struct scml_token_sequence *sts, int start)]
+  Return the contents of a bracketed command in a token sequence.  The passed
+  in token sequence and \cidentifier{start} parameter indicate where the start
+  of the command contents is located which the function then scans through
+  looking for the terminator.  Once the terminator is located it will create a
+  new token sequence and set it to contain the contents.
+
+  \item[struct scml_token_sequence *partition_sequence(struct
+  scml_cmd_definition *def, struct scml_cmd_definition *partition, struct
+  scml_token_sequence *sts)] Partitions a token sequence around a given
+  command.  The passed in sequence will be adjusted to contain the first part
+  of the partition and a new sequence will be created with the second part.
+  This is useful for bracketed commands that have several different sections.
+  For example, it can be used to separate the true and false branches of an if
+  test, or for the cases in a switch.
+
+  \item[int exec_token(struct scml_token_sequence *sts, int *index,
+  struct scml_token *st)] Execute a token, if the token is a command it will
+  consume the tokens of the body, if it is bracketed, and then call the handler
+  for the command.  If the token is a simple value then it will be printed.
+
+  \item[int format_sequence(struct scml_token_sequence *sts)]
+  Executes the commands and prints out any text in a token sequence.
+
+  \item[int exec_cmd(const char *cmd_name, tag_list *locals, ...)] Manually
+  execute a command.  The \cidentifier{locals} argument is set as the parent
+  tag list of the context that the command is executed in so it is possible to
+  get at the values.  The varargs portion of the call is used to add values
+  directly to the context and is a formatted set of values.  The first value is
+  a string corresponding to the name of a variable, next there is a
+  \ctype{tag_kind} specifying the type of the variable, and finally a
+  \ctype{tag_data_u} which contains the value of the variable.
+
+  \item[static void set_handler_table(struct scml_handler_table
+  *sht), static struct scml_handler_table *get_handler_table()] Set/get the
+  handler table where handlers specified in \scmlcode{define}s will be found.
+  This table is global to all contexts so only one table needs to be
+  constructed.
+
+  \item[void print(int level)] Print a stack trace for debugging
+\end{cprototypelist}
+
+\subsection{Command Handler Functions}
+
+Any builtin commands not handled by the \ctype{scml_context} are handled by C
+functions.  These functions are defined in \filename{c/pbe/lib/scml_context.cc}
+and then a number of \ctype{scml_handler}s are created for each and added to
+the handler table in the \ctype{scml_context}.
+
+\begin{cprototypelist}
+  \item[int c_defvar_handler(struct scml_token *st, struct
+  scml_context *sc)] Handles the \scmlcommand{defvar} command by walking the
+  child tokens of \cidentifier{st} and evaluating them and adding the tags they
+  create to the context.
+
+  \item[int c_ignore_handler(struct scml_token *st, struct
+  scml_context *sc)] Handles the \scmlcommand{ignore} command by walking the
+  list of child tokens and evaluating them, without doing anything else.  The
+  evaluated expressions are expected to create some kind of side effect.
+
+  \item[int c_scope_handler(struct scml_token *st, struct
+  scml_context *sc)] Handles the \scmlcommand{scope} command by changing to,
+  or creating the scope with the given name.  The parent scope is set to the
+  new scope and then the parent context executes contents of the
+  \scmlcommand{scope} on behalf of the child.
+
+  \item[int c_macro_handler(struct scml_token *st, struct
+  scml_context *sc)] Handles the \scmlcommand{macro} command by creating a new
+  command that will execute the contents of the \scmlcommand{macro} when used.
+
+  \item[int c_macro_executer(struct scml_token *st, struct
+  scml_context *sc)] Handles commands that have been created using the
+  \scmlcommand{macro} command.  It will evaluate the arguments and then get the
+  macro body from the command definition and execute the \SCML{} code.
+
+  \item[int c_if_handler(struct scml_token *st, struct
+  scml_context *sc)] Handles the \scmlcommand{if} command by evaluating
+  \cidentifier{children[1]} of \cidentifier{st} to get a value to test for
+  being true or false.  Then it will try to partition the contents of the
+  command around the \scmlcommand{else} command.  Finally, it tests the
+  expression and executes the true or false branch accordingly.
+
+  \item[int c_else_handler(struct scml_token *st, struct
+  scml_context *sc)] Handles the \scmlcommand{else} command by signalling a
+  runtime error since the command is only meant for use as a partition inside
+  of an \scmlcommand{if}.
+
+  \item[int c_for_handler(struct scml_token *st, struct
+  scml_context *sc)] Handles the \scmlcommand{for} command by creating the
+  loop variable in the context and then executing the contents for however long
+  has been specified.
+
+  \item[int c_pre_handler(struct scml_token *st, struct
+  scml_context *sc)] Handles the \scmlcommand{pre} command by setting the
+  \cidentifier{SCF_PREFORMATTED} flag and the offset of size of the contents
+  block in the parent before using the parent to execute the contents.
+
+  \item[int c_aliascmd_handler(struct scml_token *st, struct
+  scml_context *sc)] Handles the \scmlcommand{aliascmd} command by building a
+  new command with the same definition as the command specified by the
+  \scmlparam{handler} argument.
+
+  \item[int c_include_handler(struct scml_token *st, struct
+  scml_context *sc)] Handles the \scmlcommand{include} command by executing
+  the file specified by the \scmlparam{file} argument.  The file is searched
+  for in the include directory list of the stream the current file was read.
+
+  \item[int c_retarget_handler(struct scml_token *st, struct
+  scml_context *sc)] Change the output file to the one specified by the
+  `output' parameter, which should resolve to an \ctype{scml_stream}.
+
+  \item[int c_create_stream_handler(struct scml_token *st, struct
+  scml_context *sc)] Create an \ctype{scml_stream} object and set its file to
+  the one specified by the `path' argument, or stdout if path is empty.  The
+  object will then be added as a static variable to the current scope with the
+  name specified by the `name' argument.  This is a big hack.
+\end{cprototypelist}
+
+\subsection{Miscellaneous Functions}
+
+These functions are just simple helper functions to make life a little easier.
+
+\begin{cprototypelist}
+  \item[void scml_alert(struct scml_stream_pos *ssp, int
+  alert_flags, const char *format, ...)] A printf like function for reporting
+  errors/warnings when executing \SCML{} code.  The stream position argument is
+  optional and currently only used to print out the column and line number of
+  code that is causing the problem.  The \cidentifier{alert_flags} argument is
+  a bitfield used to describe the alert.  The possible flags are:
+
+  \begin{cidentifierlist}
+    \item[SAF_WARNING] This is a warning
+    \item[SAF_ERROR] This is an error
+    \item[SAF_INTERNAL] The problem is internal
+    \item[SAF_GENERAL] The problem cannot be classified
+    \item[SAF_IO] The problem is with I/O
+    \item[SAF_LEXICAL] The problem is with lexxing
+    \item[SAF_PARSE] The problem is with parsing
+    \item[SAF_TYPE] The problem is with bad/inconsistent types
+    \item[SAF_RUNTIME] The problem is with the execution environment
+  \end{cidentifierlist}
+
+  \item[int init_scml()] Does any initialization of \SCML{}
+  structures.  Currently, this just initializes the handler table with all of
+  the builtin command handlers.
+
+  \item[const char **scml_std_include_dirs()] Returns an array of
+  strings which are paths that it can find include files.  The array is the
+  same kind that \cfunction{fopen_search} so it can be used directly with that
+  functions.
+
+  \item[int scml_hash_name(const char *name, int table_size)]
+  Produces a hash number for \cidentifier{name} in a table the size of
+  \cidentifier{table_size}
+
+  \item[int scml_parse_cmdline_defines(struct scml_scope
+  *root_scope, flag_value_seq *defs)] Evaluates the flag value sequence to
+  create the desired \SCML{} variables.  The flags are expected to be formatted
+  strings of the form, `var=expr', where `var' is the variable name, and expr
+  is the typed value of the expr.  If there is no expression then a boolean
+  variable is defined and set to true.
+
+  \item[int scml_execute_str(struct scml_scope *root_scope, char
+					 *code_desc, char *code, tag_list
+					 *tl)] Execute \SCML{} `code' in the
+  `root\_scope' with `tl' holding any implicit values.  The `code\_desc' argument
+  is used as the description for the \ctype{scml_stream} so that one can figure
+  out what \SCML{} code caused an error.
+
+  \item[struct scml_stream_pos *scml_execute_defs_file(struct
+  scml_scope *root_scope, const char **include_dirs, const char *file_desc,
+  const char *file_name)] Execute a file that will only define objects and not
+  produce any output.
+
+  \item[int scml_code_cast_handler(int indent, cast_handler *ch)] A routine for
+  executing \SCML{} code that is encapsulated by a \ctype{cast_handler} object.
+  The \ctype{cast_handler} is set up with this routine as the handler and four
+  arguments for the \SCML{} code.  The arguments in order are the code
+  description for the \ctype{scml_stream}, the \SCML{} code itself, a TAG\_REF
+  encoded pointer to an \ctype{scml_scope} to execute in, and finally a
+  \ctype{tag_list} of implicit arguments.
+\end{cprototypelist}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

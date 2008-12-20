@@ -1,0 +1,224 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1997, 1998, 1999 The University of Utah and the Computer
+%% Systems Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Comparisons With Other Object, RPC, and RMI Systems}
+\label{sec:Comparisons With Other Object, RPC, and RMI Systems}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{CORBA}
+\label{subsec:CORBA}
+
+Flick is not a drop-in replacement for a complete CORBA ORB\@.  Rather, Flick
+is an IDL compiler --- \emph{one part} of a complete ORB --- that generates
+code that works in conjunction with an ORB runtime library.  Flick comes with a
+lightweight ORB runtime for C language stubs (described in Section~\ref{sec:The
+IIOP Runtime}), and this runtime provides only what is required for basic CORBA
+communication.  Most importantly, Flick's C language runtime does not provide
+any ``CORBA services,'' nor does it implement the Dynamic Invocation Interface
+(DII) or the Dynamic Skeleton Interface (DSI), etc.
+
+Although Flick itself comes with minimal runtime support, Flick can be used in
+conjunction with more complete third-party ORB runtime environments.  For
+instance, Flick's C++ components are designed to generate optimized stubs that
+work with TAO, the real-time ORB from Washington University in St.\
+Louis.\footnote{TAO is available from \taourl{} and \taosrcurl{}.  Flick
+generates stubs that work with TAO version~\taoversion{}.}  In this case, you
+get the best of both worlds: Flick-optimized stubs and a complete CORBA
+development environment.
+
+Flick provides interoperability, speed, and flexibility.  Clients and servers
+that use Flick-generated stubs can communicate with other CORBA-based clients
+and servers through the Internet Inter-ORB Protocol (IIOP)\@.  Moreover,
+because Flick-generated code is optimized, clients and servers that use
+Flick-generated stubs can run faster than their counterparts that use stubs
+generated for other ORBs.  Finally, Flick's kit architecture makes Flick
+suitable for a wide variety of environments.  Flick can be used to generate
+code for TAO, or for its own minimal CORBA runtime, or for Mach, or for ONC RPC
+--- in short, for any environment for which there exists Flick compiler
+components.
+
+% We expect that in the future, Flick will be extended and integrated with one
+% or more complete ORB substrates.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{ONC RPC (a.k.a.\ Sun RPC, \texttt{rpcgen})}
+\label{subsec:ONC RPC}
+
+Just as Flick is not a drop-in replacement for a complete CORBA~ORB, neither is
+Flick a drop-in replacement for Sun's \program{rpcgen} program, the widely
+available compiler for the ONC~RPC IDL\@.  Flick-generated stubs can provide
+the same interfaces as those produced by \program{rpcgen}; further, those stubs
+can produce the same on-the-wire messages.  But inside, Flick-generated stubs
+are very different than their \program{rpcgen}-generated counterparts.  Flick
+does not, for example, provide an interface to XDR streams like those used by
+\program{rpcgen}-generated stubs.  Flick does not provide the full ONC/TCP
+runtime.  Rather, Flick implements the minimum ``stuff'' necessary for the
+top-level interface to ONC-style RPC\@.
+
+So why use Flick instead of \program{rpcgen}?  Performance!  Flick-generated
+stubs are interoperable with \program{rpcgen}-generated code, but can encode
+and decode messages up to 17~times more quickly.  ONC~RPC clients and servers
+that make use of the high-level RPC interface, and not the lower-level
+interfaces offered by the ONC specification, can generally be recompiled or
+relinked without modification to use Flick-generated stubs, and thereby achieve
+greater network throughput.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% \section{DCE}
+%% \label{subsec:DCE}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% \section{COM}
+%% \label{subsec:COM}
+%%
+%% Flick will support COM someday\ldots{}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Mach and MIG}
+\label{subsec:Mach and MIG}
+
+Mach is a microkernel-based operating system that makes extensive use of IPC\@.
+The IDL compiler that creates client/server communication code for Mach is
+called MIG, the Mach Interface Generator.  MIG is tightly integrated with its
+target language (C) and the Mach operating system.  Flick supports nearly all
+of the presentation and transport features that MIG offers for Mach-based
+communication.  In addition, Flick supports other IDLs to define Mach
+client/server communication over Mach ports, and this means that Flick supports
+notions that MIG does not: for instance, complex data types!
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% \subsection{ILU}
+%% \label{subsec:ILU}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\com{%
+% This table is very much out of date.
+\subsection{Summary}
+\label{subsec:Summary}
+
+Table~\ref{table-om-comparisons} summarizes the main differences between Flick
+and a number of other RPC and object systems.
+
+\begin{table}[htbp]
+\caption{Summary of Differences Between Flick and Other RPC/Object Systems}
+% Use \q so `lacheck' won't complain about whitespace before `?'s in the table.
+\newcommand{\q}{?}
+\small
+\begin{center}
+\begin{tabular}[c]{|l|c|c|c|c|c|c|c|c|c|}
+\hline
+			& Flick	& CORBA	& ONC	& DCE	& COM	& MIG	&Spring	& ILU	&Concert\\
+\hline
+\hline
+\multicolumn{10}{|l|}{\bf Interface Definition} \\
+\hline
+Interface definition language
+			& yes	& yes	& yes	& yes	& yes	& yes	& yes	& yes	& no	\\
+Support for multiple IDLs
+			& yes	& no	& no	& no	& no	& no	& no	& no	& N/A	\\
+Supports interface inheritance
+			& yes	& yes	& no	& no	& \q	& no	& yes	& yes	& \q	\\
+Separate subtyping/subclassing
+			& yes	& yes	& N/A	& N/A	& \q	& N/A	& yes	& no	& \q	\\
+Arbitrary structured types
+			& yes	& yes	& yes	& yes	& \q	& no	& \q	& yes	& yes	\\
+Recursive types
+			& yes	& no	& yes	& \q	& \q	& no	& \q	& \q	& \q	\\
+Interface naming/differentiation
+			& (*)	& ASCII	& int	& uuid	& uuid	& int	& \q	& (*)	& \q	\\
+\hline
+\hline
+\multicolumn{10}{|l|}{\bf Target Language Support} \\
+\hline
+Supports multiple target languages
+			&notyet	& yes	& no?	& \q	& \q	& no	& no	& yes	& notyet?\\
+Presentation separate from IDL spec
+			& yes	& yes	& no	& \q	& \q	& no	& no?	& yes	& yes	\\
+Flexible presentation
+			& yes	& no	& no	& yes	& no	& no	& no	& no	& yes	\\
+Presentation definition language
+			& yes	& no	& no	& yes	& no	& no	& no	& no	& no	\\
+\hline
+\hline
+\multicolumn{10}{|l|}{\bf Objects} \\
+\hline
+Object identity
+			& 	&	&	&	&	&	&	&	&	\\
+Object equivalence
+			& no	& no	& N/A	& N/A	& \q	& N/A	& no	& yes?	& \q	\\
+\hline
+\hline
+\multicolumn{10}{|l|}{\bf Object References} \\
+\hline
+Can be passed as data
+			& yes	& yes	& no	& no	& yes?	& yes	& yes	& yes	& yes?	\\
+Reference names canonicalized
+			& opt	& no	& no	& no	& \q	& yes	& no	& yes	& \q	\\
+Reference counted
+			& opt	& yes	& N/A	& N/A	& yes	& yes	& \q	& opt	& \q	\\
+\hline
+\hline
+\multicolumn{10}{|l|}{\bf Methods} \\
+\hline
+Multiple returns (exceptions)
+			& yes	& yes	& no	& no	& \q	& no	& \q	& yes	& \q	\\
+Symmetrical to Messages
+			& yes	& no	& no	& no	& no	& no	& no	& no	& no	\\
+\hline
+\hline
+\multicolumn{10}{|l|}{\bf Operating Environment} \\
+\hline
+Available under POSIX systems
+			& yes	& yes	& yes	& yes	& no?	& no	& no	& yes	& yes	\\
+Available under DOS/Windows
+			& notyet& yes?	& yes?	& \q	& yes	& no	& no	& \q	& \q	\\
+Transport protocols
+			& many	& many	&TCP/UDP& \q	& \q	& Mach3	& \q	& \q	& \q	\\
+\hline
+\end{tabular}
+\end{center}
+(*) See notes in the appropriate descriptive section.
+\label{table-om-comparisons}
+\end{table}
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+

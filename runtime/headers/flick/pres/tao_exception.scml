@@ -1,0 +1,188 @@
+<!--
+ === Copyright (c) 1999 The University of Utah and
+ === the Computer Systems Laboratory at the University of Utah (CSL).
+ === All rights reserved.
+ ===
+ === Permission to use, copy, modify and distribute this software is hereby
+ === granted provided that (1) source code retains these copyright, permission,
+ === and disclaimer notices, and (2) redistributions including binaries
+ === reproduce the notices in supporting documentation.
+ ===
+ === THE UNIVERSITY OF UTAH AND CSL ALLOW FREE USE OF THIS SOFTWARE IN ITS "AS
+ === IS" CONDITION.  THE UNIVERSITY OF UTAH AND CSL DISCLAIM ANY LIABILITY OF
+ === ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS
+ === SOFTWARE.
+ ===
+ === CSL requests users of this software to return to csl-dist@cs.utah.edu any
+ === improvements that they make and grant CSL redistribution rights.
+ -->
+
+<!-- TAO CORBA C++ implementation for exceptions -->
+
+<idl type="exception">
+
+  <macro name="member_init"
+         rparams={member:tag_list ptype:tag_list arg:string}
+         oparams={ptr:bool=true}>
+  <if ptype.idl_type=="string" ||
+      ptype.idl_type=="interface" ||
+      ptype.idl_type=="TypeCode">
+    <scope name="">
+      <scope name=ptype.idl_type>
+        <scope name="main">
+	  <do_copy ptype=ptype ptr=ptr arg=arg>
+        </scope>
+      </scope>
+    </scope>
+  <else>
+    <(arg)>
+  </if>
+  </macro>
+  
+  <macro name="member_copy"
+         rparams={member:tag_list ptype:tag_list arg:string}
+         oparams={ptr:bool=true}>
+  <if ptype.idl_type=="string" ||
+      ptype.idl_type=="interface" ||
+      ptype.idl_type=="TypeCode">
+    <scope name="">
+      <scope name=ptype.idl_type>
+        <scope name="main">
+          <do_copy ptype=ptype ptr=ptr arg=arg + ".in()">
+        </scope>
+      </scope>
+    </scope>
+  <else>
+    <(arg)>
+  </if>
+  </macro>
+  
+  <pres type="main">
+
+    <func kind="operator<<=(copy)">
+    {
+      <(definition)> *_any_val = new <(definition)>(<(parameter[1])>);
+      if( !_any_val ) return;
+      ACE_TRY_NEW_ENV
+      {
+        <(parameter[0])>.replace(<(tc_ref)>, _any_val, 1, ACE_TRY_ENV);
+	ACE_TRY_CHECK;
+      }
+      ACE_CATCHANY
+      {
+        delete _any_val;
+      }
+      ACE_ENDTRY;
+    }
+    </func>
+    
+    <func kind="operator<<=(no-copy)">
+    {
+      ACE_TRY_NEW_ENV
+      {
+        <(parameter[0])>.replace(<(tc_ref)>, <(parameter[1])>, 1, ACE_TRY_ENV);
+	ACE_TRY_CHECK;
+      }
+      ACE_CATCHANY {}
+      ACE_ENDTRY;
+    }
+    </func>
+    
+    <func kind="bool operator>>=(any &, ptr &)">
+    {
+      ACE_TRY_NEW_ENV
+      {
+        CORBA::TypeCode_var type = <(parameter[0])>.type();
+	if(!type->equal(<(tc_ref)>, ACE_TRY_ENV)) return 0;
+	ACE_TRY_CHECK;
+	if(<(parameter[0])>.any_owns_data())
+	{
+	  <(parameter[1])> = (<(definition)> *)<(parameter[0])>.value();
+	  return 1;
+	}
+	else
+	{
+	  ACE_NEW_RETURN(<(parameter[1])>, <(definition)>, 0);
+	  TAO_InputCDR stream (<(parameter[0])>._tao_get_cdr());
+	  if(stream.decode(<(tc_ref)>, <(parameter[1])>, 0, ACE_TRY_ENV)
+	    == CORBA::TypeCode::TRAVERSE_CONTINUE)
+	  {
+	    ((CORBA::Any *)&amp;<(parameter[0])>)->replace(<(tc_ref)>, <(parameter[1])>, 1, ACE_TRY_ENV);
+	    ACE_TRY_CHECK;
+	    return 1;
+	  }
+	  else
+	  {
+	    delete <(parameter[1])>;
+	  }
+	}
+      }
+      ACE_CATCHANY
+      {
+        delete <(parameter[1])>;
+	return 0;
+      }
+      ACE_ENDTRY;
+      return 0;
+    }
+    </func>
+    
+    <func kind="T()" inline=true>
+      : CORBA_UserException(<(tc_ref)>)
+    {
+    }
+    </func>
+
+    <func kind="init_ctor" inline=true>
+      : CORBA_UserException(CORBA::TypeCode::_duplicate(<(tc_ref)>))
+    {<for each="parameter" iter="lpc">
+      this-><(member[lpc].name)> = <member_init member=member[lpc] ptype=pres_type[member[lpc].pres_index] arg=parameter[lpc]>;</for>
+    }
+    </func>
+    
+    <func kind="T(T &)">
+      : CORBA_UserException(<(parameter[0])>._type())
+    {<ifdef name="member"><for each="member" iter="lpc">
+      this-><(member[lpc].name)> = <member_copy member=member[lpc] ptype=pres_type[member[lpc].pres_index] arg=(parameter[0] + "." + member[lpc].name)>;</for></ifdef>
+    }
+    </func>
+    
+    <func kind="~T()" inline=true>
+    {}
+    </func>
+    
+    <func kind="T &operator=(T &)" inline=true>
+    {
+      this->CORBA_UserException::operator=(<(parameter[0])>);<ifdef name="member"><for each="member" iter="lpc">
+      this-><(member[lpc].name)> = <member_copy member=member[lpc] ptype=pres_type[member[lpc].pres_index] arg=(parameter[0] + "." + member[lpc].name)>;</for></ifdef>
+      return *this;
+    }
+    </func>
+    
+    <func kind="_raise()" inline=true>
+    {
+      TAO_RAISE(*this);
+    }
+    </func>
+    
+    <func kind="_narrow()" inline=true>
+    {
+      if( !(ACE_OS::strcmp("<(id)>", <(parameter[0])>->_id())) )
+        return ACE_dynamic_cast(<(pointer)>, <(parameter[0])>);
+      else
+        return 0;
+    }
+    </func>
+    
+    <func kind="_alloc()" inline=true>
+    {
+      return new <(definition)>;
+    }
+    </func>
+    
+  </pres>
+
+</idl>
+
+<!-- End of file. -->
+

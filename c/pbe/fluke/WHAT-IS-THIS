@@ -1,0 +1,3 @@
+This directory contains code for stub generation using the Fluke IPC transport
+mechanism.  This back end produces stubs that are suitable for use within the
+Fluke kernel server.

@@ -1,0 +1,76 @@
+#
+# Copyright (c) 1995, 1996, 1997, 1998, 1999 The University of Utah and
+# the Computer Systems Laboratory at the University of Utah (CSL).
+#
+# This file is part of Flick, the Flexible IDL Compiler Kit.
+#
+# Flick is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# Flick is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Flick; see the file COPYING.  If not, write to
+# the Free Software Foundation, 59 Temple Place #330, Boston, MA 02111, USA.
+#
+
+#### Start of configuration section ####
+
+SRCDIR	= @top_srcdir@
+#OBJDIR	= @top_objdir@
+OBJDIR	= ..
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+include $(OBJDIR)/GNUmakeconf
+
+##### End of configuration section #####
+
+TARGET = libflick-compiler.a
+SECTIONS += libcompiler
+
+# We define `CPP' and `CPPFLAGS' so that the ONC RPC and MIG front ends can run
+# their inputs through the C preprocessor.
+#
+DEFINES += -DCPP='"@CPP@"'
+
+# XXX --- Testing the `configure'-determined value of `using_gcc' isn't quite
+# right, since the C preprocessor could conceivably be non-GNU even if the
+# variable `using_gcc' is `yes'.  But it's not a problem in practice: if we are
+# using GCC, then `configure' will also use GCC as the C preprocessor, unless
+# `CPP' was set in the user's environment --- and who would do that?
+ifeq (@using_gcc@,yes)
+# We must tell GNU C not to assume that IDL files are linker files!
+DEFINES += -DCPPFLAGS='"-C -x c"' -DCPP_DASH_FOR_STDIN=1
+else
+DEFINES += -DCPPFLAGS='""'
+endif
+
+# We define `CXXCPP' and `CXXCPPFLAGS' so that the CORBA front end can run its
+# inputs through the C++ preprocessor.
+#
+DEFINES += -DCXXCPP='"@CXXCPP@"'
+
+# XXX --- As described above, testing the `configure'-determined value of
+# `using_gxx' isn't quite right, but isn't a problem in practice.
+ifeq (@using_gxx@,yes)
+# We must tell GNU C++ not to assume that IDL files are linker files!
+DEFINES += -DCXXCPPFLAGS='"-C -x c++"' -DCXXCPP_DASH_FOR_STDIN=1
+else
+DEFINES += -DCXXCPPFLAGS='""'
+endif
+
+# Used in `asprintf.c'.
+#
+ifeq (@has_vsnprintf@,yes)
+DEFINES += -DHAVE_VSNPRINTF
+endif
+
+include $(SRCDIR)/GNUmakerules.lib
+

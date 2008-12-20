@@ -1,0 +1,157 @@
+%% -*- mode: LaTeX -*-
+%%
+%% Copyright (c) 1997 The University of Utah and the Computer Systems
+%% Laboratory at the University of Utah (CSL).
+%%
+%% This file is part of Flick, the Flexible IDL Compiler Kit.
+%%
+%% Flick is free software; you can redistribute it and/or modify it under the
+%% terms of the GNU General Public License as published by the Free Software
+%% Foundation; either version 2 of the License, or (at your option) any later
+%% version.
+%%
+%% Flick is distributed in the hope that it will be useful, but WITHOUT ANY
+%% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+%% FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+%% details.
+%%
+%% You should have received a copy of the GNU General Public License along with
+%% Flick; see the file COPYING.  If not, write to the Free Software Foundation,
+%% 59 Temple Place #330, Boston, MA 02111, USA.
+%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Flick's ONC/TCP runtime was designed so that it would be possible for users to
+write an ONC~RPC-based client or server, and then compile the application code
+to use either Flick-generated stubs or \program{rpcgen}-generated stubs.  This
+requirement introduced a few oddities into Flick's ONC/TCP runtime but can be
+very helpful in demonstrating the speed gained by using Flick-generated stubs.
+(If you are curious, the files \filename{test/programs/sun/sunstat-work.c} and
+\filename{test/programs/sun/sunstat-use.c} in the Flick distribution show how
+to write code that is compatible with both Flick and \program{rpcgen}.)
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Starting a Server}
+\label{subsec:Starting a Server}
+
+Flick's ONC/TCP back end creates a \cfunction{main} function that automatically
+registers the interfaces described in the original IDL file.  (In an ONC~RPC
+IDL file, an interface is a program-version pair.)  There are no objects to
+create or register; the server itself is the ``object'' in ONC~RPC\@.  The
+Flick-generated \cfunction{main} function then executes the server main loop,
+receiving requests and sending replies.
+
+If the Flick-generated \cfunction{main} function is suitable for your
+application, then you need do nothing more.  If, however, your server needs to
+perform special initialization, you will have to write your own
+\cfunction{main} function to set up your application, register your interfaces,
+and then run the main server loop.  The rest of this section describes the
+procedure for registering your interfaces with Flick's ONC/TCP runtime.
+
+Your \cfunction{main} function must initialize a
+\ctype{FLICK_SERVER_DESCRIPTOR} structure for each interface that it wants to
+register:
+
+\begin{verbatim}
+   typedef struct FLICK_SERVER_DESCRIPTOR {
+           unsigned int prog_num;   /* The program number. */
+           unsigned int vers_num;   /* The version number. */
+           ...
+   } FLICK_SERVER_DESCRIPTOR;
+\end{verbatim}
+
+\noindent The values of \cidentifier{prog_num} and \cidentifier{vers_num}
+fields would normally be the program and version numbers listed in your
+original IDL file.  After filling in the \ctype{FLICK_SERVER_DESCRIPTOR}
+structure, your server must call \cfunction{flick_server_register} to register
+the interface with the runtime:
+
+\begin{verbatim}
+   /* Returns 1 for success or 0 for failure. */
+   int flick_server_register(FLICK_SERVER_DESCRIPTOR, FLICK_SERVER);
+\end{verbatim}
+
+\noindent The first argument is the structure containing the program and
+version numbers that was previously filled in.  The second argument is a
+pointer to the Flick-generated server dispatch function for the interface.  The
+name of this function is generally the name of the ONC~RPC program, followed by
+an underscore and the version number of the interface:
+``\texttt{\emph{program}\_\emph{version}}''.
+
+After your \cfunction{main} function has registered all of its interfaces, it
+must call the \cfunction{flick_server_run} function.  This function takes no
+arguments and should never return.  If it does, there has been a fatal error.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Connecting to a Server}
+\label{subsec:Connecting to a Server}
+
+When a server is run, it registers itself with the RPC portmapper facility.
+Client processes can connect to a running server simply by specifying the host
+machine of the server and the program and version numbers of the desired
+interface.  To connect to a server, a client process fills out a
+\ctype{FLICK_SERVER_LOCATION} structure:
+
+\begin{verbatim}
+   typedef struct FLICK_SERVER_LOCATION {
+           char *server_name;      /* The host machine.   */
+           unsigned int prog_num;  /* The program number. */
+           unsigned int vers_num;  /* The version number. */
+   } FLICK_SERVER_LOCATION;
+\end{verbatim}
+
+\noindent Once this structure is initialized, the client calls
+\cfunction{flick_client_create} to connect to the server:
+
+\begin{verbatim}
+   /* Returns 1 for success or 0 for failure. */
+   int flick_client_create(CLIENT *, FLICK_SERVER_LOCATION);
+\end{verbatim}
+
+\noindent The first argument must point to a \ctype{CLIENT} structure; that
+structure will be initialized by the call to \cfunction{flick_client_create}.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Using the Server Connection}
+\label{subsec:Using the Server Connection}
+
+Once a client has established a connection to a server, it must pass the
+initialized \ctype{CLIENT} data to the Flick-generated stub functions in order
+to make RPCs.  When the client is ready to close its connection to the server,
+it should call \cfunction{flick_client_destroy}:
+
+\begin{verbatim}
+   void flick_client_destroy(CLIENT *);
+\end{verbatim}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Using the Service Request Data (\texttt{svc\_req})}
+\label{subsec:Using the Service Request Data}
+
+The second argument to an ONC~RPC-style server work function is generally a
+pointer to a \ctype{struct svc_req}, a structure that describes the context of
+the current RPC: the program, version, and operation numbers, the client's
+credentials, and so on.  When writing a server work function, you must include
+this argument in your function's parameter list; see
+Section~\ref{subsec:ONCRPC:Server Functions} for examples.
+
+However, beware: \emph{Flick's ONC/TCP runtime does not currently initialize
+the structure that is passed to your work function!}  Currently,
+Flick-generated stubs include this parameter simply to be prototype-compatible
+with \program{rpcgen}-generated code.  In a future version of Flick, the
+correct \ctype{svc_req} data will be provided to server work functions.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% End of file.
+
