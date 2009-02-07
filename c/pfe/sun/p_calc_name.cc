@@ -84,7 +84,7 @@ char *pg_sun::calc_server_func_name(const char *basic_name)
  * These functions are auxiliaries for the override methods above.
  */
 
-#define NAME_LITERAL_STR(type) names.literals[name_strings::##type##_lit].str
+#define NAME_LITERAL_STR(type) names.literals[ type##_lit].str
 
 char *pg_sun::calc_operation_and_version_id(const char *basic_name)
 {

@@ -33,9 +33,9 @@ const char * const pg_fluke::fdev_seq_alloc_header = "fluke/sac/fdev_flick.h";
 
 pg_fluke::pg_fluke()
 {
-#define NAME_FORMAT(type)      names.formats[name_strings::##type##_fmt]
-#define NAME_LITERAL_STR(type) names.literals[name_strings::##type##_lit].str
-#define NAME_LITERAL_LEN(type) names.literals[name_strings::##type##_lit].len
+#define NAME_FORMAT(type)      names.formats[ type##_fmt]
+#define NAME_LITERAL_STR(type) names.literals[ type##_lit].str
+#define NAME_LITERAL_LEN(type) names.literals[ type##_lit].len
 	
 	/* Should define them all... */
 	NAME_FORMAT(server_func) =		"%I%_server%_%s";

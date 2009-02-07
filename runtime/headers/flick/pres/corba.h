@@ -186,7 +186,7 @@ char *find_system_exception_id(char *name, int size);
 
 #define corba_except(name)					\
 typedef flick_system_exception name;				\
-name *##name##__alloc();
+name *name##__alloc();
 
 /*
  * Here are the standard CORBA system exception.

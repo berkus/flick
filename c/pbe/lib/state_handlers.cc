@@ -50,6 +50,7 @@ extern "C" { int gethostname(char *name, int namelen); }
 #endif /* NEED_GETHOSTNAME_DECL */
 
 #include <assert.h>
+#include <time.h>
 
 #include <mom/c/libcast.h>
 #include <mom/c/pbe.hh>

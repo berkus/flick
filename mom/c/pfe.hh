@@ -106,7 +106,6 @@ struct calc_name_struct {
  * contains a `names_strings' structure.
  */
 
-struct name_strings {
 	typedef enum 
 	{
 		/*
@@ -344,27 +343,10 @@ struct name_strings {
 		 */
 		presentation_include_file_fmt,
 		interface_include_file_fmt,
-		interface_default_include_file_fmt
+		interface_default_include_file_fmt,
 		
-#define		number_of_name_fmt_kinds \
-		(name_strings::interface_default_include_file_fmt + 1)
+		number_of_name_fmt_kinds
 	} name_fmt_kind;
-	
-	/*
-	 * `formats' is the array of `printf'-style format strings used to
-	 * construct the names of various presentation elements.  This array is
-	 * indexed by the enumeration type defined above.
-	 *
-	 * Later on, we use `DECLARE_CALC_NAME_FUNCTION' to declare `pg_state'
-	 * member functions that correspond to each kind of name that can be
-	 * built --- these are in one-to-one correspondence with the format
-	 * strings below.
-	 *
-	 * XXX --- Idea: Turn this `name_strings' structure into a real name
-	 * generator class, and make the `calc_name' methods be methods of this
-	 * class.  Need access to certain `pg_state' member data, however.
-	 */
-	const char *formats[number_of_name_fmt_kinds];
 	
 	typedef enum
 	{
@@ -395,11 +377,27 @@ struct name_strings {
 		
 		presentation_style_lit,
 		
-		filename_component_separator_lit
+		filename_component_separator_lit,
 		
-#define		number_of_name_lit_kinds \
-		(name_strings::filename_component_separator_lit + 1)
+		number_of_name_lit_kinds
 	} name_lit_kind;
+	
+struct name_strings {
+	/*
+	 * `formats' is the array of `printf'-style format strings used to
+	 * construct the names of various presentation elements.  This array is
+	 * indexed by the enumeration type defined above.
+	 *
+	 * Later on, we use `DECLARE_CALC_NAME_FUNCTION' to declare `pg_state'
+	 * member functions that correspond to each kind of name that can be
+	 * built --- these are in one-to-one correspondence with the format
+	 * strings below.
+	 *
+	 * XXX --- Idea: Turn this `name_strings' structure into a real name
+	 * generator class, and make the `calc_name' methods be methods of this
+	 * class.  Need access to certain `pg_state' member data, however.
+	 */
+	const char *formats[number_of_name_fmt_kinds];
 	
 	/*
 	 * These are literal strings used to construct names: separators,
@@ -417,13 +415,13 @@ struct name_strings {
  */
 struct name_fmt_option_struct {
 	const char			*name;
-	name_strings::name_fmt_kind	index;
+	name_fmt_kind			index;
 	const char			*explain;
 };
 
 struct name_lit_option_struct {
 	const char			*name;
-	name_strings::name_lit_kind	index;
+	name_lit_kind			index;
 	const char			*explain;
 };
 

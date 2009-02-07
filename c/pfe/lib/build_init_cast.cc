@@ -20,16 +20,17 @@
  */
 
 #include <stdio.h>
-/*
-  #include <string.h>
-  We declare these individually rather than use the header because
+
+#include <string.h>
+/*  We declare these individually rather than use the header because
   the HPUX and SunOS4 systems we tried compiling on have funky g++
   installations that make strrchr get munged _strrchr__FPci instead
   of _strrchr
-  */
+  berkus: this breaks on gcc4
+ 
 extern "C" char *strrchr(const char *s, int c);
 extern "C" int strcmp(const char *s, const char *s2);
-
+*/
 #include "private.hh"
 
 /*
@@ -60,8 +61,7 @@ void pg_state::build_init_cast(void)
 	 * file name component separator character out of our `names.literals'.
 	 */
 	separator_component =
-		&(names.literals[name_strings::
-				filename_component_separator_lit]);
+		&(names.literals[filename_component_separator_lit]);
 	
 	switch (separator_component->len) {
 	case 1:

@@ -53,9 +53,9 @@ pg_state::pg_state()
 	 * Initialize the strings that are used to construct names.  Most
 	 * presentation generators will override at least some of these values.
 	 */
-#define NAME_FORMAT(type)      names.formats[name_strings::##type##_fmt]
-#define NAME_LITERAL_STR(type) names.literals[name_strings::##type##_lit].str
-#define NAME_LITERAL_LEN(type) names.literals[name_strings::##type##_lit].len
+#define NAME_FORMAT(type)      names.formats[ type##_fmt ]
+#define NAME_LITERAL_STR(type) names.literals[ type##_lit ].str
+#define NAME_LITERAL_LEN(type) names.literals[ type##_lit ].len
 	
 	/* The `null' format should never ever be used. */
 	NAME_FORMAT(null) =			"";

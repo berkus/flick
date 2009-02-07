@@ -254,7 +254,7 @@ flick_error_to_CORBA_exception_id(int errval)
  * Define the allocators for the standard CORBA exceptions.
  */
 #define sys_except__alloc(name) \
-name *##name##__alloc() { return (name *) flick_system_exception_alloc(); }
+name *name##__alloc() { return (name *) flick_system_exception_alloc(); }
 
 sys_except__alloc(CORBA_UNKNOWN)
 sys_except__alloc(CORBA_BAD_PARAM)

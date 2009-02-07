@@ -20,8 +20,11 @@
  */
 
 #include <stdio.h>
+
+#ifdef __GNUC__ /// XXX check for HPUX/SunOS instead, see comment below.
+#include <string.h>
+#else
 /*
-  #include <string.h>
   We declare these individually rather than use the header because
   the HPUX and SunOS4 systems we tried compiling on have funky g++
   installations that make strrchr get munged _strrchr__FPci instead
@@ -29,6 +32,7 @@
   */
 extern "C" char *strrchr(const char *s, int c);
 extern "C" int strcmp(const char *s, const char *s2);
+#endif
 
 #include <mom/compiler.h>
 #include <mom/libaoi.h>
@@ -105,8 +109,7 @@ void pg_state::p_interface_def_include(aoi_interface * /*interface*/)
 	 * file name component separator character out of our `names.literals'.
 	 */
 	separator_component =
-		&(names.literals[name_strings::
-				filename_component_separator_lit]);
+		&(names.literals[filename_component_separator_lit]);
 	
 	switch (separator_component->len) {
 	case 1:

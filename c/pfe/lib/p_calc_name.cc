@@ -98,14 +98,14 @@ void pg_state::init_name_context()
 #define DEFINE_CALC_NAME_FMT_OPTION(type, explain)	\
 {							\
 	#type "_fmt",					\
-	name_strings::##type##_fmt,			\
+	type##_fmt,			\
 	"Specify the format of " explain		\
 }
 
 #define DEFINE_CALC_NAME_LIT_OPTION(type, explain)	\
 {							\
 	#type "_lit",					\
-	name_strings::##type##_lit,			\
+	type##_lit,			\
 	"Specify the string for " explain		\
 }
 
@@ -286,7 +286,7 @@ name_fmt_option_struct name_fmt_options[] =
 				    "names"),
 	
 	/* `pg_state::build_flags' looks for a terminating null entry. */
-	{ 0, name_strings::null_fmt, 0}
+	{ 0, null_fmt, 0}
 };
 
 name_lit_option_struct name_lit_options[] =
@@ -304,7 +304,7 @@ name_lit_option_struct name_lit_options[] =
 				    "filename component separators (`%/')"),
 	
 	/* `pg_state::build_flags' looks for a terminating null entry. */
-	{ 0, name_strings::null_lit, 0}
+	{ 0, null_lit, 0}
 };
 
 
@@ -333,7 +333,7 @@ name_lit_option_struct name_lit_options[] =
 #define DEFINE_CALC_NAME_FUNCTION(type)					\
   char *pg_state::calc_##type##_name(const char *basic_name)		\
   {									\
-	return calc_name(names.formats[name_strings::##type##_fmt],	\
+	return calc_name(names.formats[ type##_fmt ],	\
 			 basic_name);					\
   }
 
@@ -346,7 +346,7 @@ name_lit_option_struct name_lit_options[] =
 									    \
 	calc_scoped_name(&scname,					    \
 			 parent_ref,					    \
-			 names.formats[name_strings::##type##_scoped_fmt]); \
+			 names.formats[ type##_scoped_fmt ]); \
 	cast_add_scope_name(&scname,					    \
 			    base_name,					    \
 			    null_template_arg_array);			    \
@@ -715,8 +715,8 @@ cast_scoped_name pg_state::calc_scoped_name_from_ref(aoi_ref ref)
 		++calc_name_data.count;					 \
 	} while (0)
 
-#define NAME_LITERAL_STR(type) names.literals[name_strings::##type##_lit].str
-#define NAME_LITERAL_LEN(type) names.literals[name_strings::##type##_lit].len
+#define NAME_LITERAL_STR(type) names.literals[ type##_lit ].str
+#define NAME_LITERAL_LEN(type) names.literals[ type##_lit ].len
 
 /*
  * An internal auxiliary.  `calc_name_module' locates the names of the AOI
